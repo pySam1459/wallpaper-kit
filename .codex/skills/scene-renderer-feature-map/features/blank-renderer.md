@@ -1,0 +1,23 @@
+# Blank renderer infrastructure
+
+## Status
+
+Verified on 2026-10-09 with Rust 1.91 on Windows x64. Hardware native/headless checks used an NVIDIA GeForce RTX 5080; the software/headless route used WARP. Exact source and executable hashes are in the [hardware manifest](../../../../artifacts/20261009-233823-61aa2b4f/manifest.json) and [software manifest](../../../../artifacts/20261009-233819-96acac2a/manifest.json). These local evidence files are ignored by Git and may be absent in another checkout; rerun the procedure there. Scene playback and production framework adapters remain unavailable.
+
+## Consumer outcome
+
+The public library produces an immutable opaque blank GPU frame on demand. A native Windows consumer presents it through a separate device, and a headless consumer verifies GPU pixels. Resize replaces output while retained frames remain valid. Idle rendering has no recurring timer. Shutdown joins the renderer's worker.
+
+## How to reach it
+
+Read [the blank renderer guide](../../../../docs/blank-renderer.md) for the current API and limits. Run `pwsh -File ./scripts/verify.ps1` from the checkout being verified. Use `-Software -SkipNative` when no interactive desktop is available and report that native scenario as skipped.
+
+## Drive and observe
+
+The script checks format, Clippy, the public-contract test, dependency boundaries with a negative fixture, and both consumer builds. The headless run captures and checks all pixels, resizes, checks retained frames across resize/shutdown, and rejects invalid dimensions. The native run checks readiness identity, captures the back buffer, inspects idle behavior, resizes, captures again, requests stop and verifies process exit. Output directories are unique, and cleanup targets only the owned process handle.
+
+## Evidence and limits
+
+Read the run manifest, consumer reports, capture PNGs, source/executable hashes, action transcript and stderr in its `artifacts/` directory. Native capture values must be `[16,24,32,255]` throughout. Captures use diagnostic readback; native captures establish the swap-chain copy path, not final desktop composition. One idle process sample is not a scene-performance benchmark. Memory can grow if a host retains many old immutable frames; a reusable bounded animation pool is not implemented.
+
+The [native report](../../../../artifacts/20261009-233823-61aa2b4f/native/report.json) records GPU-pixel checks, resize, the idle sample and owned-process exit. [Doctor checks](../../../../artifacts/20261009-233823-61aa2b4f/doctor-checks.json) confirm fresh blank readiness, rejection of a temporary source-set change, and rejection of scene verification even when its path exists.

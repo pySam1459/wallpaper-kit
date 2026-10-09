@@ -1,0 +1,51 @@
+---
+name: control-scene-renderer
+description: Inspect readiness and verify scene-renderer through its minimal Windows example viewer. Use when testing rendered output, playback, lifecycle behavior, or performance after a renderer change.
+---
+
+# Control scene-renderer
+
+Give agents a repeatable way to observe the rendering library through a real consumer. The example viewer uses the public library API. Keep scene behavior in the library and control mechanics in a reusable tool.
+
+## Current capability
+
+Blank rendering, a native viewer, a headless consumer, and repeatable launch/control/capture/cleanup are implemented. Scene loading and animation remain unavailable. Read [the blank renderer guide](../../../docs/blank-renderer.md) for API ownership and limitations.
+
+From the repository root, run:
+
+```powershell
+pwsh -File ./.codex/skills/control-scene-renderer/scripts/doctor.ps1
+```
+
+To check a locally available scene path, supply it explicitly:
+
+```powershell
+pwsh -File ./.codex/skills/control-scene-renderer/scripts/doctor.ps1 -ScenePath 'C:/Program Files (x86)/Steam/steamapps/workshop/content/431960/3780699842/scene.pkg'
+```
+
+The example package was inspected at that path during planning. Doctor only checks its current existence; scene verification still exits with code `2`. Without a scene argument, doctor reports readiness only when a successful blank/native verification receipt matches current source and executable hashes. Exit code `1` means doctor failed. Read [the control contract](references/control-contract.md) when interpreting evidence or extending control operations.
+
+Run the complete blank scenario with:
+
+```powershell
+pwsh -File ./scripts/verify.ps1
+```
+
+Use `-Software -SkipNative` without an interactive desktop. Report the native path as skipped. Every run creates a unique `artifacts/` directory. The controller operates only on the process it launched and verifies exit. Capture readback and one idle CPU sample do not establish scene or host performance.
+
+## Verify a change
+
+1. Read [the feature map](../scene-renderer-feature-map/SKILL.md) and the relevant feature entry. Establish what the caller must observe before changing code.
+2. Run doctor in the checkout containing the change. Missing or stale evidence is a reason to run verification; missing platform prerequisites are a blocker to report. Do not substitute build success for runtime proof.
+3. Run the mapped scenario from that checkout. For blank behavior, `scripts/verify.ps1` launches an isolated consumer, checks readiness identity, drives resize/capture, and stops it. Other scene and adapter scenarios remain planned.
+4. Capture the mapped output and measurements. For a bug, establish the failure before the fix where practical. For performance, compare the same workload and hardware before and after.
+5. Stop only the instance created for this run and retain evidence. Report what passed, failed, or remains unverified, with artifact paths and measurement limits.
+
+When a feature or control path changes, update its map entry with the verified procedure. Mark a procedure verified only after executing it end to end, including cleanup. Use bounded waits for observed states instead of guessed delays.
+
+## Observation boundaries
+
+- Use stable controller operations instead of coordinates where possible. A screenshot proves appearance; multiple frames or a recording are needed to establish animation.
+- Use the finished implementation's supported time and seed controls for repeatable fixtures. Record nondeterminism where those controls are absent.
+- A viewer result establishes only that consumer path. Verify a host adapter inside its actual application before claiming integration or host responsiveness.
+- Keep downloaded packages and engine assets read-only. Store captures outside source fixtures and do not commit third-party content without redistribution rights.

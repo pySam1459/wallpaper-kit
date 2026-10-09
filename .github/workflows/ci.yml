@@ -1,0 +1,23 @@
+name: Windows checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  blank-renderer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.91.0'
+          components: rustfmt, clippy
+      - name: Verify source and software GPU consumer
+        shell: pwsh
+        run: ./scripts/verify.ps1 -Software -SkipNative
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: blank-renderer-evidence
+          path: artifacts/
