@@ -1,7 +1,8 @@
 [CmdletBinding()]
-param([switch]$Software, [switch]$SkipNative)
+param([switch]$Software, [switch]$SkipNative, [string]$ScenePath, [string]$EngineAssets)
 
 $ErrorActionPreference = 'Stop'
+if ([bool]$ScenePath -ne [bool]$EngineAssets) { throw 'ScenePath and EngineAssets must be supplied together' }
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $runId = '{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss'), ([Guid]::NewGuid().ToString('N').Substring(0, 8))
 $output = Join-Path $root "artifacts/$runId"
@@ -23,6 +24,11 @@ try {
     $metadata = & cargo metadata --locked --offline --no-deps --format-version 1 | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw 'Cargo metadata failed' }
     $target = Join-Path $metadata.target_directory 'debug/examples'
+    $inspectionStatus = 'skipped'
+    if ($ScenePath) {
+        & "$PSScriptRoot/verify-scene-inspection.ps1" -Executable (Join-Path $target 'scene-inspect.exe') -ScenePath $ScenePath -EngineAssets $EngineAssets -Output (Join-Path $output 'scene-inspection')
+        $inspectionStatus = 'passed'
+    }
     $headlessOutput = Join-Path $output 'headless'
     $headlessArgs = @('--output', $headlessOutput)
     if ($Software) { $headlessArgs += '--software' }
@@ -40,7 +46,7 @@ try {
     if ($LASTEXITCODE -ne 0) { $revision = $null }
     $sourceFiles = @('Cargo.toml', 'Cargo.lock') + @(Get-ChildItem src, examples, tests, scripts -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($root, $_.FullName) })
     $sourceHashes = @($sourceFiles | Sort-Object | ForEach-Object { [ordered]@{path=$_; sha256=(Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash} })
-    $binaries = @('headless.exe', 'native-viewer.exe', 'motion-checks.exe') | ForEach-Object {
+    $binaries = @('headless.exe', 'native-viewer.exe', 'motion-checks.exe', 'scene-inspect.exe') | ForEach-Object {
         $path = Join-Path $target $_
         [ordered]@{path=$path; sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}
     }
@@ -52,7 +58,8 @@ try {
         working_tree=@($status); sources=$sourceHashes; binaries=@($binaries); rustc=(& rustc --version); os=$os; gpu=$video; cpu=$cpu;
         native_status=$(if ($SkipNative) {'skipped'} else {'passed'}); software=[bool]$Software;
         motion_status='passed';
-        limits=@('Blank and diagnostic motion only.', 'Captures use diagnostic readback.', 'No scene, GPU timing or host latency claims.');
+        scene_inspection_status=$inspectionStatus;
+        limits=@('Blank and diagnostic motion rendering only.', 'Scene inspection does not render or decode image payloads.', 'Captures use diagnostic readback.', 'No scene fidelity, GPU timing or host latency claims.');
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $output 'manifest.json') -Encoding utf8
     Write-Output "Evidence: $output"
 } catch {

@@ -2,7 +2,7 @@
 
 ## Status
 
-Scene rendering is planned. The [initial package inventory](../../../../docs/research/example-scene-inventory.md) is complete, and blank consumers exist; they do not load this scene. Target: [Workshop item 3780699842](https://steamcommunity.com/sharedfiles/filedetails/?id=3780699842).
+Read-only package/dependency inspection is verified on the recorded Windows build in [the inspection guide](../../../../docs/scene-inspection.md). Scene rendering remains planned. The [initial package inventory](../../../../docs/research/example-scene-inventory.md) supplies independent expected metadata. Target: [Workshop item 3780699842](https://steamcommunity.com/sharedfiles/filedetails/?id=3780699842).
 
 ## Consumer outcome
 
@@ -10,7 +10,7 @@ A consuming application loads the actual scene and displays its visible layers, 
 
 ## How to reach it
 
-Use a local copy of the target package and its required assets. Discover the input path without changing the originals. The loader API and viewer controls will be recorded after implementation.
+For metadata, use the public `inspect_scene(&SceneSource)` API or `scene-inspect` example described in [the guide](../../../../docs/scene-inspection.md). The required gate accepts paired `-ScenePath` and `-EngineAssets` arguments to run the actual target inspection. Inspect counts, object order, hashes, effect bindings, sprite pages/durations and diagnostics. This produces no rendered scene. Runtime loader/viewer controls remain planned.
 
 ## Drive and observe
 

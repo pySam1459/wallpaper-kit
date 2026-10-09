@@ -1,4 +1,4 @@
-//! Blank and diagnostic motion rendering, independent of any host framework.
+//! Diagnostic Direct3D 11 rendering and read-only scene inspection.
 //!
 //! A worker renders on demand. Completed frames are immutable; resize creates a
 //! replacement and does not invalidate a frame held by a consumer. This initial
@@ -7,8 +7,17 @@
 #[cfg(not(windows))]
 compile_error!("The initial scene-renderer backend requires Windows.");
 
+mod assets;
 mod gpu;
 mod motion;
+mod scene;
+
+pub use scene::{
+    AssetSummary, DependencySummary, Diagnostic, DiagnosticSeverity, EffectBindingSummary,
+    EffectPassSummary, EffectSummary, InspectionError, MaterialPassSummary, MaterialSummary,
+    ObjectKind, ObjectSummary, PackageSummary, PageSummary, SceneInspection, SceneSource,
+    SceneSummary, TextureSummary, inspect_scene,
+};
 
 use std::sync::{Arc, Condvar, Mutex, TryLockError, mpsc};
 use std::thread::{self, JoinHandle};

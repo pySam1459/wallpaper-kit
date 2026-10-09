@@ -6,7 +6,7 @@ The project starts on Windows. The consuming application's responsiveness takes 
 
 ## Status
 
-The initial Rust library renders blank Direct3D 11 textures and a controlled-time diagnostic animation. A native Windows viewer and headless verification runners consume its public API. Scene loading, production animation, photo/video playback, and framework adapters remain unimplemented.
+The Rust library renders blank Direct3D 11 textures and a controlled-time diagnostic animation. It also inspects local scene packages and their asset dependencies through a read-only public API. A native Windows viewer and headless verification runners consume its public API. Scene rendering, production animation, photo/video playback, and framework adapters remain unimplemented.
 
 The [renderer specification](docs/spec/scene-renderer.md) defines the architecture, dependency choices, delivery gates, and measurable MVP acceptance criteria.
 
@@ -62,6 +62,10 @@ The [initial package inventory](docs/research/example-scene-inventory.md) identi
 
 General photo and video support, more scene formats and features, and additional framework adapters follow this milestone. Embedding feasibility should be tested early to avoid building a renderer that only works in its own window.
 
+## Scene inspection
+
+The [scene inspection guide](docs/scene-inspection.md) describes the public API, command, limits and real-package verification. The inspector checks PKG/TEX metadata, follows asset references, records hashes, and reports missing or unsupported features. It preserves object order and effect bindings. This does not render the scene or decode its image payloads.
+
 ## Example app and verification
 
 The renderer is the product. A minimal example app is a consumer of the library, used by developers and agents to view output, exercise playback, and gather evidence.
@@ -82,7 +86,7 @@ Threads and separate processes still share hardware resources. Zero impact canno
 
 ## Architecture direction
 
-The core is a Rust library with a blank Direct3D 11 backend. Asset management, scene state and animation follow later. GPUI remains an optional integration layer rather than a core dependency. Winit and PNG/JSON tooling are example-only dependencies; a checked Cargo dependency boundary enforces that separation.
+The core is a Rust library with a diagnostic Direct3D 11 backend and scene-inspection modules. Production asset streaming, scene state and animation follow later. GPUI remains an optional integration layer rather than a core dependency. JSON parsing and hashing are library dependencies for inspection; Winit and PNG capture tooling remain example-only. A checked Cargo dependency boundary enforces the host separation.
 
 The blank prototype verifies same-adapter Direct3D 11 texture sharing into an independent native consumer device. This does not settle production scene performance or GPUI integration. Media Foundation remains a candidate for video decoding; `wgpu` is a portability alternative, and raw Vulkan is not a committed requirement.
 
