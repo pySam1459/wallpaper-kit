@@ -2,7 +2,7 @@
 
 ## Status
 
-The public blank renderer API and native/headless consumers are implemented; use the [blank verification entry](blank-renderer.md). A native consumer imports immutable frames on a separate same-adapter D3D11 device. C ABI, GPUI, Electron, WebView2 and embedded Chromium adapters remain planned.
+The public blank/fixture API and native/headless consumers are implemented; use [blank verification](blank-renderer.md) and [diagnostic motion](diagnostic-motion.md). A native consumer imports immutable frames on a separate same-adapter D3D11 device. C ABI, GPUI, Electron, WebView2 and embedded Chromium adapters remain planned.
 
 ## Consumer outcome
 
@@ -10,7 +10,7 @@ An application embeds the renderer through a small contract without acquiring a 
 
 ## How to reach it
 
-The example app will be the first consumer of the public library API. Each framework adapter needs its own minimal real host and verified route. Record those routes separately when implemented.
+The examples consume the public library API. Each framework adapter needs its own minimal real host and verified route. Record those routes separately when implemented.
 
 ## Drive and observe
 

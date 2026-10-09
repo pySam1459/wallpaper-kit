@@ -9,7 +9,7 @@ Give agents a repeatable way to observe the rendering library through a real con
 
 ## Current capability
 
-Blank rendering, a native viewer, a headless consumer, and repeatable launch/control/capture/cleanup are implemented. Scene loading and animation remain unavailable. Read [the blank renderer guide](../../../docs/blank-renderer.md) for API ownership and limitations.
+Blank rendering, a controlled-time motion fixture, native/headless consumers, and repeatable launch/control/capture/cleanup are implemented. Scene loading and production playback remain unavailable. Read [the blank renderer guide](../../../docs/blank-renderer.md) for ownership and [motion verification](../../../docs/motion-verification.md) for temporal checks and metric definitions.
 
 From the repository root, run:
 
@@ -23,9 +23,9 @@ To check a locally available scene path, supply it explicitly:
 pwsh -File ./.codex/skills/control-scene-renderer/scripts/doctor.ps1 -ScenePath 'C:/Program Files (x86)/Steam/steamapps/workshop/content/431960/3780699842/scene.pkg'
 ```
 
-The example package was inspected at that path during planning. Doctor only checks its current existence; scene verification still exits with code `2`. Without a scene argument, doctor reports readiness only when a successful blank/native verification receipt matches current source and executable hashes. Exit code `1` means doctor failed. Read [the control contract](references/control-contract.md) when interpreting evidence or extending control operations.
+The example package was inspected at that path during planning. Doctor only checks its current existence; scene verification still exits with code `2`. Without a scene argument, doctor reports readiness only when a successful blank/motion/native verification receipt matches current source and executable hashes. Exit code `1` means doctor failed. Read [the control contract](references/control-contract.md) when interpreting evidence or extending control operations.
 
-Run the complete blank scenario with:
+Run the complete diagnostic scenarios with:
 
 ```powershell
 pwsh -File ./scripts/verify.ps1
@@ -37,7 +37,7 @@ Use `-Software -SkipNative` without an interactive desktop. Report the native pa
 
 1. Read [the feature map](../scene-renderer-feature-map/SKILL.md) and the relevant feature entry. Establish what the caller must observe before changing code.
 2. Run doctor in the checkout containing the change. Missing or stale evidence is a reason to run verification; missing platform prerequisites are a blocker to report. Do not substitute build success for runtime proof.
-3. Run the mapped scenario from that checkout. For blank behavior, `scripts/verify.ps1` launches an isolated consumer, checks readiness identity, drives resize/capture, and stops it. Other scene and adapter scenarios remain planned.
+3. Run the mapped scenario from that checkout. `scripts/verify.ps1` checks blank output, controlled motion pixels, verifier fault cases and live readiness timing, then drives resize/capture/play/pause in an isolated native consumer and stops it. Scene and adapter scenarios remain planned.
 4. Capture the mapped output and measurements. For a bug, establish the failure before the fix where practical. For performance, compare the same workload and hardware before and after.
 5. Stop only the instance created for this run and retain evidence. Report what passed, failed, or remains unverified, with artifact paths and measurement limits.
 
@@ -46,6 +46,7 @@ When a feature or control path changes, update its map entry with the verified p
 ## Observation boundaries
 
 - Use stable controller operations instead of coordinates where possible. A screenshot proves appearance; multiple frames or a recording are needed to establish animation.
+- For fixture motion, inspect `motion/index.html`, checkpoint results, self-test faults and the separate live timing report. A controlled contact sheet does not establish real-time cadence. Readiness and presentation-call return timestamps do not establish GPU duration or display timing.
 - Use the finished implementation's supported time and seed controls for repeatable fixtures. Record nondeterminism where those controls are absent.
 - A viewer result establishes only that consumer path. Verify a host adapter inside its actual application before claiming integration or host responsiveness.
 - Keep downloaded packages and engine assets read-only. Store captures outside source fixtures and do not commit third-party content without redistribution rights.

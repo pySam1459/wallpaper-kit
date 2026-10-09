@@ -30,9 +30,20 @@ path = "examples/native-viewer/main.rs"
 name = "headless"
 path = "examples/headless/main.rs"
 
+[[example]]
+name = "motion-checks"
+path = "examples/motion-checks/main.rs"
+test = true
+
 [lints.rust]
+unsafe_code = "deny"
 unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
 missing_docs = "warn"
 
 [lints.clippy]
 undocumented_unsafe_blocks = "deny"
+missing_safety_doc = "deny"
+
+[lints.rustdoc]
+broken_intra_doc_links = "deny"

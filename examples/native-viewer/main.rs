@@ -1,5 +1,8 @@
 //! Native window consumer with line-delimited JSON control over stdin/stdout.
 
+mod fixture;
+#[path = "../support/motion.rs"]
+mod motion_checks;
 mod presentation;
 #[path = "../support/mod.rs"]
 mod support;
@@ -35,6 +38,8 @@ struct App {
     frame: Option<Arc<Frame>>,
     expected_id: u64,
     pending_resize: Option<Value>,
+    pending_fixture: Option<Value>,
+    fixture: fixture::Fixture,
     ready: bool,
     output: PathBuf,
     mode: DeviceMode,
@@ -81,6 +86,13 @@ impl App {
         {
             return Ok(());
         }
+        if self
+            .frame
+            .as_ref()
+            .is_none_or(|previous| previous.id() != frame.id())
+        {
+            self.fixture.presented(&frame);
+        }
         self.frame = Some(frame.clone());
         self.presented += 1;
         if !self.ready {
@@ -92,13 +104,16 @@ impl App {
         if let Some(command) = self.pending_resize.take() {
             emit(json!({"id": command["id"], "ok": true, "state": self.inspect()}));
         }
+        if let Some(command) = self.pending_fixture.take() {
+            emit(json!({"id":command["id"],"ok":true,"state":self.inspect()}));
+        }
         Ok(())
     }
 
     fn inspect(&self) -> Value {
         json!({"pid": std::process::id(), "consumer": "native-viewer", "ready": self.ready,
             "frame": self.frame.as_ref().map(|frame| support::frame_info(frame)), "presented": self.presented,
-            "continuous_rendering": false, "output": self.output, "scene_support": false})
+            "continuous_rendering": self.fixture.running(), "output": self.output, "scene_support": false})
     }
 
     fn resized(&mut self, size: PhysicalSize<u32>) -> Result<()> {
@@ -122,7 +137,7 @@ impl App {
         match command["command"].as_str().ok_or("missing command")? {
             "inspect" => emit(json!({"id": command["id"], "ok": true, "state": self.inspect()})),
             "resize" => {
-                if self.pending_resize.is_some() {
+                if self.pending_resize.is_some() || self.pending_fixture.is_some() {
                     return Err("resize already pending".into());
                 }
                 let width = u32::try_from(command["width"].as_u64().ok_or("invalid width")?)?;
@@ -138,6 +153,30 @@ impl App {
                         self.resized(size)?;
                     }
                 }
+            }
+            "fixture_at" => {
+                if self.pending_resize.is_some() || self.pending_fixture.is_some() {
+                    return Err("frame command already pending".into());
+                }
+                let time = Duration::from_millis(
+                    command["time_ms"].as_u64().ok_or("invalid fixture time")?,
+                );
+                self.fixture.step(time);
+                self.expected_id = self
+                    .renderer
+                    .as_ref()
+                    .ok_or("no renderer")?
+                    .render_fixture_at(time)?;
+                self.fixture.requested(self.expected_id);
+                self.pending_fixture = Some(command);
+            }
+            "play_fixture" => {
+                self.fixture.play();
+                emit(json!({"id":command["id"],"ok":true,"state":self.inspect()}));
+            }
+            "pause_fixture" => {
+                self.fixture.pause();
+                emit(json!({"id":command["id"],"ok":true,"state":self.inspect()}));
             }
             "capture" => {
                 let name = command["name"].as_str().ok_or("missing capture name")?;
@@ -159,12 +198,22 @@ impl App {
                     .ok_or("no presentation")?
                     .capture(frame)?;
                 support::write_png(&self.output.join(name), &pixels)?;
+                let motion_check = if let Some(time) = frame.fixture_time() {
+                    motion_checks::check_pixels(&pixels, u64::try_from(time.as_millis())?)?;
+                    Some(true)
+                } else {
+                    None
+                };
                 emit(
                     json!({"id": command["id"], "ok": true, "capture": name, "state": self.inspect(),
-                        "readback": true, "uniform_rgba": support::uniform_rgba(&pixels)}),
+                        "readback": true, "uniform_rgba": support::uniform_rgba(&pixels),"motion_check":motion_check}),
                 );
             }
             "stop" => {
+                support::write_json(
+                    &self.output.join("motion-timeline.json"),
+                    &self.fixture.report(),
+                )?;
                 support::write_json(&self.output.join("final.json"), &self.inspect())?;
                 emit(json!({"id": command["id"], "ok": true, "stopping": true}));
                 event_loop.exit();
@@ -183,9 +232,7 @@ impl ApplicationHandler<Event> for App {
         let result: Result<()> = (|| {
             let window = event_loop.create_window(
                 Window::default_attributes()
-                    .with_title(
-                        "Scene renderer | blank GPU background | resize to test | Esc to close",
-                    )
+                    .with_title("Scene renderer | blank and motion diagnostics | Esc to close")
                     .with_inner_size(PhysicalSize::new(640, 360)),
             )?;
             let size = window.inner_size();
@@ -249,6 +296,30 @@ impl ApplicationHandler<Event> for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let waiting = self
+            .frame
+            .as_ref()
+            .is_none_or(|frame| frame.id() != self.expected_id);
+        if !waiting
+            && self.pending_resize.is_none()
+            && self.pending_fixture.is_none()
+            && let Some(time) = self.fixture.tick()
+        {
+            let requested: Result<u64> = (|| {
+                Ok(self
+                    .renderer
+                    .as_ref()
+                    .ok_or("no renderer")?
+                    .render_fixture_at(time)?)
+            })();
+            match requested {
+                Ok(id) => {
+                    self.expected_id = id;
+                    self.fixture.requested(id);
+                }
+                Err(error) => self.fail(event_loop, error),
+            }
+        }
         let pending = self
             .frame
             .as_ref()
@@ -260,12 +331,20 @@ impl ApplicationHandler<Event> for App {
             event_loop.set_control_flow(ControlFlow::WaitUntil(
                 Instant::now() + Duration::from_millis(10),
             ));
+        } else if let Some(deadline) = self.fixture.deadline() {
+            event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
         } else {
             event_loop.set_control_flow(ControlFlow::Wait);
         }
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Err(error) = support::write_json(
+            &self.output.join("motion-timeline.json"),
+            &self.fixture.report(),
+        ) {
+            self.failure = Some(error.to_string());
+        }
         self.presentation = None;
         self.window = None;
         if let Some(renderer) = self.renderer.take()
@@ -303,6 +382,8 @@ fn main() -> Result<()> {
         frame: None,
         expected_id: 1,
         pending_resize: None,
+        pending_fixture: None,
+        fixture: fixture::Fixture::new(),
         ready: false,
         output,
         mode,

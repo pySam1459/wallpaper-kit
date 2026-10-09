@@ -1,6 +1,6 @@
 # Blank renderer infrastructure
 
-This milestone provides a Rust library, two real consumers, and repeatable blank-output verification. It does not load the Workshop scene. The planned scene architecture remains in the [specification](spec/scene-renderer.md).
+This milestone provides a Rust library, real consumers, and repeatable blank-output verification. [Diagnostic motion verification](motion-verification.md) extends those consumers with controlled-time animation and separate live telemetry. Neither loads the Workshop scene. The planned scene architecture remains in the [specification](spec/scene-renderer.md).
 
 ## Ownership and dependencies
 
@@ -16,7 +16,7 @@ The library owns a worker, its Direct3D 11 immediate context, one pending reques
 
 The core has only the Windows bindings dependency. Winit, PNG encoding, and JSON reporting are development dependencies used by the examples. `scripts/check-boundaries.ps1` traverses production/build dependency edges and rejects host packages entering the core. Its negative fixture changes the real Winit edge to a production edge and confirms rejection.
 
-This is an experimental API. It allocates a new immutable texture per completed request, not a reusable animation frame pool. Consumers can increase memory use by retaining old frames. Global residency budgets, continuous animation, device-loss recovery, and production host adapters remain future work.
+This is an experimental API. It allocates a new immutable texture per completed request, not a reusable animation frame pool. Consumers can increase memory use by retaining old frames. Global residency budgets, production animation, device-loss recovery, and production host adapters remain future work.
 
 ## Example consumers
 
@@ -27,7 +27,7 @@ cargo run --locked --example native-viewer
 cargo run --locked --example headless
 ```
 
-The native viewer owns a Winit window, a consumer device, and a swap chain. It imports the library frame through the public API, copies on the GPU, and presents without routine CPU readback. It uses a waiting event loop after output becomes ready. It retries pending startup/resize work with a short timer; no continuous background rendering loop exists. Window redraw events can legitimately present an existing frame.
+The native viewer owns a Winit window, a consumer device, and a swap chain. It imports the library frame through the public API, copies on the GPU, and presents without routine CPU readback. Blank output uses a waiting event loop after becoming ready. It retries pending startup/resize work with a short timer. Explicit fixture playback adds a consumer-owned timer; pause stops scheduling. Window redraw events can legitimately present an existing frame.
 
 The headless runner waits for actual output, checks every pixel through diagnostic readback, captures initial and resized images, checks idle behavior and invalid dimensions, retains an old frame across resize, shuts down, and checks retained frames again. Its nonaligned 317 × 193 capture exercises row-pitch handling. The public-contract test additionally exercises request bursts, undrained notifications, and concurrent readers after shutdown.
 
@@ -41,7 +41,7 @@ Requires PowerShell 7 and the Windows MSVC build toolchain:
 pwsh -File ./scripts/verify.ps1
 ```
 
-The command runs format and Clippy checks, the public-contract test, example builds, the dependency checker and its negative fixture, the headless consumer, and an owned native-viewer scenario. Native operations wait for replies and verify process identity. The scenario captures initial pixels, inspects idle behavior, resizes, captures again, requests stop, and verifies process exit. Failure cleanup targets only the process handle created for that run.
+The command runs format and Clippy checks, tests, Rustdoc, example builds, the dependency checker and its negative fixture, the headless blank and motion consumers, and an owned native-viewer scenario. Each run retains the dependency result in `boundaries.json`. Native operations wait for replies and verify process identity. The scenario checks blank capture/idle/resize, fixture capture/play/pause, and process exit. Failure cleanup targets only the process handle created for that run.
 
 ```powershell
 pwsh -File ./scripts/verify.ps1 -Software -SkipNative
@@ -64,7 +64,7 @@ The native viewer reads one JSON object per line on stdin and writes replies on 
 {"id":4,"command":"stop"}
 ```
 
-Resize replies after a frame matching the actual window size has been presented. Only one controlled resize is pending at a time. Capture names are PNG basenames inside that run's directory. Unsupported commands and invalid input return an explicit error. There is no load, playback, pointer-driving, or scene-capture operation yet.
+Resize replies after a frame matching the actual window size has been presented. Only one controlled frame command is pending at a time. Capture names are PNG basenames inside that run's directory. Unsupported commands and invalid input return an explicit error. The [motion controls](motion-verification.md#native-controls) add diagnostic fixture playback; load, pointer-driving and scene capture remain unavailable.
 
 `scripts/verify-native.ps1` is the reusable launch/control/capture/cleanup operation. It uses redirected streams and its own process handle instead of attaching to a named executable or global endpoint.
 
@@ -74,7 +74,7 @@ Resize replies after a frame matching the actual window size has been presented.
 pwsh -File ./.codex/skills/control-scene-renderer/scripts/doctor.ps1
 ```
 
-Doctor remains read-only. It reports blank-runtime readiness only when a successful native verification receipt from this checkout matches the current runtime source set, source hashes and both executable hashes. A build without a matching receipt is unverified. Exit codes are 0 for ready, 2 for blocked/unverified, and 1 for a doctor failure.
+Doctor remains read-only. It reports diagnostic readiness only when a successful blank/motion/native receipt from this checkout matches the current runtime source set, source hashes and three executable hashes. A build without a matching receipt is unverified. Exit codes are 0 for ready, 2 for blocked/unverified, and 1 for a doctor failure.
 
 Supplying `-ScenePath` checks file existence and reports scene verification as blocked even when the blank runtime has been verified. It does not open or modify the package. A prior receipt describes its recorded build/configuration; it is not proof of general hardware support.
 

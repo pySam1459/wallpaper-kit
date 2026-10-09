@@ -1,3 +1,6 @@
+// Native presentation boundary. Each unsafe operation documents its safety contract.
+#![allow(unsafe_code)]
+
 use super::support::Result;
 use scene_renderer::{Frame, Pixels, Size};
 use windows::Win32::Foundation::HWND;

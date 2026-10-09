@@ -50,7 +50,9 @@ pub fn frame_info(frame: &Frame) -> Value {
     let adapter = frame.adapter_info();
     json!({
         "frame_id": frame.id(), "width": frame.size().width(), "height": frame.size().height(),
-        "backend": "direct3d11", "format": "rgba8-unorm", "alpha": "opaque", "content": "blank",
+        "backend": "direct3d11", "format": "rgba8-unorm", "alpha": "opaque",
+        "content": if frame.fixture_time().is_some() { "motion-fixture" } else { "blank" },
+        "fixture_time_ms": frame.fixture_time().map(|time| time.as_millis()),
         "adapter": {"name": adapter.name, "vendor_id": adapter.vendor_id, "device_id": adapter.device_id,
             "luid": adapter.luid, "software": adapter.software},
     })

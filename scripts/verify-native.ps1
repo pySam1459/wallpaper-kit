@@ -69,14 +69,37 @@ try {
     if ($resized.state.frame.width -ne 317 -or $resized.state.frame.height -ne 193) { throw 'Viewer resize dimensions differ' }
     $resizedCapture = Send-Command @{id=5; command='capture'; name='resized.png'}
     if (($resizedCapture.uniform_rgba -join ',') -ne '16,24,32,255') { throw 'Resized native GPU pixels differ' }
-    $null = Send-Command @{id=6; command='stop'}
+    $null = Send-Command @{id=6; command='fixture_at'; time_ms=0}
+    $motionInitial = Send-Command @{id=7; command='capture'; name='motion-0000.png'}
+    if ($motionInitial.motion_check -ne $true) { throw 'Native fixture start differs' }
+    $null = Send-Command @{id=8; command='fixture_at'; time_ms=1000}
+    $motionMiddle = Send-Command @{id=9; command='capture'; name='motion-1000.png'}
+    if ($motionMiddle.motion_check -ne $true) { throw 'Native fixture midpoint differs' }
+    $null = Send-Command @{id=10; command='play_fixture'}
+    # Defined live-playback interval, with no capture/readback during measurement.
+    Start-Sleep -Milliseconds 4200
+    $null = Send-Command @{id=11; command='pause_fixture'}
+    # A controlled step settles any in-flight request before checking paused idle.
+    $paused = Send-Command @{id=12; command='fixture_at'; time_ms=1000}
+    Start-Sleep -Milliseconds 250
+    $pausedAfter = Send-Command @{id=13; command='inspect'}
+    if ($paused.state.frame.frame_id -ne $pausedAfter.state.frame.frame_id -or $pausedAfter.state.continuous_rendering) {
+        throw 'Paused fixture scheduled new work'
+    }
+    $null = Send-Command @{id=14; command='stop'}
     if (-not $process.WaitForExit(15000)) { throw 'Viewer did not shut down' }
     if ($process.ExitCode -ne 0) { throw "Viewer exit code $($process.ExitCode)" }
+    $motion = Get-Content -LiteralPath (Join-Path $outputPath 'motion-timeline.json') -Raw | ConvertFrom-Json
+    $live = @($motion.samples | Where-Object mode -eq 'live')
+    if ($live.Count -lt 2 -or $live[-1].playback_ms - $live[0].playback_ms -lt 4000) {
+        throw 'Native live fixture did not cover two loops'
+    }
     [ordered]@{status='passed'; pid=$process.Id; executable=$executablePath; actions=$transcript;
         idle_sample=[ordered]@{elapsed_ms=$elapsedMs; process_cpu_ms=($cpuAfter-$cpuBefore); working_set_bytes=$workingSet; handles=$handles;
             method='Process.TotalProcessorTime delta over measured wall time; one sample, includes host and helper threads'};
         cleanup='Owned process exited'; capture='GPU copy into native swap-chain back buffer, followed by diagnostic readback';
-        limits=@('Blank output only.', 'Captures do not establish final desktop composition.', 'No GPU time or host input latency measured.');
+        motion_fixture=[ordered]@{checkpoint_pixels='passed'; live_samples=$live.Count; two_loops='passed'; paused_idle='passed'};
+        limits=@('Blank and diagnostic motion only.', 'Captures do not establish final desktop composition.', 'No GPU time or host input latency measured.');
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outputPath 'report.json') -Encoding utf8
 } finally {
     # Only this process handle is eligible for cleanup. Never kill by name.

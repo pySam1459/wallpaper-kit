@@ -6,7 +6,7 @@ The project starts on Windows. The consuming application's responsiveness takes 
 
 ## Status
 
-The initial Rust library renders a blank Direct3D 11 GPU texture on demand. A native Windows viewer and a headless verification runner consume its public API. Scene loading, animation, photo/video playback, and production framework adapters remain unimplemented.
+The initial Rust library renders blank Direct3D 11 textures and a controlled-time diagnostic animation. A native Windows viewer and headless verification runners consume its public API. Scene loading, production animation, photo/video playback, and framework adapters remain unimplemented.
 
 The [renderer specification](docs/spec/scene-renderer.md) defines the architecture, dependency choices, delivery gates, and measurable MVP acceptance criteria.
 
@@ -17,11 +17,12 @@ Requires Windows, Rust 1.91 or newer with the MSVC toolchain and C++ build tools
 ```powershell
 cargo run --locked --example native-viewer
 cargo run --locked --example headless
+cargo run --locked --example motion-checks
 ```
 
 The viewer displays a dark blank background, supports ordinary window resizing, and exits with Escape or the close button. The headless runner verifies GPU pixels, idle behavior, resize, and frame lifetime. Each run creates its own evidence directory. Pass `-- --software` to a Cargo run command to select WARP; there is no silent hardware fallback.
 
-Run all source checks and both consumers:
+Run all source checks and consumer scenarios:
 
 ```powershell
 pwsh -File ./scripts/verify.ps1
@@ -34,6 +35,8 @@ pwsh -File ./scripts/verify.ps1 -Software -SkipNative
 ```
 
 Evidence is retained under `artifacts/`, which Git ignores. The [blank renderer verification guide](docs/blank-renderer.md) explains the API, control protocol, evidence, and limits. The Windows CI workflow runs the software/headless route; the workflow itself has not yet run on GitHub.
+
+The [motion verification guide](docs/motion-verification.md) describes fixed-time GPU captures, independent pixel checks, verifier fault cases, and separate live timing. These give agents evidence about motion without relying on a model to judge a video. Display timing, production scene fidelity, and host responsiveness still need additional measurements.
 
 ## Project requirements
 

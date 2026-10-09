@@ -10,9 +10,11 @@ Rust and a blank Direct3D 11 backend are implemented. Production scene rendering
 
 Keep the example app a thin consumer of the library's public API. Put rendering behavior in the library, and use the example app to observe output and collect metrics.
 
+Before changing Rust code, public APIs, dependencies, or lint policies, read [the Rust rules](docs/rust-rules.md). They identify the enforced boundaries, unsafe exceptions, and verification requirements.
+
 When designing agent tooling or verification, read [the source research](docs/research/agent-friendly-environment.md). Adapt its principles to this library's scope and verify commands against the real implementation before documenting them as working.
 
-Before verifying renderer behavior, read [control-scene-renderer](.codex/skills/control-scene-renderer/SKILL.md) and the relevant entry in [the feature map](.codex/skills/scene-renderer-feature-map/SKILL.md). Update affected entries when capabilities or verification routes change. Blank runtime verification is implemented; scene verification remains planned.
+Before verifying renderer behavior, read [control-scene-renderer](.codex/skills/control-scene-renderer/SKILL.md) and the relevant entry in [the feature map](.codex/skills/scene-renderer-feature-map/SKILL.md). Update affected entries when capabilities or verification routes change. Blank and diagnostic motion verification are implemented; scene verification remains planned.
 
 ## Think before coding
 
@@ -47,7 +49,7 @@ Define observable completion criteria before changing code. For multi-step work,
 - For performance work, measure the real workload and host responsiveness with rendering disabled and enabled. Record hardware, resolution, quality, and frame-rate settings.
 - Run checks appropriate to the change and report any unverified behavior or blockers.
 
-The required local gate is `pwsh -File ./scripts/verify.ps1`. It checks format, Clippy, public-contract tests, dependency boundaries, headless output and native presentation. Use `-Software -SkipNative` without an interactive desktop and report the native check as skipped. Avoid claiming scene or framework compatibility from blank output.
+The required local gate is `pwsh -File ./scripts/verify.ps1`. It checks format, Clippy, public-contract tests, Rustdoc, dependency boundaries, headless output, diagnostic motion and native presentation. Use `-Software -SkipNative` without an interactive desktop and report the native check as skipped. For motion changes, follow [the motion evidence procedure](docs/motion-verification.md). Report pixel correctness and live timing separately; controlled captures cannot establish smooth playback. Avoid claiming scene or framework compatibility from diagnostic output.
 
 ## Rendering and integration constraints
 

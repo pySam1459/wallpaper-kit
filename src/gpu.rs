@@ -1,12 +1,15 @@
+// Native graphics boundary. Each unsafe operation documents its safety contract.
+#![allow(unsafe_code)]
+
 use std::time::{Duration, Instant};
-use windows::Win32::Foundation::{CloseHandle, HANDLE, HMODULE, S_OK};
+use windows::Win32::Foundation::{CloseHandle, HANDLE, HMODULE, RECT, S_OK};
 use windows::Win32::Graphics::Direct3D::*;
 use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
 use windows::Win32::Graphics::Dxgi::*;
 use windows::core::{HRESULT, Interface};
 
-use crate::{BLANK_RGBA, DeviceMode, Error, Size};
+use crate::{BLANK_RGBA, Content, DeviceMode, Error, Size, motion};
 
 /// Adapter identity used by the producer. Adapter LUID is local to this system.
 #[derive(Clone, Debug)]
@@ -61,7 +64,7 @@ impl Gpu {
         })
     }
 
-    pub(crate) fn render(&self, id: u64, size: Size) -> Result<Frame, Error> {
+    pub(crate) fn render(&self, id: u64, size: Size, content: Content) -> Result<Frame, Error> {
         let desc = texture_desc(size);
         let mut texture = None;
         let mut view = None;
@@ -80,6 +83,24 @@ impl Gpu {
                 .ok_or_else(|| Error::Worker("new texture unexpectedly busy".into()))?;
             let color = BLANK_RGBA.map(|component| f32::from(component) / 255.0);
             self.context.ClearRenderTargetView(&view, &color);
+            let fixture_time = match content {
+                Content::Blank => None,
+                Content::MotionFixture(time) => {
+                    let [left, top, right, bottom] = motion::rectangle(size, time);
+                    let context: ID3D11DeviceContext1 = self.context.cast()?;
+                    context.ClearView(
+                        &view,
+                        &[224.0 / 255.0, 160.0 / 255.0, 64.0 / 255.0, 1.0],
+                        Some(&[RECT {
+                            left,
+                            top,
+                            right,
+                            bottom,
+                        }]),
+                    );
+                    Some(time)
+                }
+            };
             mutex.ReleaseSync(0)?;
             wait_for_gpu(&self.device, &self.context)?;
             let resource: IDXGIResource1 = texture.cast()?;
@@ -95,6 +116,7 @@ impl Gpu {
                 handle,
                 adapter: self.adapter.clone(),
                 info: self.info.clone(),
+                fixture_time,
             })
         }
     }
@@ -157,6 +179,7 @@ pub struct Frame {
     handle: HANDLE,
     adapter: IDXGIAdapter,
     info: AdapterInfo,
+    fixture_time: Option<Duration>,
 }
 
 // SAFETY: the NT handle identifies an immutable shared GPU resource and closes
@@ -168,6 +191,11 @@ unsafe impl Send for Frame {}
 unsafe impl Sync for Frame {}
 
 impl Frame {
+    /// Explicit fixture playback time, or `None` for blank output.
+    pub fn fixture_time(&self) -> Option<Duration> {
+        self.fixture_time
+    }
+
     /// Request identity, including skipped/coalesced requests.
     pub fn id(&self) -> u64 {
         self.id
@@ -287,12 +315,16 @@ fn wait_for_gpu(device: &ID3D11Device, context: &ID3D11DeviceContext) -> Result<
         context.Flush();
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
+            // Permit query submission during polling. DONOTFLUSH left this
+            // query pending for ~390 ms per frame on the tested NVIDIA adapter,
+            // even after the explicit Flush above. This wait stays on the worker
+            // or diagnostic readback thread, never in try_frame().
             let result = (context.vtable().GetData)(
                 context.as_raw(),
                 query.as_raw(),
                 std::ptr::null_mut(),
                 0,
-                D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32,
+                0,
             );
             if result == S_OK {
                 return Ok(());

@@ -14,10 +14,14 @@ Read [the blank renderer guide](../../../../docs/blank-renderer.md) for the curr
 
 ## Drive and observe
 
-The script checks format, Clippy, the public-contract test, dependency boundaries with a negative fixture, and both consumer builds. The headless run captures and checks all pixels, resizes, checks retained frames across resize/shutdown, and rejects invalid dimensions. The native run checks readiness identity, captures the back buffer, inspects idle behavior, resizes, captures again, requests stop and verifies process exit. Output directories are unique, and cleanup targets only the owned process handle.
+The script checks format, Clippy, the public-contract test, Rustdoc, dependency boundaries with a negative fixture, and both consumer builds. The headless run captures and checks all pixels, resizes, checks retained frames across resize/shutdown, and rejects invalid dimensions. The native run checks readiness identity, captures the back buffer, inspects idle behavior, resizes, captures again, requests stop and verifies process exit. Output directories are unique, and cleanup targets only the owned process handle.
 
 ## Evidence and limits
 
 Read the run manifest, consumer reports, capture PNGs, source/executable hashes, action transcript and stderr in its `artifacts/` directory. Native capture values must be `[16,24,32,255]` throughout. Captures use diagnostic readback; native captures establish the swap-chain copy path, not final desktop composition. One idle process sample is not a scene-performance benchmark. Memory can grow if a host retains many old immutable frames; a reusable bounded animation pool is not implemented.
 
 The [native report](../../../../artifacts/20261009-233823-61aa2b4f/native/report.json) records GPU-pixel checks, resize, the idle sample and owned-process exit. [Doctor checks](../../../../artifacts/20261009-233823-61aa2b4f/doctor-checks.json) confirm fresh blank readiness, rejection of a temporary source-set change, and rejection of scene verification even when its path exists.
+
+After the Rust guardrail additions, the [hardware run](../../../../artifacts/20261009-235011-ab2313c5/manifest.json) and [WARP/headless run](../../../../artifacts/20261009-235042-24866331/manifest.json) passed again on 2026-10-09. Both retain `boundaries.json` confirming rejection of the forbidden dependency fixture. Native verification passed in the hardware run and was explicitly skipped in the WARP run.
+
+Blank checks passed again with [the motion fixture build](../../../../artifacts/20261010-000732-ac8c713b/manifest.json) and [its WARP/headless route](../../../../artifacts/20261010-000752-c46add9f/manifest.json) on 2026-10-10. See [diagnostic motion](diagnostic-motion.md) for the additional temporal evidence and limits.

@@ -1,4 +1,4 @@
-//! Blank Direct3D 11 rendering, independent of any host framework.
+//! Blank and diagnostic motion rendering, independent of any host framework.
 //!
 //! A worker renders on demand. Completed frames are immutable; resize creates a
 //! replacement and does not invalidate a frame held by a consumer. This initial
@@ -8,11 +8,13 @@
 compile_error!("The initial scene-renderer backend requires Windows.");
 
 mod gpu;
+mod motion;
 
 use std::sync::{Arc, Condvar, Mutex, TryLockError, mpsc};
 use std::thread::{self, JoinHandle};
 
 pub use gpu::{AdapterInfo, Frame, Pixels};
+use std::time::Duration;
 
 /// Exact opaque RGBA8 output of the blank renderer, in SDR UNORM encoding.
 pub const BLANK_RGBA: [u8; 4] = [16, 24, 32, 255];
@@ -96,8 +98,16 @@ impl From<windows::core::Error> for Error {
     }
 }
 
+#[derive(Clone, Copy)]
+enum Content {
+    Blank,
+    MotionFixture(Duration),
+}
+
 struct State {
-    requested: Option<(u64, Size)>,
+    requested: Option<(u64, Size, Content)>,
+    size: Size,
+    content: Content,
     next_id: u64,
     latest: Option<Result<Arc<Frame>, Error>>,
     stopped: bool,
@@ -123,7 +133,9 @@ impl Renderer {
     pub fn new(size: Size, mode: DeviceMode) -> Result<(Self, mpsc::Receiver<()>), Error> {
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
-                requested: Some((1, size)),
+                requested: Some((1, size, Content::Blank)),
+                size,
+                content: Content::Blank,
                 next_id: 1,
                 latest: None,
                 stopped: false,
@@ -149,6 +161,18 @@ impl Renderer {
     /// Returns its identity so consumers can recognize completion. This locks
     /// only request metadata; rendering never takes place under that lock.
     pub fn resize(&self, size: Size) -> Result<u64, Error> {
+        self.request(Some(size), None)
+    }
+
+    /// Renders the diagnostic moving-bar fixture at an explicit playback time.
+    /// Its two-second loop has 40 steps of 50 ms. No timer is started; consumers
+    /// control time. Resize preserves the most recently requested content/time.
+    /// This fixture is not a scene loader or a production playback API.
+    pub fn render_fixture_at(&self, time: Duration) -> Result<u64, Error> {
+        self.request(None, Some(Content::MotionFixture(time)))
+    }
+
+    fn request(&self, size: Option<Size>, content: Option<Content>) -> Result<u64, Error> {
         let mut state = self
             .shared
             .state
@@ -157,9 +181,15 @@ impl Renderer {
         if state.stopped {
             return Err(Error::Worker("worker has stopped".into()));
         }
+        if let Some(size) = size {
+            state.size = size;
+        }
+        if let Some(content) = content {
+            state.content = content;
+        }
         state.next_id += 1;
         let id = state.next_id;
-        state.requested = Some((id, size));
+        state.requested = Some((id, state.size, state.content));
         self.shared.changed.notify_one();
         Ok(id)
     }
@@ -219,7 +249,7 @@ fn run_worker(shared: Arc<Shared>, notify: mpsc::SyncSender<()>, mode: DeviceMod
         }
     };
     loop {
-        let (id, size) = {
+        let (id, size, content) = {
             let Ok(mut state) = shared.state.lock() else {
                 return;
             };
@@ -237,7 +267,7 @@ fn run_worker(shared: Arc<Shared>, notify: mpsc::SyncSender<()>, mode: DeviceMod
                 .take()
                 .expect("a request exists after the wait")
         };
-        let result = gpu.render(id, size).map(Arc::new);
+        let result = gpu.render(id, size, content).map(Arc::new);
         let Ok(mut state) = shared.state.lock() else {
             return;
         };

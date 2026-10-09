@@ -2,7 +2,7 @@
 
 ## Status
 
-Blank resize, retained-frame lifetime and shutdown are implemented through the [blank infrastructure](blank-renderer.md). Pause/resume, animated frame-pool backpressure, device-loss recovery and scene playback remain planned.
+Blank resize, retained-frame lifetime and shutdown are implemented through the [blank infrastructure](blank-renderer.md). [Diagnostic motion](diagnostic-motion.md) adds consumer-owned play/pause and controlled stepping. Animated frame-pool backpressure, device-loss recovery and scene playback remain planned.
 
 ## Consumer outcome
 
@@ -10,7 +10,7 @@ The host can control playback and output size, consume completed frames with def
 
 ## How to reach it
 
-Use the example viewer's public library path. Record the actual playback controls and frame-lifetime contract when they exist.
+Use the example viewer's public library path. Fixture controls and pause semantics are in [motion verification](../../../../docs/motion-verification.md#native-controls). Production playback controls remain planned.
 
 ## Drive and observe
 
