@@ -1,7 +1,7 @@
 use super::*;
 use crate::assets::package::asset_key;
 use crate::assets::{package::AssetReader, texture};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 pub(super) fn run(source: &SceneSource) -> Result<SceneInspection, InspectionError> {
     let package = Package::open(source)?;
@@ -38,6 +38,47 @@ pub(super) fn run(source: &SceneSource) -> Result<SceneInspection, InspectionErr
         sha256: hash,
     });
     graph.active.push("scene.json".into());
+    graph.check_fields(
+        raw.general.properties.keys(),
+        &[
+            "ambientcolor",
+            "bloom",
+            "bloomhdrfeather",
+            "bloomhdriterations",
+            "bloomhdrscatter",
+            "bloomhdrstrength",
+            "bloomhdrthreshold",
+            "bloomstrength",
+            "bloomthreshold",
+            "bloomtint",
+            "camerafade",
+            "cameraparallax",
+            "cameraparallaxamount",
+            "cameraparallaxdelay",
+            "cameraparallaxmouseinfluence",
+            "camerapreview",
+            "camerashake",
+            "camerashakeamplitude",
+            "camerashakeroughness",
+            "camerashakespeed",
+            "clearcolor",
+            "clearenabled",
+            "farz",
+            "fov",
+            "gravitydirection",
+            "gravitystrength",
+            "hdr",
+            "nearz",
+            "perspectiveoverridefov",
+            "skylightcolor",
+            "winddirection",
+            "windenabled",
+            "windstrength",
+            "zoom",
+        ],
+        "scene.json",
+        None,
+    );
     validate_flags(
         &raw.general.properties,
         "scene.json",
@@ -89,7 +130,7 @@ pub(super) fn run(source: &SceneSource) -> Result<SceneInspection, InspectionErr
             );
         }
     }
-    for object in raw.objects {
+    for mut object in raw.objects {
         if !seen.insert(object.id) {
             return Err(reader.invalid(format!("duplicate object id {}", object.id)));
         }
@@ -106,14 +147,14 @@ pub(super) fn run(source: &SceneSource) -> Result<SceneInspection, InspectionErr
         };
         for path in object
             .image
-            .iter()
-            .chain(object.particle.iter())
-            .chain(object.sound.iter().flatten())
+            .iter_mut()
+            .chain(object.particle.iter_mut())
+            .chain(object.sound.iter_mut().flatten())
         {
-            asset_key(path)?;
+            *path = asset_key(path)?;
         }
-        for effect in &object.effects {
-            asset_key(&effect.file)?;
+        for effect in &mut object.effects {
+            effect.file = asset_key(&effect.file)?;
         }
         let selectors = [
             object.image.is_some(),
@@ -272,6 +313,13 @@ pub(super) fn run(source: &SceneSource) -> Result<SceneInspection, InspectionErr
             }
         }
         for effect in &object.effects {
+            graph.check_fields(
+                effect.properties.keys(),
+                &["id", "name", "visible"],
+                "scene.json",
+                Some(object.id),
+            );
+            validate_flags(&effect.properties, "scene.json", &["visible"])?;
             graph.edge(
                 "scene.json",
                 &effect.file,
@@ -281,6 +329,12 @@ pub(super) fn run(source: &SceneSource) -> Result<SceneInspection, InspectionErr
                 false,
             )?;
             for (index, pass) in effect.passes.iter().enumerate() {
+                graph.json_fields(
+                    pass,
+                    &["id", "textures", "constantshadervalues", "combos"],
+                    "scene.json",
+                    Some(object.id),
+                )?;
                 graph.override_textures("scene.json", pass, Some(object.id))?;
                 validate_constants(pass, "scene.json")?;
                 let shader = graph
@@ -311,6 +365,7 @@ pub(super) fn run(source: &SceneSource) -> Result<SceneInspection, InspectionErr
                 .collect(),
         });
     }
+    graph.resolve_requirements();
     let Graph {
         assets,
         dependencies,
@@ -341,7 +396,7 @@ pub(super) fn run(source: &SceneSource) -> Result<SceneInspection, InspectionErr
     })
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum AssetKind {
     Model,
     Material,
@@ -354,7 +409,7 @@ enum AssetKind {
 
 struct Graph<'a> {
     package: &'a Package,
-    visited: BTreeSet<String>,
+    visited: BTreeMap<String, AssetKind>,
     active: Vec<String>,
     project_layers: BTreeSet<String>,
     assets: Vec<AssetSummary>,
@@ -370,7 +425,7 @@ impl<'a> Graph<'a> {
     fn new(package: &'a Package) -> Self {
         Self {
             package,
-            visited: BTreeSet::new(),
+            visited: BTreeMap::new(),
             active: Vec::new(),
             project_layers: BTreeSet::new(),
             assets: Vec::new(),
@@ -400,6 +455,77 @@ impl<'a> Graph<'a> {
         });
     }
 
+    fn check_fields<'b>(
+        &mut self,
+        fields: impl Iterator<Item = &'b String>,
+        allowed: &[&str],
+        key: &str,
+        object: Option<u64>,
+    ) {
+        for field in fields {
+            if !allowed.contains(&field.as_str()) {
+                self.finding(
+                    DiagnosticSeverity::Unsupported,
+                    "unsupported-field",
+                    key,
+                    object,
+                    format!("unrecognized field {field}"),
+                );
+            }
+        }
+    }
+
+    fn json_fields(
+        &mut self,
+        value: &serde_json::Value,
+        allowed: &[&str],
+        key: &str,
+        object: Option<u64>,
+    ) -> Result<(), InspectionError> {
+        let fields = value
+            .as_object()
+            .ok_or_else(|| InspectionError::invalid(key, "definition must be a JSON object"))?;
+        self.check_fields(fields.keys(), allowed, key, object);
+        Ok(())
+    }
+
+    fn resolve_requirements(&mut self) {
+        // Discovery records local conditions. Reachability resolves inherited
+        // conditions after every shared asset and incoming edge is known.
+        let mut outgoing: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        for (index, edge) in self.dependencies.iter().enumerate() {
+            outgoing
+                .entry(edge.from.to_ascii_lowercase())
+                .or_default()
+                .push(index);
+        }
+        let mut required = BTreeMap::from([("scene.json".to_owned(), None)]);
+        let mut pending = VecDeque::from(["scene.json".to_owned()]);
+        while let Some(key) = pending.pop_front() {
+            if let Some(edges) = outgoing.get(&key) {
+                for &index in edges {
+                    let edge = &self.dependencies[index];
+                    let target = edge.to.to_ascii_lowercase();
+                    if !edge.conditional && !required.contains_key(&target) {
+                        required.insert(target.clone(), required[&key].or(edge.object_id));
+                        pending.push_back(target);
+                    }
+                }
+            }
+        }
+        for edge in &mut self.dependencies {
+            edge.conditional |= !required.contains_key(&edge.from.to_ascii_lowercase());
+        }
+        for finding in &mut self.diagnostics {
+            if finding.code == "missing-asset"
+                && let Some(&object) = required.get(&finding.asset.to_ascii_lowercase())
+            {
+                finding.severity = DiagnosticSeverity::Error;
+                finding.object_id = object;
+            }
+        }
+    }
+
     fn edge(
         &mut self,
         from: &str,
@@ -426,7 +552,7 @@ impl<'a> Graph<'a> {
         if virtual_texture(&to) {
             return Ok(());
         }
-        self.visit(&to, kind, object_id, conditional)
+        self.visit(&to, kind, object_id)
     }
 
     fn visit(
@@ -434,20 +560,8 @@ impl<'a> Graph<'a> {
         key: &str,
         kind: AssetKind,
         object: Option<u64>,
-        conditional: bool,
     ) -> Result<(), InspectionError> {
         let normalized = key.to_ascii_lowercase();
-        if !conditional {
-            for finding in &mut self.diagnostics {
-                if finding.code == "missing-asset"
-                    && finding.asset.eq_ignore_ascii_case(key)
-                    && finding.severity == DiagnosticSeverity::Warning
-                {
-                    finding.severity = DiagnosticSeverity::Error;
-                    finding.object_id = object;
-                }
-            }
-        }
         if self.active.contains(&normalized) {
             self.finding(
                 DiagnosticSeverity::Error,
@@ -458,9 +572,23 @@ impl<'a> Graph<'a> {
             );
             return Ok(());
         }
-        if !self.visited.insert(normalized.clone()) {
-            return Ok(());
+        let first_visit = !self.visited.contains_key(&normalized);
+        if let Some(&previous) = self.visited.get(&normalized) {
+            if previous == kind || kind == AssetKind::Binary {
+                return Ok(());
+            }
+            if previous != AssetKind::Binary {
+                self.finding(
+                    DiagnosticSeverity::Error,
+                    "asset-kind-conflict",
+                    key,
+                    object,
+                    "asset is referenced with incompatible content types".into(),
+                );
+                return Ok(());
+            }
         }
+        self.visited.insert(normalized.clone(), kind);
         if self.visited.len() > 4096 || self.active.len() > 64 {
             return Err(InspectionError::invalid(
                 key,
@@ -468,26 +596,26 @@ impl<'a> Graph<'a> {
             ));
         }
         let Some(mut reader) = self.package.reader(key)? else {
-            self.finding(
-                if conditional {
-                    DiagnosticSeverity::Warning
-                } else {
-                    DiagnosticSeverity::Error
-                },
-                "missing-asset",
-                key,
-                object,
-                "asset was not found in the package or engine root".into(),
-            );
+            if first_visit {
+                self.finding(
+                    DiagnosticSeverity::Warning,
+                    "missing-asset",
+                    key,
+                    object,
+                    "asset was not found in the package or engine root".into(),
+                );
+            }
             return Ok(());
         };
-        let hash = reader.hash()?;
-        self.assets.push(AssetSummary {
-            path: key.into(),
-            origin: reader.origin.into(),
-            bytes: reader.length,
-            sha256: hash,
-        });
+        if first_visit {
+            let hash = reader.hash()?;
+            self.assets.push(AssetSummary {
+                path: key.into(),
+                origin: reader.origin.into(),
+                bytes: reader.length,
+                sha256: hash,
+            });
+        }
         self.active.push(normalized);
         let result = match kind {
             AssetKind::Texture => texture::inspect(&mut reader).map(|texture| {
@@ -527,6 +655,18 @@ impl<'a> Graph<'a> {
         let key = &reader.asset;
         match kind {
             AssetKind::Model => {
+                self.json_fields(
+                    &value,
+                    &[
+                        "material",
+                        "autosize",
+                        "cropoffset",
+                        "passthrough",
+                        "projectlayer",
+                    ],
+                    key,
+                    object,
+                )?;
                 let material = string(&value, "material", key)?;
                 if value.get("projectlayer").and_then(|v| v.as_bool()) == Some(true) {
                     self.project_layers.insert(key.to_ascii_lowercase());
@@ -541,10 +681,26 @@ impl<'a> Graph<'a> {
                 )?;
             }
             AssetKind::Material => {
+                self.json_fields(&value, &["passes"], key, object)?;
                 let mut summaries = Vec::new();
                 for pass in array(&value, "passes", key)? {
-                    let shader = string(pass, "shader", key)?;
-                    let combos = self.combinations(key, shader, pass, object)?;
+                    self.json_fields(
+                        pass,
+                        &[
+                            "shader",
+                            "combos",
+                            "textures",
+                            "constantshadervalues",
+                            "blending",
+                            "cullmode",
+                            "depthtest",
+                            "depthwrite",
+                        ],
+                        key,
+                        object,
+                    )?;
+                    let shader = asset_key(string(pass, "shader", key)?)?;
+                    let combos = self.combinations(key, &shader, pass, object)?;
                     for (state, allowed) in [
                         ("blending", ["normal", "translucent", "additive"].as_slice()),
                         ("cullmode", ["nocull"].as_slice()),
@@ -568,7 +724,7 @@ impl<'a> Graph<'a> {
                     }
                     validate_constants(pass, key)?;
                     summaries.push(MaterialPassSummary {
-                        shader: shader.into(),
+                        shader: shader.clone(),
                         blending: pass
                             .get("blending")
                             .and_then(|value| value.as_str())
@@ -596,6 +752,24 @@ impl<'a> Graph<'a> {
                 });
             }
             AssetKind::Effect => {
+                self.json_fields(
+                    &value,
+                    &[
+                        "version",
+                        "replacementkey",
+                        "name",
+                        "description",
+                        "group",
+                        "performance",
+                        "preview",
+                        "passes",
+                        "fbos",
+                        "dependencies",
+                        "gizmos",
+                    ],
+                    key,
+                    object,
+                )?;
                 let version = value
                     .get("version")
                     .and_then(|value| value.as_u64())
@@ -627,6 +801,7 @@ impl<'a> Graph<'a> {
                         .as_array()
                         .ok_or_else(|| reader.invalid("fbos must be an array"))?
                     {
+                        self.json_fields(fbo, &["name", "format"], key, object)?;
                         let name = string(fbo, "name", key)?;
                         if !name.starts_with("_rt_") || !targets.insert(name.to_owned()) {
                             return Err(reader.invalid("invalid or duplicate effect target"));
@@ -645,7 +820,8 @@ impl<'a> Graph<'a> {
                 let mut written = BTreeSet::new();
                 let mut summaries = Vec::new();
                 for pass in array(&value, "passes", key)? {
-                    let material = string(pass, "material", key)?;
+                    self.json_fields(pass, &["material", "target", "bind"], key, object)?;
+                    let material = asset_key(string(pass, "material", key)?)?;
                     let mut bindings = Vec::new();
                     let mut indices = BTreeSet::new();
                     if let Some(bind) = pass.get("bind") {
@@ -653,6 +829,7 @@ impl<'a> Graph<'a> {
                             .as_array()
                             .ok_or_else(|| reader.invalid("bind must be an array"))?
                         {
+                            self.json_fields(input, &["name", "index"], key, object)?;
                             let name = string(input, "name", key)?;
                             let index = input
                                 .get("index")
@@ -693,14 +870,14 @@ impl<'a> Graph<'a> {
                     }
                     self.edge(
                         key,
-                        material,
+                        &material,
                         AssetKind::Material,
                         "effect-pass",
                         object,
                         false,
                     )?;
                     summaries.push(EffectPassSummary {
-                        material: material.into(),
+                        material,
                         target: target.map(str::to_owned),
                         bindings,
                     });
@@ -708,8 +885,7 @@ impl<'a> Graph<'a> {
                 if summaries.is_empty() || summaries.len() > 8 {
                     return Err(reader.invalid("effect pass count must be between 1 and 8"));
                 }
-                if supported && summaries.len() != if replacement == "blur_precise" { 2 } else { 1 }
-                {
+                if supported && !self.effect_profile_matches(replacement, &summaries) {
                     self.finding(
                         DiagnosticSeverity::Unsupported,
                         "unsupported-effect-profile",
@@ -729,9 +905,11 @@ impl<'a> Graph<'a> {
                         .as_array()
                         .ok_or_else(|| reader.invalid("dependencies must be an array"))?
                     {
-                        let dependency = dependency
-                            .as_str()
-                            .ok_or_else(|| reader.invalid("dependency must be a path"))?;
+                        let dependency = asset_key(
+                            dependency
+                                .as_str()
+                                .ok_or_else(|| reader.invalid("dependency must be a path"))?,
+                        )?;
                         let kind = if dependency.ends_with(".vert")
                             || dependency.ends_with(".frag")
                             || dependency.ends_with(".h")
@@ -744,11 +922,26 @@ impl<'a> Graph<'a> {
                         } else {
                             AssetKind::Binary
                         };
-                        self.edge(key, dependency, kind, "declared-dependency", object, false)?;
+                        self.edge(key, &dependency, kind, "declared-dependency", object, false)?;
                     }
                 }
             }
             AssetKind::Particle => {
+                self.json_fields(
+                    &value,
+                    &[
+                        "controlpoint",
+                        "emitter",
+                        "initializer",
+                        "material",
+                        "maxcount",
+                        "operator",
+                        "renderer",
+                        "starttime",
+                    ],
+                    key,
+                    object,
+                )?;
                 self.features.insert("particles".into());
                 if value
                     .get("maxcount")
@@ -804,6 +997,60 @@ impl<'a> Graph<'a> {
         Ok(())
     }
 
+    fn effect_profile_matches(&self, replacement: &str, passes: &[EffectPassSummary]) -> bool {
+        let expected_shader = match replacement {
+            "cloudmotion" => "effects/cloudmotion",
+            "blur_precise" => "effects/blur_precise_gaussian",
+            "lightshafts" => "effects/lightshafts",
+            "chromatic_aberration" => "effects/chromatic_aberration",
+            _ => return false,
+        };
+        let count = if replacement == "blur_precise" { 2 } else { 1 };
+        if passes.len() != count {
+            return false;
+        }
+        for (index, pass) in passes.iter().enumerate() {
+            let Some(material) = self
+                .materials
+                .iter()
+                .find(|material| material.path.eq_ignore_ascii_case(&pass.material))
+            else {
+                return false;
+            };
+            if material.passes.len() != 1 || material.passes[0].shader != expected_shader {
+                return false;
+            }
+            if replacement == "blur_precise" {
+                let vertical = material.passes[0]
+                    .combos
+                    .get("VERTICAL")
+                    .copied()
+                    .unwrap_or(0);
+                if vertical != index as i32 {
+                    return false;
+                }
+            }
+        }
+        if replacement == "blur_precise" {
+            let Some(target) = &passes[0].target else {
+                return false;
+            };
+            passes[0].bindings.is_empty()
+                && passes[1].target.is_none()
+                && passes[1].bindings.len() == 2
+                && passes[1]
+                    .bindings
+                    .iter()
+                    .any(|binding| binding.index == 0 && &binding.source == target)
+                && passes[1]
+                    .bindings
+                    .iter()
+                    .any(|binding| binding.index == 1 && binding.source == "previous")
+        } else {
+            passes[0].target.is_none() && passes[0].bindings.is_empty()
+        }
+    }
+
     fn override_textures(
         &mut self,
         key: &str,
@@ -821,7 +1068,7 @@ impl<'a> Graph<'a> {
                 let name = name.as_str().ok_or_else(|| {
                     InspectionError::invalid(key, "texture must be a string or null")
                 })?;
-                let texture = texture_path(name);
+                let texture = texture_path(name)?;
                 self.edge(key, &texture, AssetKind::Texture, "texture", object, false)?;
             }
         }
@@ -919,7 +1166,7 @@ impl<'a> Graph<'a> {
                 if let Some(default) = annotation.get("default").and_then(|v| v.as_str()) {
                     self.edge(
                         &reader.asset,
-                        &texture_path(default),
+                        &texture_path(default)?,
                         AssetKind::Texture,
                         "shader-default",
                         object,
@@ -936,11 +1183,12 @@ fn virtual_texture(name: &str) -> bool {
     name.starts_with("_rt_") || name.starts_with("_alias_") || name == "previous"
 }
 
-fn texture_path(name: &str) -> String {
-    if virtual_texture(name) || (name.starts_with("materials/") && name.ends_with(".tex")) {
-        name.into()
+fn texture_path(name: &str) -> Result<String, InspectionError> {
+    let name = asset_key(name)?;
+    if virtual_texture(&name) || (name.starts_with("materials/") && name.ends_with(".tex")) {
+        Ok(name)
     } else {
-        format!("materials/{name}.tex")
+        Ok(format!("materials/{name}.tex"))
     }
 }
 

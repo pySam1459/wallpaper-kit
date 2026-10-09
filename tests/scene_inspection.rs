@@ -308,13 +308,17 @@ fn package_assets_take_precedence_over_engine_files() {
 #[test]
 fn validates_blur_bindings_and_composition_order() {
     let scene = br#"{"version":5,"general":{"orthogonalprojection":{"width":8,"height":8}},"objects":[{"id":1,"shape":"quad","effects":[{"file":"effects/blur/effect.json"}]},{"id":2,"image":"models/project.json"},{"id":3,"shape":"quad"}]}"#;
-    let effect = br#"{"version":1,"replacementkey":"blur_precise","fbos":[{"name":"_rt_Blur","format":"rgba_backbuffer"}],"passes":[{"material":"materials/blur.json","target":"_rt_Blur"},{"material":"materials/blur.json","bind":[{"name":"_rt_Blur","index":0},{"name":"previous","index":1}]}]}"#;
+    let effect = br#"{"version":1,"replacementkey":"blur_precise","fbos":[{"name":"_rt_Blur","format":"rgba_backbuffer"}],"passes":[{"material":"materials/blur.json","target":"_rt_Blur"},{"material":"materials/blur_y.json","bind":[{"name":"_rt_Blur","index":0},{"name":"previous","index":1}]}]}"#;
     let fixture = Fixture::new(&[
         ("scene.json", scene),
         ("effects/blur/effect.json", effect),
         (
             "materials/blur.json",
             br#"{"passes":[{"shader":"effects/blur_precise_gaussian"}]}"#,
+        ),
+        (
+            "materials/blur_y.json",
+            br#"{"passes":[{"shader":"effects/blur_precise_gaussian","combos":{"VERTICAL":1}}]}"#,
         ),
         ("shaders/effects/blur_precise_gaussian.vert", b""),
         ("shaders/effects/blur_precise_gaussian.frag", b""),
@@ -373,4 +377,165 @@ fn rejects_invalid_visual_flags_and_combination_values() {
             .iter()
             .any(|finding| finding.code == "unsupported-combo-value")
     );
+}
+
+#[test]
+fn validates_an_asset_first_reached_as_binary() {
+    let fixture = Fixture::new(&[
+        ("scene.json", br#"{"version":5,"general":{"orthogonalprojection":{"width":8,"height":8}},"objects":[{"id":1,"sound":["models/shared.json"]},{"id":2,"image":"models/shared.json"}]}"#),
+        ("models/shared.json", b"invalid JSON"),
+    ]);
+    let report = inspect_scene(&fixture.source()).unwrap();
+    assert_eq!(report.assets.len(), 2);
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|finding| finding.code == "invalid-asset" && finding.object_id == Some(2))
+    );
+}
+
+#[test]
+fn propagates_conditional_reachability_and_required_upgrades() {
+    for required in [false, true] {
+        let mut fragment = "#if OPTIONAL\n#include \"shared.h\"\n#endif\n".to_owned();
+        if required {
+            fragment.push_str("#include \"shared.h\"\n");
+        }
+        let fixture = Fixture::image(
+            br#"{"passes":[{"shader":"genericimage4"}]}"#,
+            &sprite_texture(),
+            fragment.as_bytes(),
+        );
+        fs::create_dir(fixture.root.join("engine/shaders")).unwrap();
+        fs::write(
+            fixture.root.join("engine/shaders/shared.h"),
+            b"#include \"missing.h\"",
+        )
+        .unwrap();
+        let report = inspect_scene(&fixture.source()).unwrap();
+        let missing: Vec<_> = report
+            .diagnostics
+            .iter()
+            .filter(|finding| finding.code == "missing-asset")
+            .collect();
+        assert_eq!(missing.len(), 1);
+        assert_eq!(
+            missing[0].severity,
+            if required {
+                scene_renderer::DiagnosticSeverity::Error
+            } else {
+                scene_renderer::DiagnosticSeverity::Warning
+            }
+        );
+        let child = report
+            .dependencies
+            .iter()
+            .find(|edge| edge.to == "shaders/missing.h")
+            .unwrap();
+        assert_eq!(child.conditional, !required);
+        assert_eq!(
+            report
+                .assets
+                .iter()
+                .filter(|asset| asset.path == "shaders/shared.h")
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn normalizes_paths_for_composition_and_effect_overrides() {
+    let fixture = Fixture::new(&[
+        ("scene.json", br#"{"version":5,"general":{"orthogonalprojection":{"width":8,"height":8}},"objects":[{"id":1,"image":"models\\project.json","effects":[{"file":"effects\\cloud.json","passes":[{"combos":{"UNKNOWN":1}}]}]}]}"#),
+        ("models/project.json", br#"{"material":"materials\\composition.json","projectlayer":true}"#),
+        ("materials/composition.json", br#"{"passes":[{"shader":"composelayer"}]}"#),
+        ("shaders/composelayer.vert", b""),
+        ("shaders/composelayer.frag", b""),
+        ("effects/cloud.json", br#"{"version":2,"replacementkey":"cloudmotion","passes":[{"material":"materials\\cloud.json"}]}"#),
+        ("materials/cloud.json", br#"{"passes":[{"shader":"effects/cloudmotion"}]}"#),
+        ("shaders/effects/cloudmotion.vert", b""),
+        ("shaders/effects/cloudmotion.frag", b""),
+    ]);
+    let report = inspect_scene(&fixture.source()).unwrap();
+    assert_eq!(
+        report.scene.objects[0].kind,
+        scene_renderer::ObjectKind::Composition
+    );
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|finding| finding.code == "unsupported-combo" && finding.object_id == Some(1))
+    );
+}
+
+#[test]
+fn diagnoses_changed_effect_shader_and_binding_profiles() {
+    for shader in ["genericimage4", "effects/blur_precise_gaussian"] {
+        let material =
+            serde_json::to_vec(&serde_json::json!({"passes":[{"shader":shader}]})).unwrap();
+        let vertex = format!("shaders/{shader}.vert");
+        let fragment = format!("shaders/{shader}.frag");
+        let fixture = Fixture::new(&[
+            ("scene.json", br#"{"version":5,"general":{"orthogonalprojection":{"width":8,"height":8}},"objects":[{"id":1,"shape":"quad","effects":[{"file":"effects/blur.json"}]}]}"#),
+            ("effects/blur.json", br#"{"version":1,"replacementkey":"blur_precise","passes":[{"material":"materials/blur.json"},{"material":"materials/blur.json"}]}"#),
+            ("materials/blur.json", &material),
+            (&vertex, b""),
+            (&fragment, b""),
+        ]);
+        let report = inspect_scene(&fixture.source()).unwrap();
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|finding| finding.code == "unsupported-effect-profile")
+        );
+    }
+}
+
+#[test]
+fn diagnoses_unrecognized_general_and_asset_fields() {
+    let fixture = Fixture::new(&[
+        ("scene.json", br#"{"version":5,"general":{"orthogonalprojection":{"width":8,"height":8},"customlighting":true},"objects":[{"id":1,"image":"models/image.json"}]}"#),
+        ("models/image.json", br#"{"material":"materials/image.json","mesh":"custom.obj"}"#),
+        ("materials/image.json", br#"{"passes":[{"shader":"genericimage4","customblend":true}]}"#),
+        ("shaders/genericimage4.vert", b""),
+        ("shaders/genericimage4.frag", b""),
+    ]);
+    let report = inspect_scene(&fixture.source()).unwrap();
+    for field in ["customlighting", "mesh", "customblend"] {
+        assert!(
+            report.diagnostics.iter().any(|finding| finding.severity
+                == scene_renderer::DiagnosticSeverity::Unsupported
+                && finding.message.contains(field)),
+            "{field}: {:?}",
+            report.diagnostics
+        );
+    }
+}
+
+#[test]
+fn diagnoses_unrecognized_effect_instance_and_override_fields() {
+    let fixture = Fixture::new(&[
+        ("scene.json", br#"{"version":5,"general":{"orthogonalprojection":{"width":8,"height":8}},"objects":[{"id":1,"shape":"quad","effects":[{"file":"effects/cloud.json","customtransition":true,"passes":[{"customblend":true}]}]}]}"#),
+        ("effects/cloud.json", br#"{"version":2,"replacementkey":"cloudmotion","passes":[{"material":"materials/cloud.json"}]}"#),
+        ("materials/cloud.json", br#"{"passes":[{"shader":"effects/cloudmotion"}]}"#),
+        ("shaders/effects/cloudmotion.vert", b""),
+        ("shaders/effects/cloudmotion.frag", b""),
+    ]);
+    let report = inspect_scene(&fixture.source()).unwrap();
+    for field in ["customtransition", "customblend"] {
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|finding| finding.code == "unsupported-field"
+                    && finding.message.contains(field)
+                    && finding.object_id == Some(1)),
+            "{field}: {:?}",
+            report.diagnostics
+        );
+    }
 }

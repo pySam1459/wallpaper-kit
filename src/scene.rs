@@ -350,4 +350,6 @@ struct RawEffect {
     file: String,
     #[serde(default)]
     passes: Vec<serde_json::Value>,
+    #[serde(flatten)]
+    properties: std::collections::BTreeMap<String, serde_json::Value>,
 }
