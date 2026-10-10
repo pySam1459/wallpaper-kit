@@ -3,6 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, path::PathBuf};
 
 mod inspect;
+mod layers;
+pub(crate) mod snapshot;
+pub use layers::{ImageComposition, ImageLayer};
+pub use snapshot::ImageSnapshot;
 
 /// Explicit read-only package and engine roots for inspection or TEX decoding.
 #[derive(Debug, Clone)]

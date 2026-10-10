@@ -254,7 +254,14 @@ impl Gpu {
                 Submission::Leased
             });
         };
-        if let Some((page, _, _)) = request.content.texture() {
+        let pages = match &request.content {
+            Content::Images(composition) => Some(composition.pages()),
+            _ => request
+                .content
+                .texture()
+                .map(|(page, _, _)| std::slice::from_ref(page)),
+        };
+        if let Some(pages) = pages {
             // Release GPU access during fallible compilation/upload. No Frame
             // can appear for this available slot while the worker prepares it.
             // SAFETY: slot selection acquired this output's key 0.
@@ -267,7 +274,7 @@ impl Gpu {
             self.image
                 .as_mut()
                 .expect("image pipeline initialized")
-                .prepare(&self.device, page)?;
+                .prepare(&self.device, pages)?;
             if !acquire(&self.slots[index].output.mutex)? {
                 return Ok(Submission::Busy);
             }
@@ -280,7 +287,10 @@ impl Gpu {
         // acquired mutex, including when interface lookup fails.
         let context1 = match &request.content {
             Content::MotionFixture(_) => self.context.cast::<ID3D11DeviceContext1>().map(Some),
-            Content::Blank | Content::TexturePage(_) | Content::TextureRegion(_) => Ok(None),
+            Content::Blank
+            | Content::TexturePage(_)
+            | Content::TextureRegion(_)
+            | Content::Images(_) => Ok(None),
         };
         let context1 = match context1 {
             Ok(context) => context,
@@ -321,6 +331,13 @@ impl Gpu {
                     page.format(),
                     origin,
                     extent,
+                );
+            }
+            if let Content::Images(composition) = &request.content {
+                self.image.as_ref().expect("image prepared").draw_layers(
+                    &self.context,
+                    output,
+                    composition,
                 );
             }
             output.mutex.ReleaseSync(0)?;
@@ -376,7 +393,10 @@ impl Gpu {
                 output: slot.output.clone(),
                 shared,
                 fixture_time: match &request.content {
-                    Content::Blank | Content::TexturePage(_) | Content::TextureRegion(_) => None,
+                    Content::Blank
+                    | Content::TexturePage(_)
+                    | Content::TextureRegion(_)
+                    | Content::Images(_) => None,
                     Content::MotionFixture(time) => Some(*time),
                 },
                 texture_format: request.content.texture().map(|(page, _, _)| page.format()),
@@ -384,6 +404,10 @@ impl Gpu {
                     .content
                     .texture()
                     .map(|(_, origin, extent)| (origin, extent)),
+                image_layer_count: match &request.content {
+                    Content::Images(composition) => Some(composition.layers().len()),
+                    _ => None,
+                },
             });
             slot.state = SlotState::Leased(Arc::downgrade(&frame));
             return Ok(Some(frame));
@@ -449,9 +473,15 @@ pub struct Frame {
     fixture_time: Option<Duration>,
     texture_format: Option<TextureFormat>,
     texture_region: Option<([u32; 2], [u32; 2])>,
+    image_layer_count: Option<usize>,
 }
 
 impl Frame {
+    /// Number of ordered image draws, or `None` for other diagnostics.
+    /// This metadata does not retain CPU source pages or composition objects.
+    pub fn image_layer_count(&self) -> Option<usize> {
+        self.image_layer_count
+    }
     /// Explicit fixture playback time, or `None` for blank/texture output.
     pub fn fixture_time(&self) -> Option<Duration> {
         self.fixture_time

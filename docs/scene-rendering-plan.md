@@ -1,6 +1,6 @@
 # Scene rendering implementation plan
 
-Status: implementation started, 10 October 2026. [Read-only inspection](scene-inspection.md), [bounded frame exchange](frame-pool.md) and [TEX page/region decoding/drawing](texture-pages.md) are implemented. Stage-3 component slices establish storage formats, diagnostic GPU sampling and authored integer sprite crops. Runtime scene compilation, authored placement/order and subsequent animation/effects remain proposed. This plan extends the [specification](spec/scene-renderer.md). It does not establish scene support or measured scene playback performance.
+Status: implementation started, 10 October 2026. [Read-only inspection](scene-inspection.md), [bounded frame exchange](frame-pool.md), [TEX page/region decoding/drawing](texture-pages.md) and [diagnostic image composition](image-layers.md) are implemented. Stage-3 components establish storage formats, integer sprite crops, orthographic placement, order and translucent blending. Selected target snapshots report omitted features and reject unresolved crop offsets. Reference fidelity, complete runtime scene compilation and subsequent animation/effects remain open. This plan extends the [specification](spec/scene-renderer.md). It does not establish scene support or measured scene playback performance.
 
 ## Target and assumptions
 

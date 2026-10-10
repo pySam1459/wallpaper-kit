@@ -1,0 +1,349 @@
+use super::{ImageComposition, ImageLayer, InspectionError, RawScene};
+use crate::assets::package::{Package, asset_key};
+use crate::{Size, TextureDecoder, TexturePage, TextureRegion};
+use serde_json::Value;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
+
+/// Explicitly incomplete static image preparation, with visible omissions.
+pub struct ImageSnapshot {
+    /// Checked ordered draws for `Renderer::render_images`.
+    pub composition: Arc<ImageComposition>,
+    /// Drawn object IDs in authored scene order, not selection argument order.
+    pub object_ids: Vec<u64>,
+    /// Omitted scene behavior and objects. Never a full compatibility claim.
+    pub omissions: Vec<String>,
+}
+
+fn json(package: &Package, asset: &str) -> Result<Value, InspectionError> {
+    let mut reader = package
+        .reader(asset)?
+        .ok_or_else(|| InspectionError::invalid(asset, "missing JSON asset"))?;
+    let bytes = reader.bytes(reader.length, 4 * 1024 * 1024)?;
+    serde_json::from_slice(&bytes).map_err(|error| reader.invalid(error.to_string()))
+}
+
+fn vector<const N: usize>(
+    value: Option<&Value>,
+    default: [f32; N],
+    asset: &str,
+) -> Result<[f32; N], InspectionError> {
+    let Some(value) = value else {
+        return Ok(default);
+    };
+    let text = value
+        .as_str()
+        .ok_or_else(|| InspectionError::invalid(asset, "expected a vector string"))?;
+    let values: Vec<f32> = text
+        .split_whitespace()
+        .map(str::parse)
+        .collect::<Result<_, _>>()
+        .map_err(|_| InspectionError::invalid(asset, "invalid vector number"))?;
+    if values.len() != N || values.iter().any(|value| !value.is_finite()) {
+        return Err(InspectionError::invalid(
+            asset,
+            "invalid vector length or nonfinite component",
+        ));
+    }
+    Ok(values.try_into().expect("component count checked"))
+}
+
+fn scalar(value: Option<&Value>, default: f32, asset: &str) -> Result<f32, InspectionError> {
+    match value {
+        Some(value) => value
+            .as_f64()
+            .map(|v| v as f32)
+            .filter(|v| v.is_finite())
+            .ok_or_else(|| InspectionError::invalid(asset, "expected a finite scalar")),
+        None => Ok(default),
+    }
+}
+
+pub(crate) fn prepare(
+    decoder: &TextureDecoder,
+    selection: &[u64],
+    frame_index: u32,
+) -> Result<ImageSnapshot, InspectionError> {
+    let selected: BTreeSet<_> = selection.iter().copied().collect();
+    if selected.is_empty() || selected.len() != selection.len() || selected.len() > 32 {
+        return Err(InspectionError::invalid(
+            "scene.json",
+            "select 1..=32 distinct image objects",
+        ));
+    }
+    let raw: RawScene = serde_json::from_value(json(&decoder.package, "scene.json")?)
+        .map_err(|error| InspectionError::invalid("scene.json", error.to_string()))?;
+    if raw.version != 5 || raw.objects.len() > 4096 {
+        return Err(InspectionError::invalid(
+            "scene.json",
+            "unsupported scene version or object count",
+        ));
+    }
+    let canvas = Size::new(
+        raw.general.orthogonalprojection.width,
+        raw.general.orthogonalprojection.height,
+    )
+    .map_err(|error| InspectionError::invalid("scene.json", error.to_string()))?;
+    let mut seen = BTreeSet::new();
+    let mut pages: BTreeMap<(String, u32), Arc<TexturePage>> = BTreeMap::new();
+    let mut bytes = 0;
+    let mut layers = Vec::new();
+    let mut object_ids = Vec::new();
+    let mut omissions=vec!["General scene camera, color and postprocessing settings are omitted; the diagnostic canvas fills the output over BLANK_RGBA.".into()];
+    for object in raw.objects {
+        if !seen.insert(object.id) {
+            return Err(InspectionError::invalid(
+                "scene.json",
+                format!("duplicate object {}", object.id),
+            ));
+        }
+        if !selected.contains(&object.id) {
+            omissions.push(format!(
+                "Object {} ({}) is not selected.",
+                object.id, object.name
+            ));
+            continue;
+        }
+        let context = format!("scene.json object {}", object.id);
+        let model = object
+            .image
+            .as_ref()
+            .filter(|_| {
+                object.particle.is_none() && object.shape.is_none() && object.sound.is_none()
+            })
+            .ok_or_else(|| {
+                InspectionError::invalid(&context, "selected object must be an image")
+            })?;
+        for key in object.properties.keys() {
+            if ![
+                "origin",
+                "size",
+                "scale",
+                "angles",
+                "alpha",
+                "brightness",
+                "visible",
+                "parallaxDepth",
+                "disablepropagation",
+            ]
+            .contains(&key.as_str())
+            {
+                return Err(InspectionError::invalid(
+                    &context,
+                    format!("unsupported selected image property {key}"),
+                ));
+            }
+        }
+        for flag in ["visible", "disablepropagation"] {
+            if object
+                .properties
+                .get(flag)
+                .is_some_and(|value| !value.is_boolean())
+            {
+                return Err(InspectionError::invalid(
+                    &context,
+                    format!("{flag} must be Boolean"),
+                ));
+            }
+        }
+        if object.properties.get("visible").and_then(Value::as_bool) == Some(false) {
+            omissions.push(format!("Object {} is invisible.", object.id));
+            continue;
+        }
+        if object
+            .properties
+            .get("disablepropagation")
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
+            return Err(InspectionError::invalid(
+                &context,
+                "disablepropagation is unsupported",
+            ));
+        }
+        for effect in &object.effects {
+            omissions.push(format!(
+                "Object {}: effect {} is omitted.",
+                object.id, effect.file
+            ));
+        }
+        if object.properties.contains_key("parallaxDepth") {
+            omissions.push(format!("Object {}: parallax is omitted.", object.id));
+        }
+        let origin = vector(object.properties.get("origin"), [0.; 3], &context)?;
+        let scale = vector(object.properties.get("scale"), [1.; 3], &context)?;
+        let angles = vector(object.properties.get("angles"), [0.; 3], &context)?;
+        if origin[2] != 0. || angles[0] != 0. || angles[1] != 0. {
+            return Err(InspectionError::invalid(
+                &context,
+                "only 2D origin/rotation are supported",
+            ));
+        }
+        let size = vector(object.properties.get("size"), [0.; 2], &context)?;
+        if size.iter().chain(&scale[..2]).any(|value| *value <= 0.) {
+            return Err(InspectionError::invalid(
+                &context,
+                "size and XY scale must be positive",
+            ));
+        }
+        let opacity = scalar(object.properties.get("alpha"), 1., &context)?;
+        let brightness = scalar(object.properties.get("brightness"), 1., &context)?;
+        let center = [origin[0], origin[1]];
+        let displayed_size = [size[0] * scale[0], size[1] * scale[1]];
+        ImageLayer::validate_geometry(center, displayed_size, angles[2], opacity, brightness)
+            .map_err(|error| InspectionError::invalid(&context, error.to_string()))?;
+        let model = asset_key(model)?;
+        let model_json = json(&decoder.package, &model)?;
+        let model_fields = model_json
+            .as_object()
+            .ok_or_else(|| InspectionError::invalid(&model, "expected image model object"))?;
+        if model_fields
+            .keys()
+            .any(|key| !["autosize", "material", "cropoffset"].contains(&key.as_str()))
+        {
+            return Err(InspectionError::invalid(
+                &model,
+                "unsupported image model field",
+            ));
+        }
+        if model_json
+            .get("autosize")
+            .is_some_and(|value| value != true)
+        {
+            return Err(InspectionError::invalid(
+                &model,
+                "only autosized image models are supported",
+            ));
+        }
+        let offset = vector(model_json.get("cropoffset"), [0.; 2], &model)?;
+        if offset != [0.; 2] {
+            return Err(InspectionError::invalid(
+                &model,
+                "nonzero model cropoffset semantics are not yet verified",
+            ));
+        }
+        let material = asset_key(
+            model_json["material"]
+                .as_str()
+                .ok_or_else(|| InspectionError::invalid(&model, "missing material path"))?,
+        )?;
+        let material_json = json(&decoder.package, &material)?;
+        if material_json
+            .as_object()
+            .is_none_or(|fields| fields.keys().any(|key| key != "passes"))
+        {
+            return Err(InspectionError::invalid(
+                &material,
+                "unsupported material root field",
+            ));
+        }
+        let passes = material_json["passes"]
+            .as_array()
+            .filter(|passes| passes.len() == 1)
+            .ok_or_else(|| InspectionError::invalid(&material, "one material pass required"))?;
+        let pass = &passes[0];
+        let fields = pass
+            .as_object()
+            .ok_or_else(|| InspectionError::invalid(&material, "expected material pass object"))?;
+        if fields.keys().any(|key| {
+            ![
+                "shader",
+                "textures",
+                "blending",
+                "combos",
+                "cullmode",
+                "depthtest",
+                "depthwrite",
+            ]
+            .contains(&key.as_str())
+        }) || pass["shader"] != "genericimage4"
+            || pass["blending"] != "translucent"
+            || pass["cullmode"] != "nocull"
+            || pass["depthtest"] != "disabled"
+            || pass["depthwrite"] != "disabled"
+        {
+            return Err(InspectionError::invalid(
+                &material,
+                "unsupported image material pass/state",
+            ));
+        }
+        let combos = pass["combos"]
+            .as_object()
+            .ok_or_else(|| InspectionError::invalid(&material, "expected combos object"))?;
+        if combos
+            .iter()
+            .any(|(key, value)| key != "SPRITESHEET" || value.as_u64() != Some(1))
+        {
+            return Err(InspectionError::invalid(
+                &material,
+                "unsupported material combination",
+            ));
+        }
+        let sprite = combos.contains_key("SPRITESHEET");
+        let textures = pass["textures"]
+            .as_array()
+            .filter(|values| values.len() == 1)
+            .ok_or_else(|| InspectionError::invalid(&material, "one source texture required"))?;
+        let reference = textures[0]
+            .as_str()
+            .ok_or_else(|| InspectionError::invalid(&material, "expected texture name"))?;
+        let asset = asset_key(&format!("materials/{reference}.tex"))?.to_ascii_lowercase();
+        let (page_index, region_origin, region_extent) = if sprite {
+            let frames = decoder.sprite_frames(&asset)?;
+            let frame = frames.get(frame_index as usize).ok_or_else(|| {
+                InspectionError::invalid(&asset, "sprite frame index out of range")
+            })?;
+            (frame.page_index(), frame.origin(), Some(frame.extent()))
+        } else {
+            (0, [0, 0], None)
+        };
+        let key = (asset.clone(), page_index);
+        if !pages.contains_key(&key) {
+            let page = Arc::new(decoder.decode_page_admitted(
+                &asset,
+                page_index,
+                super::layers::MAX_SOURCE_BYTES - bytes,
+            )?);
+            bytes += page.data().len() as u64;
+            pages.insert(key.clone(), page);
+        }
+        let page = pages[&key].clone();
+        let region = Arc::new(
+            TextureRegion::new(
+                page.clone(),
+                region_origin,
+                region_extent.unwrap_or(page.extent()),
+            )
+            .map_err(|error| InspectionError::invalid(&asset, error.to_string()))?,
+        );
+        layers.push(
+            ImageLayer::new(
+                region,
+                center,
+                displayed_size,
+                angles[2],
+                opacity,
+                brightness,
+            )
+            .map_err(|error| InspectionError::invalid(&context, error.to_string()))?,
+        );
+        object_ids.push(object.id);
+    }
+    if !selected.is_subset(&seen) {
+        return Err(InspectionError::invalid(
+            "scene.json",
+            "selected object ID is missing",
+        ));
+    }
+    let composition = Arc::new(
+        ImageComposition::new(canvas, layers)
+            .map_err(|error| InspectionError::invalid("scene.json", error.to_string()))?,
+    );
+    Ok(ImageSnapshot {
+        composition,
+        object_ids,
+        omissions,
+    })
+}

@@ -1,12 +1,15 @@
 //! Public consumer of bounded TEX decoding and diagnostic GPU page drawing.
 
 #[path = "../support/texture.rs"]
-mod fixture;
+mod texture_checks;
+use texture_checks as fixture;
+#[path = "../support/layers.rs"]
+mod layers_checks;
 #[path = "../support/mod.rs"]
 mod support;
 
 use scene_renderer::{
-    Frame, Renderer, SceneSource, Size, TextureDecoder, TextureFormat, TextureRegion,
+    Frame, OutputStats, Renderer, SceneSource, Size, TextureDecoder, TextureFormat, TextureRegion,
 };
 use serde_json::json;
 use std::{
@@ -29,6 +32,21 @@ fn wait_frame(renderer: &Renderer, events: &Receiver<()>, id: u64) -> Result<Arc
             return Err("texture frame timed out".into());
         }
         let _ = events.recv_timeout(Duration::from_millis(10));
+    }
+}
+
+fn wait_stats(renderer: &Renderer, sequence: u64) -> Result<OutputStats> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(stats) = renderer.try_output_stats()?
+            && stats.published_frames == sequence
+        {
+            return Ok(stats);
+        }
+        if Instant::now() >= deadline {
+            return Err("composition counters timed out".into());
+        }
+        std::thread::sleep(Duration::from_millis(1));
     }
 }
 
@@ -164,6 +182,34 @@ fn main() -> Result<()> {
         let id = renderer.resize(Size::new(320, 180)?)?;
         drop(wait_frame(&renderer, &events, id)?);
     }
+    let layers = layers_checks::Fixture::new(&decoder)?;
+    let id = renderer.render_images(layers.composition.clone())?;
+    let composed = wait_frame(&renderer, &events, id)?;
+    layers.check(&composed.readback()?)?;
+    if composed.image_layer_count() != Some(4) {
+        return Err("composition metadata differs".into());
+    }
+    support::write_png(&output.join("composition.png"), &composed.readback()?)?;
+    let uploads = wait_stats(&renderer, composed.sequence())?.texture_uploads;
+    for _ in 0..12 {
+        let id = renderer.render_images(layers.composition.clone())?;
+        drop(wait_frame(&renderer, &events, id)?);
+    }
+    let id = renderer.resize(Size::new(317, 193)?)?;
+    let resized = wait_frame(&renderer, &events, id)?;
+    layers.check(&resized.readback()?)?;
+    layers.check(&composed.readback()?)?;
+    let stats = wait_stats(&renderer, resized.sequence())?;
+    if stats.texture_uploads != uploads
+        || stats.source_texture_bytes != 86
+        || stats.resident_textures > 3
+    {
+        return Err("composition source reuse/bounds differ".into());
+    }
+    let composition_result = json!({"checks":"passed","frame":support::frame_info(&resized),"resources":support::pool_info(stats)});
+    drop(resized);
+    drop(composed);
+    let mut target_compositions = Vec::new();
     let mut target = Vec::new();
     let mut target_frames = Vec::new();
     let mut target_identity = None;
@@ -256,13 +302,46 @@ fn main() -> Result<()> {
                 target_frames.push(json!({"asset":asset,"frame_index":index,"page_index":metadata.page_index(),"origin":metadata.origin(),"extent":metadata.extent(),"duration_seconds":metadata.duration().as_secs_f64(),"frame":support::frame_info(&frame),"comparison":if page.format()==TextureFormat::Rgba8 {"GPU crop checked against CPU rows"} else {"capture only; unaligned BC3 crops checked with generated fixtures"}}));
             }
         }
+        for (name, objects, frame_index) in [
+            ("images", vec![28, 32, 77, 86], 0),
+            ("birds", vec![72, 89], 239),
+        ] {
+            let started = Instant::now();
+            let snapshot = decoder.image_snapshot(&objects, frame_index)?;
+            let prepare_ms = started.elapsed().as_secs_f64() * 1000.;
+            let id = renderer.render_images(snapshot.composition)?;
+            let frame = wait_frame(&renderer, &events, id)?;
+            support::write_png(
+                &output.join(format!("target-composition-{name}.png")),
+                &frame.readback()?,
+            )?;
+            let stats = wait_stats(&renderer, frame.sequence())?;
+            target_compositions.push(json!({"name":name,"sprite_frame_index":frame_index,"object_ids":snapshot.object_ids,"omissions":snapshot.omissions,"prepare_ms":prepare_ms,"resources":support::pool_info(stats),"frame":support::frame_info(&frame),"comparison":"Diagnostic snapshot capture; Wallpaper Engine fidelity unverified."}));
+        }
+        let error = decoder
+            .image_snapshot(&[28, 72], 0)
+            .err()
+            .ok_or("expected source-budget rejection")?;
+        if !error
+            .to_string()
+            .contains("remaining composition source budget before decode")
+        {
+            return Err(error.into());
+        }
+        let error = decoder
+            .image_snapshot(&[22], 0)
+            .err()
+            .ok_or("expected cropoffset rejection")?;
+        if !error.to_string().contains("cropoffset") {
+            return Err(error.into());
+        }
     }
     renderer.shutdown()?;
     support::write_json(
         &output.join("report.json"),
         &json!({
-            "schema_version":2,"status":"passed","consumer":"texture-checks", "generated_cases":results, "generated_regions":region_results,"target_identity":target_identity,"target_pages":target,"target_frames":target_frames,
-            "limits":["Diagnostic page/crop draws, not placed scene layers or sprite playback.","Point sampling and straight-alpha code-value composition; scene conventions unverified.","Decode/upload/capture observations are not steady rendering or host latency measurements."]
+            "schema_version":3,"status":"passed","consumer":"texture-checks", "generated_cases":results, "generated_regions":region_results,"generated_composition":composition_result,"target_identity":target_identity,"target_pages":target,"target_frames":target_frames,"target_compositions":target_compositions,
+            "limits":["Diagnostic page/crop and selected image composition; no scene playback/effects.","Point sampling and straight-alpha code-value composition; scene fidelity unverified.","Decode/upload/capture observations are not steady rendering or host latency measurements."]
         }),
     )?;
     let mut html = String::from(

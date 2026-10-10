@@ -17,9 +17,9 @@ pub use assets::texture::{SpriteFrame, TextureDecoder, TextureFormat, TexturePag
 
 pub use scene::{
     AssetSummary, DependencySummary, Diagnostic, DiagnosticSeverity, EffectBindingSummary,
-    EffectPassSummary, EffectSummary, InspectionError, MaterialPassSummary, MaterialSummary,
-    ObjectKind, ObjectSummary, PackageSummary, PageSummary, SceneInspection, SceneSource,
-    SceneSummary, TextureSummary, inspect_scene,
+    EffectPassSummary, EffectSummary, ImageComposition, ImageLayer, ImageSnapshot, InspectionError,
+    MaterialPassSummary, MaterialSummary, ObjectKind, ObjectSummary, PackageSummary, PageSummary,
+    SceneInspection, SceneSource, SceneSummary, TextureSummary, inspect_scene,
 };
 
 use std::sync::{Arc, Condvar, Mutex, TryLockError, mpsc};
@@ -79,6 +79,10 @@ pub enum Error {
     InvalidSize,
     /// A source crop is empty, overflows, or extends beyond its page.
     InvalidTextureRegion,
+    /// Layer geometry or appearance is outside [`ImageLayer::new`]'s bounds.
+    InvalidImageLayer,
+    /// Image count or unique source bytes exceed [`ImageComposition::new`]'s bounds.
+    ImageCompositionLimit,
     /// A Windows graphics operation failed.
     Graphics(windows::core::Error),
     /// The renderer's worker or state could not be accessed.
@@ -94,6 +98,8 @@ impl std::fmt::Display for Error {
             Self::InvalidTextureRegion => {
                 f.write_str("texture region must be nonempty and entirely inside its page")
             }
+            Self::InvalidImageLayer => f.write_str("image layer geometry or appearance is invalid"),
+            Self::ImageCompositionLimit => f.write_str("image composition requires 1..=32 layers and at most 256 MiB of unique source pages"),
             Self::Graphics(error) => write!(f, "Direct3D operation failed: {error}"),
             Self::Worker(message) => write!(f, "renderer worker failed: {message}"),
         }
@@ -121,6 +127,7 @@ enum Content {
     MotionFixture(Duration),
     TexturePage(Arc<TexturePage>),
     TextureRegion(Arc<TextureRegion>),
+    Images(Arc<ImageComposition>),
 }
 
 impl Content {
@@ -128,7 +135,7 @@ impl Content {
         match self {
             Self::TexturePage(page) => Some((page, [0, 0], page.extent())),
             Self::TextureRegion(region) => Some((region.page(), region.origin(), region.extent())),
-            Self::Blank | Self::MotionFixture(_) => None,
+            Self::Blank | Self::MotionFixture(_) | Self::Images(_) => None,
         }
     }
 }
@@ -159,7 +166,7 @@ pub struct OutputStats {
     pub published_frames: u64,
     /// A pending request is waiting because all output slots have frame leases.
     pub waiting_for_frame_release: bool,
-    /// GPU payload bytes for the selected source page, outside the output cap.
+    /// GPU payload bytes for selected source pages, outside the output cap.
     pub source_texture_bytes: u64,
     /// Cumulative source-page uploads; repeated use of the same Arc reuses it.
     pub texture_uploads: u64,
@@ -277,6 +284,18 @@ impl Renderer {
     /// the selected region. This method locks only coalesced request metadata.
     pub fn render_texture_region(&self, region: Arc<TextureRegion>) -> Result<u64, Error> {
         self.request(None, Some(Content::TextureRegion(region)))
+    }
+
+    /// Enqueue ordered orthographic image draws over the opaque blank color.
+    /// The canvas fills the output; resize retains the composition. Geometry,
+    /// point sampling, straight-alpha blend and RGB brightness are diagnostic
+    /// conventions, not full Wallpaper Engine material compatibility. The worker
+    /// compiles shaders/uploads sources; same source Arcs reuse their uploads,
+    /// including across composition replacement. At most 256 MiB of unique
+    /// source payloads are retained on the GPU, outside the three-output cap.
+    /// No timer starts. Controls lock only coalesced request metadata.
+    pub fn render_images(&self, composition: Arc<ImageComposition>) -> Result<u64, Error> {
+        self.request(None, Some(Content::Images(composition)))
     }
 
     fn request(&self, size: Option<Size>, content: Option<Content>) -> Result<u64, Error> {

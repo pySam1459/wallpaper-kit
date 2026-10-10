@@ -1,6 +1,6 @@
 # TEX decoding and page drawing
 
-The library decodes selected TEX base-mip pages and draws pages or checked regions on Direct3D 11 through its public worker/frame API. It reads authored sprite frame rectangles without decoding their payloads. It does not yet place scene layers or play sprite sequences.
+The library decodes selected TEX base-mip pages and draws pages or checked regions on Direct3D 11 through its public worker/frame API. It reads authored sprite frame rectangles without decoding their payloads. [Diagnostic image composition](image-layers.md) adds placement and order; sprite playback remains planned.
 
 ## Public contract
 
@@ -10,7 +10,7 @@ Supported storage is raw or LZ4 RGBA8, R8 and BC3, plus PNG with optional outer 
 
 Opening, hashing and decoding block. Use a tool or asset worker. `Renderer::render_texture_page(Arc<TexturePage>)` only enqueues work. The render worker compiles our HLSL on first use and uploads an immutable source texture. Repeated use of the same Arc reuses that upload; resize preserves the selected page. Source replacement follows completion of preceding rendering. The shader unbinds its source after drawing, and retained output frames remain independent of source replacement.
 
-The diagnostic draw stretches the page or selected rectangle to the output. It selects source texels using integer pixel-centre coordinates. RGBA/BC3 use straight alpha over `[16,24,32,255]`; R8 displays opaque grayscale. Output is opaque SDR UNORM. These are explicit diagnostic conventions. Authored placement, order, filtering, scene color/alpha conventions, effects and sprite timing remain to be implemented and compared against Wallpaper Engine.
+The diagnostic draw stretches the page or selected rectangle to the output. It selects source texels using integer pixel-centre coordinates. RGBA/BC3 use straight alpha over `[16,24,32,255]`; R8 displays opaque grayscale. Output is opaque SDR UNORM. These are explicit diagnostic conventions. [Image composition](image-layers.md) adds placement and order. Filtering, scene color/alpha fidelity, effects and sprite timing remain open.
 
 ### Sprite rectangles
 
@@ -24,7 +24,7 @@ This crops individual frames and stretches them to output. It does not implement
 
 Decoded storage is capped at 256 MiB per page. Encoded PNG/LZ4 inputs and LZ4-expanded PNG streams are capped at 64 MiB. PNG decoder workspace has a 64 MiB limit. Checked lengths and extents precede payload/output allocation.
 
-The worker keeps one uploaded source page, reported separately as `source_texture_bytes`; `texture_uploads` counts uploads. This is outside the [three-output pool](frame-pool.md). Caller-held pages and concurrent decoder calls have no aggregate budget. Driver allocation overhead and decode/upload transients require separate measurement before scene playback acceptance. Whole-page decoding here does not implement the planned bounded sprite streaming strategy.
+Page/region draws keep one uploaded source page; [image compositions](image-layers.md) admit up to 256 MiB of unique sources. `source_texture_bytes` reports resident source payloads and `texture_uploads` counts uploads. This is outside the [three-output pool](frame-pool.md). Caller-held pages and concurrent decoder calls have no aggregate budget. Driver allocation overhead and decode/upload transients require separate measurement before scene playback acceptance. Whole-page decoding here does not implement the planned bounded sprite streaming strategy.
 
 ## Run and inspect
 

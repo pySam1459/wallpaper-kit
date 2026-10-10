@@ -7,7 +7,11 @@ pub(super) struct ImageRenderer {
     rgba: ID3D11PixelShader,
     r8: ID3D11PixelShader,
     dimensions: ID3D11Buffer,
-    texture: Option<Uploaded>,
+    layer_vertex: ID3D11VertexShader,
+    layer_pixel: ID3D11PixelShader,
+    layer_constants: ID3D11Buffer,
+    blend: ID3D11BlendState,
+    textures: Vec<Uploaded>,
     pub(super) uploads: u64,
 }
 
@@ -22,7 +26,11 @@ impl ImageRenderer {
         let vertex_code = compile(s!("vertex_main"), s!("vs_5_0"))?;
         let rgba_code = compile(s!("rgba_main"), s!("ps_5_0"))?;
         let r8_code = compile(s!("r8_main"), s!("ps_5_0"))?;
+        let layer_vertex_code = compile(s!("layer_vertex"), s!("vs_5_0"))?;
+        let layer_pixel_code = compile(s!("layer_pixel"), s!("ps_5_0"))?;
         let (mut vertex, mut rgba, mut r8, mut dimensions) = (None, None, None, None);
+        let (mut layer_vertex, mut layer_pixel, mut layer_constants, mut blend) =
+            (None, None, None, None);
         // SAFETY: live device and bytecode buffers; outputs are owned COM refs.
         unsafe {
             device.CreateVertexShader(&vertex_code, None, Some(&mut vertex))?;
@@ -38,41 +46,80 @@ impl ImageRenderer {
                 None,
                 Some(&mut dimensions),
             )?;
+            device.CreateVertexShader(&layer_vertex_code, None, Some(&mut layer_vertex))?;
+            device.CreatePixelShader(&layer_pixel_code, None, Some(&mut layer_pixel))?;
+            device.CreateBuffer(
+                &D3D11_BUFFER_DESC {
+                    ByteWidth: 64,
+                    Usage: D3D11_USAGE_DEFAULT,
+                    BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as u32,
+                    ..Default::default()
+                },
+                None,
+                Some(&mut layer_constants),
+            )?;
+            let mut blend_desc = D3D11_BLEND_DESC::default();
+            blend_desc.RenderTarget[0] = D3D11_RENDER_TARGET_BLEND_DESC {
+                BlendEnable: true.into(),
+                SrcBlend: D3D11_BLEND_SRC_ALPHA,
+                DestBlend: D3D11_BLEND_INV_SRC_ALPHA,
+                BlendOp: D3D11_BLEND_OP_ADD,
+                SrcBlendAlpha: D3D11_BLEND_ZERO,
+                DestBlendAlpha: D3D11_BLEND_ONE,
+                BlendOpAlpha: D3D11_BLEND_OP_ADD,
+                RenderTargetWriteMask: D3D11_COLOR_WRITE_ENABLE_ALL.0 as u8,
+            };
+            device.CreateBlendState(&blend_desc, Some(&mut blend))?;
         }
         Ok(Self {
             vertex: vertex.expect("vertex shader output"),
             rgba: rgba.expect("RGBA shader output"),
             r8: r8.expect("R8 shader output"),
             dimensions: dimensions.expect("dimension buffer output"),
-            texture: None,
+            layer_vertex: layer_vertex.expect("layer vertex output"),
+            layer_pixel: layer_pixel.expect("layer pixel output"),
+            layer_constants: layer_constants.expect("layer buffer output"),
+            blend: blend.expect("blend output"),
+            textures: Vec::new(),
             uploads: 0,
         })
     }
 
     pub(super) fn bytes(&self) -> u64 {
-        self.texture.as_ref().map_or(0, |texture| texture.bytes)
+        self.textures.iter().map(|texture| texture.bytes).sum()
     }
 
     pub(super) fn release_texture(&mut self) {
-        self.texture = None;
+        self.textures.clear();
     }
 
     pub(super) fn prepare(
         &mut self,
         device: &ID3D11Device,
-        page: &Arc<TexturePage>,
+        pages: &[Arc<TexturePage>],
     ) -> Result<(), Error> {
+        // Preceding queries completed and draw unbound sources. Evict obsolete
+        // pages before uploading, keeping resident payloads within admission.
+        self.textures.retain(|texture| {
+            pages
+                .iter()
+                .any(|page| texture.source.ptr_eq(&Arc::downgrade(page)))
+        });
+        for page in pages {
+            self.upload(device, page)?;
+        }
+        Ok(())
+    }
+
+    fn upload(&mut self, device: &ID3D11Device, page: &Arc<TexturePage>) -> Result<(), Error> {
         let source = Arc::downgrade(page);
         if self
-            .texture
-            .as_ref()
-            .is_some_and(|texture| texture.source.ptr_eq(&source))
+            .textures
+            .iter()
+            .any(|texture| texture.source.ptr_eq(&source))
         {
             return Ok(());
         }
-        // The caller waits for the preceding render query before replacement;
-        // draw unbinds the source. Retire it before allocating another page.
-        self.texture = None;
         let [width, height] = page.extent();
         let (format, pitch) = match page.format() {
             TextureFormat::Rgba8 => (DXGI_FORMAT_R8G8B8A8_UNORM, width * 4),
@@ -112,7 +159,7 @@ impl ImageRenderer {
                 Some(&mut view),
             )?;
         }
-        self.texture = Some(Uploaded {
+        self.textures.push(Uploaded {
             source,
             view: view.expect("source view output"),
             bytes: page.data().len() as u64,
@@ -130,8 +177,8 @@ impl ImageRenderer {
         extent: [u32; 2],
     ) {
         let texture = self
-            .texture
-            .as_ref()
+            .textures
+            .first()
             .expect("source prepared before drawing");
         let pixel = if format == TextureFormat::R8 {
             &self.r8
@@ -159,6 +206,7 @@ impl ImageRenderer {
             context.PSSetConstantBuffers(0, Some(&[Some(self.dimensions.clone())]));
             context.PSSetShaderResources(0, Some(&[Some(texture.view.clone())]));
             context.OMSetRenderTargets(Some(&[Some(output.view.clone())]), None);
+            context.OMSetBlendState(None, None, u32::MAX);
             context.RSSetViewports(Some(&[D3D11_VIEWPORT {
                 Width: output.size.width() as f32,
                 Height: output.size.height() as f32,
@@ -169,6 +217,76 @@ impl ImageRenderer {
             context.Draw(3, 0);
             context.PSSetShaderResources(0, Some(&[None]));
             context.OMSetRenderTargets(None, None);
+        }
+    }
+
+    pub(super) fn draw_layers(
+        &self,
+        context: &ID3D11DeviceContext,
+        output: &Output,
+        composition: &crate::ImageComposition,
+    ) {
+        // SAFETY: exclusive worker context and output GPU key. All constants,
+        // shaders and source views are owned through submission. Data is 64 bytes
+        // of initialized scalar values matching the HLSL b1 buffer layout.
+        unsafe {
+            context.IASetInputLayout(None);
+            context.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            context.VSSetShader(&self.layer_vertex, None);
+            context.PSSetShader(&self.layer_pixel, None);
+            context.VSSetConstantBuffers(1, Some(&[Some(self.layer_constants.clone())]));
+            context.PSSetConstantBuffers(1, Some(&[Some(self.layer_constants.clone())]));
+            context.OMSetRenderTargets(Some(&[Some(output.view.clone())]), None);
+            context.OMSetBlendState(&self.blend, None, u32::MAX);
+            context.RSSetViewports(Some(&[D3D11_VIEWPORT {
+                Width: output.size.width() as f32,
+                Height: output.size.height() as f32,
+                MinDepth: 0.,
+                MaxDepth: 1.,
+                ..Default::default()
+            }]));
+            for layer in composition.layers() {
+                let region = layer.region();
+                let source = Arc::downgrade(region.page());
+                let texture = self
+                    .textures
+                    .iter()
+                    .find(|texture| texture.source.ptr_eq(&source))
+                    .expect("admitted source uploaded");
+                let axes = layer.axes();
+                let canvas = composition.canvas();
+                let constants = [
+                    (canvas.width() as f32).to_bits(),
+                    (canvas.height() as f32).to_bits(),
+                    layer.center()[0].to_bits(),
+                    layer.center()[1].to_bits(),
+                    axes[0][0].to_bits(),
+                    axes[0][1].to_bits(),
+                    axes[1][0].to_bits(),
+                    axes[1][1].to_bits(),
+                    region.origin()[0],
+                    region.origin()[1],
+                    region.extent()[0],
+                    region.extent()[1],
+                    layer.opacity().to_bits(),
+                    layer.brightness().to_bits(),
+                    u32::from(region.page().format() == TextureFormat::R8),
+                    0,
+                ];
+                context.UpdateSubresource(
+                    &self.layer_constants,
+                    0,
+                    None,
+                    constants.as_ptr().cast(),
+                    0,
+                    0,
+                );
+                context.PSSetShaderResources(0, Some(&[Some(texture.view.clone())]));
+                context.Draw(6, 0);
+            }
+            context.PSSetShaderResources(0, Some(&[None]));
+            context.OMSetRenderTargets(None, None);
+            context.OMSetBlendState(None, None, u32::MAX);
         }
     }
 }

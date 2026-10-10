@@ -1,6 +1,8 @@
 //! Native window consumer with line-delimited JSON control over stdin/stdout.
 
 mod fixture;
+#[path = "../support/layers.rs"]
+mod layers_checks;
 #[path = "../support/motion.rs"]
 mod motion_checks;
 mod presentation;
@@ -52,6 +54,7 @@ struct App {
     presented: u64,
     texture_fixture: Option<(Arc<TexturePage>, texture_checks::Case)>,
     texture_region: Option<Arc<TextureRegion>>,
+    layers_fixture: Option<layers_checks::Fixture>,
 }
 
 fn emit(value: Value) {
@@ -236,9 +239,18 @@ impl App {
                 } else {
                     None
                 };
+                let layers_check = if frame.image_layer_count().is_some() {
+                    self.layers_fixture
+                        .as_ref()
+                        .ok_or("no layer fixture oracle")?
+                        .check(&pixels)?;
+                    Some(true)
+                } else {
+                    None
+                };
                 emit(
                     json!({"id": command["id"], "ok": true, "capture": name, "state": self.inspect(),
-                        "readback": true, "uniform_rgba": support::uniform_rgba(&pixels),"motion_check":motion_check,"texture_check":texture_check}),
+                        "readback": true, "uniform_rgba": support::uniform_rgba(&pixels),"motion_check":motion_check,"texture_check":texture_check,"layers_check":layers_check}),
                 );
             }
             "stop" => {
@@ -269,7 +281,9 @@ impl ApplicationHandler<Event> for App {
             )?;
             let size = window.inner_size();
             let (renderer, events) = Renderer::new(Size::new(size.width, size.height)?, self.mode)?;
-            if let Some(region) = &self.texture_region {
+            if let Some(layers) = &self.layers_fixture {
+                self.expected_id = renderer.render_images(layers.composition.clone())?;
+            } else if let Some(region) = &self.texture_region {
                 self.expected_id = renderer.render_texture_region(region.clone())?;
             } else if let Some((page, _)) = &self.texture_fixture {
                 self.expected_id = renderer.render_texture_page(page.clone())?;
@@ -397,9 +411,11 @@ fn main() -> Result<()> {
     let mut common = Vec::new();
     let mut texture = false;
     let mut region = false;
+    let mut layers = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--texture-fixture" => texture = true,
+            "--layers-fixture" => layers = true,
             "--region-fixture" => {
                 texture = true;
                 region = true;
@@ -410,6 +426,9 @@ fn main() -> Result<()> {
             }
             _ => common.push(arg),
         }
+    }
+    if layers && texture {
+        return Err("choose either layers or texture fixture".into());
     }
     let (output, mode) = support::options(common.into_iter())?;
     // Diagnostic input is prepared before a window/event loop exists. Host
@@ -444,6 +463,27 @@ fn main() -> Result<()> {
         (Some((page, case)), crop)
     } else {
         (None, None)
+    };
+    let layers_fixture = if layers {
+        let generated = output.join("generated");
+        std::fs::create_dir(&generated)?;
+        std::fs::create_dir(generated.join("engine"))?;
+        let cases = texture_checks::cases();
+        let entries: Vec<_> = cases
+            .iter()
+            .map(|case| (case.name, case.tex.as_slice()))
+            .collect();
+        std::fs::write(
+            generated.join("scene.pkg"),
+            texture_checks::package(&entries),
+        )?;
+        let decoder = TextureDecoder::open(&SceneSource {
+            package: generated.join("scene.pkg"),
+            engine_assets: generated.join("engine"),
+        })?;
+        Some(layers_checks::Fixture::new(&decoder)?)
+    } else {
+        None
     };
     let event_loop = EventLoop::<Event>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
@@ -480,6 +520,7 @@ fn main() -> Result<()> {
         presented: 0,
         texture_fixture,
         texture_region,
+        layers_fixture,
     };
     event_loop.run_app(&mut app)?;
     if let Some(error) = app.failure {

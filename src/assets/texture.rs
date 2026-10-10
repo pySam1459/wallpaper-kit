@@ -151,10 +151,25 @@ const MAX_ENCODED_BYTES: u64 = 64 * 1024 * 1024;
 /// excluding writes/replacement, and hashes it once. Decoded pages are owned
 /// by the caller; concurrent calls and retained pages have no global budget.
 pub struct TextureDecoder {
-    package: Package,
+    pub(crate) package: Package,
 }
 
 impl TextureDecoder {
+    /// Prepare explicitly selected images as a diagnostic static snapshot.
+    /// Performs blocking JSON I/O and serial page decoding on the caller's thread.
+    /// Retains authored order, 2D transforms and selected sprite rectangles.
+    /// Effects, camera behavior and unselected objects are named in the returned
+    /// omissions. Unsupported selected models/materials/transforms fail. This is
+    /// not full scene loading, playback or fidelity verification. New unique
+    /// page sizes are admitted against 256 MiB before payload decoding.
+    pub fn image_snapshot(
+        &self,
+        objects: &[u64],
+        frame_index: u32,
+    ) -> Result<crate::ImageSnapshot, InspectionError> {
+        crate::scene::snapshot::prepare(self, objects, frame_index)
+    }
+
     /// Open and validate the package/root, then stream its identity hash once.
     pub fn open(source: &SceneSource) -> Result<Self, InspectionError> {
         Ok(Self {
@@ -234,6 +249,15 @@ impl TextureDecoder {
     /// 64 MiB and decoded storage to 256 MiB. PNG conversion preserves code
     /// values and alpha, without applying gamma or color profiles.
     pub fn decode_page(&self, asset: &str, page: u32) -> Result<TexturePage, InspectionError> {
+        self.decode_page_admitted(asset, page, MAX_PAGE_BYTES)
+    }
+
+    pub(crate) fn decode_page_admitted(
+        &self,
+        asset: &str,
+        page: u32,
+        remaining: u64,
+    ) -> Result<TexturePage, InspectionError> {
         let mut reader = self
             .package
             .reader(asset)?
@@ -247,6 +271,11 @@ impl TextureDecoder {
         let location = &index.locations[page as usize];
         if summary.decoded_bytes > MAX_PAGE_BYTES {
             return Err(reader.invalid("decoded page exceeds 256 MiB"));
+        }
+        if summary.decoded_bytes > remaining {
+            return Err(reader.invalid(
+                "decoded page exceeds remaining composition source budget before decode; streaming is required",
+            ));
         }
         if location.compressed {
             let limit = if index.png {

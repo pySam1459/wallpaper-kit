@@ -2,7 +2,7 @@
 
 ## Status
 
-Verified on 2026-10-10 with Rust 1.91 on Windows x64. The [hardware/native receipt](../../../../artifacts/20261010-131236-180dff12/manifest.json) includes real target pages, ten sprite-frame crops and native full-page/crop presentation; the [WARP/headless receipt](../../../../artifacts/20261010-131400-ac7c716b/manifest.json) explicitly skips native scenarios and proprietary content. These ignored receipts may be absent elsewhere; rerun there. Authored layers, effects and sprite playback remain planned.
+Verified on 2026-10-10 with Rust 1.91 on Windows x64. The [hardware/native receipt](../../../../artifacts/20261010-131236-180dff12/manifest.json) includes real target pages, ten sprite-frame crops and native full-page/crop presentation; the [WARP/headless receipt](../../../../artifacts/20261010-131400-ac7c716b/manifest.json) explicitly skips native scenarios and proprietary content. These ignored receipts may be absent elsewhere; rerun there. [Diagnostic image composition](image-composition.md) adds ordered placed layers. Effects and sprite playback remain planned.
 
 ## Consumer outcome
 

@@ -9,7 +9,7 @@ Give agents a repeatable way to observe the rendering library through a real con
 
 ## Current capability
 
-Blank rendering, controlled motion, bounded output reuse, TEX page/region decoding/drawing, native/headless consumers, and repeatable launch/control/capture/cleanup are implemented. Runtime scene loading and production playback remain unavailable. For read-only package/dependency inspection, use [the inspection guide](../../../docs/scene-inspection.md). Doctor with `-ScenePath` still rejects scene rendering readiness; inspection evidence is separate. Read [the blank renderer guide](../../../docs/blank-renderer.md) for ownership and [motion verification](../../../docs/motion-verification.md) for temporal checks and metric definitions. The [frame exchange guide](../../../docs/frame-pool.md) defines retained-frame saturation and output counters; viewer `inspect` replies include `output_pool`. For page decoding, shader sampling and the native `--texture-fixture` / `--region-fixture` routes, read [TEX page verification](../../../docs/texture-pages.md).
+Blank rendering, controlled motion, bounded output reuse, TEX page/region decoding/drawing, diagnostic image composition, native/headless consumers, and repeatable launch/control/capture/cleanup are implemented. Runtime scene loading and production playback remain unavailable. For read-only package/dependency inspection, use [the inspection guide](../../../docs/scene-inspection.md). Doctor with `-ScenePath` still rejects scene rendering readiness; inspection evidence is separate. Read [the blank renderer guide](../../../docs/blank-renderer.md) for ownership and [motion verification](../../../docs/motion-verification.md) for temporal checks and metric definitions. The [frame exchange guide](../../../docs/frame-pool.md) defines retained-frame saturation and output counters; viewer `inspect` replies include `output_pool`. For page decoding, shader sampling and the native `--texture-fixture` / `--region-fixture` routes, read [TEX page verification](../../../docs/texture-pages.md). For ordered placed images and the native `--layers-fixture` route, read [image composition](../../../docs/image-layers.md).
 
 From the repository root, run:
 
@@ -23,7 +23,7 @@ To check a locally available scene path, supply it explicitly:
 pwsh -File ./.codex/skills/control-scene-renderer/scripts/doctor.ps1 -ScenePath 'C:/Program Files (x86)/Steam/steamapps/workshop/content/431960/3780699842/scene.pkg'
 ```
 
-The example package was inspected at that path during planning. Doctor only checks its current existence; scene verification still exits with code `2`. Without a scene argument, doctor reports readiness only when a successful blank/motion/page/crop/native verification receipt matches current source and executable hashes. Exit code `1` means doctor failed. Read [the control contract](references/control-contract.md) when interpreting evidence or extending control operations.
+The example package was inspected at that path during planning. Doctor only checks its current existence; scene verification still exits with code `2`. Without a scene argument, doctor reports readiness only when a successful blank/motion/page/crop/composition/native verification receipt matches current source and executable hashes. Exit code `1` means doctor failed. Read [the control contract](references/control-contract.md) when interpreting evidence or extending control operations.
 
 Run the complete diagnostic scenarios with:
 
@@ -37,7 +37,7 @@ Use `-Software -SkipNative` without an interactive desktop. Report the native pa
 
 1. Read [the feature map](../scene-renderer-feature-map/SKILL.md) and the relevant feature entry. Establish what the caller must observe before changing code.
 2. Run doctor in the checkout containing the change. Missing or stale evidence is a reason to run verification; missing platform prerequisites are a blocker to report. Do not substitute build success for runtime proof.
-3. Run the mapped scenario from that checkout. `scripts/verify.ps1` checks blank, motion and texture pixels, verifier fault cases and live readiness timing, then drives resize/capture/play/pause in separate blank, page and crop native instances and stops them. Scene and adapter scenarios remain planned.
+3. Run the mapped scenario from that checkout. `scripts/verify.ps1` checks blank, motion and texture pixels, verifier fault cases and live readiness timing, then drives resize/capture/play/pause in separate blank, page, crop and composition native instances and stops them. Scene and adapter scenarios remain planned.
 4. Capture the mapped output and measurements. For a bug, establish the failure before the fix where practical. For performance, compare the same workload and hardware before and after.
 5. Stop only the instance created for this run and retain evidence. Report what passed, failed, or remains unverified, with artifact paths and measurement limits.
 
