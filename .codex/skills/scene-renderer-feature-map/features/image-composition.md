@@ -6,7 +6,7 @@ Implemented and verified through generated public tests and the native compositi
 
 ## Consumer outcome
 
-A host submits an immutable composition of cropped image layers. Completed GPU frames preserve placement, order, opacity and brightness across resize. Unique page identities share uploads. A diagnostic selected-object snapshot retains supported authored transforms and names omitted features and objects.
+A host submits an immutable composition of cropped image layers with optional masked Gaussian blur. Completed GPU frames preserve placement, order, opacity, brightness and filtering across resize. Unique page identities share uploads. A diagnostic selected-object snapshot retains supported authored transforms and names omitted features and objects.
 
 ## How to reach it
 
@@ -14,7 +14,7 @@ Read [image composition](../../../../docs/image-layers.md) for the public API, b
 
 ## Drive and observe
 
-Check generated four-layer composition pixels, crops, cardinal rotations, overlap, clipping, opacity/brightness, source reuse and retained output. A reversed-order submission must fail the oracle. Native captures check initial and resized back buffers, then idle, motion switching and owned exit. Public tests check malformed geometry/appearance before decode, selected-object omissions and source admission before corrupt oversized PNG decoding.
+Check generated four-layer composition pixels, masked RGBA and horizontal BC3 blur, crops, cardinal rotations, overlap, clipping, opacity/brightness, source reuse and retained output. The blur oracle uses independent direct two-dimensional convolution. Check scratch payload accounting and release when switching to motion. Reversed-order and missing-blur submissions must fail the oracle. Native captures check initial and resized back buffers, then idle, motion switching and owned exit. Public tests check malformed geometry/appearance before decode, selected-object omissions and source admission before corrupt oversized PNG decoding.
 
 ## Evidence and limits
 
@@ -22,4 +22,4 @@ Inspect `textures/composition.png`, target composition captures, `textures/repor
 
 ## Selected image playback
 
-[Selected image playback](../../../../docs/image-playback.md) combines static layers and unique animated sources under a library clock. The native `--image-fixture` route checks independent generated pixels. Paired scene/engine roots also drive all seven target image layers, including the cropped wires through `scripts/verify-image-playback.ps1`. Inspect source identity and omissions, exact seek replies, live observations, resize, paused idle and owned-process exit. Full scene fidelity and host impact remain unverified.
+[Selected image playback](../../../../docs/image-playback.md) combines static layers and unique animated sources under a library clock. The native `--image-fixture` route checks independent generated pixels. Paired scene/engine roots also drive all seven target image layers, including the cropped wires through `scripts/verify-image-playback.ps1`. Inspect source identity and omissions, exact seek replies, live observations, resize, paused idle and owned-process exit. The viewer uses `ImagePlayback::open_scene_images` to discover authored image IDs from either package. Unsupported visible image profiles fail; non-image objects and composition points are reported as omitted. [Gaussian blur](../../../../docs/gaussian-blur.md) defines the reusable effect API, bounds and evidence. Wallpaper Engine precise-blur mapping, full scene fidelity and host impact remain unverified.

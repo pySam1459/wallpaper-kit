@@ -21,7 +21,7 @@ pub use assets::texture::{
 
 pub use scene::{
     AssetSummary, DependencySummary, Diagnostic, DiagnosticSeverity, EffectBindingSummary,
-    EffectPassSummary, EffectSummary, ImageComposition, ImageLayer, ImagePlayback,
+    EffectPassSummary, EffectSummary, GaussianBlur, ImageComposition, ImageLayer, ImagePlayback,
     ImagePlaybackReport, ImagePlaybackSample, ImageSnapshot, InspectionError, MaterialPassSummary,
     MaterialSummary, ObjectKind, ObjectSummary, PackageSummary, PageSummary, SceneInspection,
     SceneSource, SceneSummary, TextureSummary, inspect_scene,
@@ -86,6 +86,8 @@ pub enum Error {
     InvalidTextureRegion,
     /// Layer geometry or appearance is outside [`ImageLayer::new`]'s bounds.
     InvalidImageLayer,
+    /// Blur parameters or scratch dimensions exceed the documented bounds.
+    InvalidBlur,
     /// Image count or unique source bytes exceed [`ImageComposition::new`]'s bounds.
     ImageCompositionLimit,
     /// A Windows graphics operation failed.
@@ -104,6 +106,7 @@ impl std::fmt::Display for Error {
                 f.write_str("texture region must be nonempty and entirely inside its page")
             }
             Self::InvalidImageLayer => f.write_str("image layer geometry or appearance is invalid"),
+            Self::InvalidBlur => f.write_str("blur requires sigma 0..=8 and at most 128 MiB of scratch texture"),
             Self::ImageCompositionLimit => f.write_str("image composition requires 1..=32 layers and at most 256 MiB of unique source pages"),
             Self::Graphics(error) => write!(f, "Direct3D operation failed: {error}"),
             Self::Worker(message) => write!(f, "renderer worker failed: {message}"),
@@ -155,7 +158,7 @@ struct Request {
 /// Diagnostic snapshot of output resources owned by the render worker.
 ///
 /// Resident output counts cover the three-slot pool, including old sizes.
-/// Source-page bytes are reported separately. Both exclude consumer textures,
+/// Source-page and effect scratch bytes are reported separately. These exclude consumer textures,
 /// driver allocations and diagnostic readback.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct OutputStats {
@@ -173,6 +176,8 @@ pub struct OutputStats {
     pub waiting_for_frame_release: bool,
     /// GPU payload bytes for selected source pages, outside the output cap.
     pub source_texture_bytes: u64,
+    /// RGBA16F blur scratch payload, at most 128 MiB; separate from source/output.
+    pub effect_texture_bytes: u64,
     /// Cumulative source-page uploads; repeated use of the same Arc reuses it.
     pub texture_uploads: u64,
 }
@@ -394,6 +399,7 @@ fn run_worker(shared: Arc<Shared>, notify: mpsc::SyncSender<()>, mode: DeviceMod
             state.output_stats.resident_textures = 0;
             state.output_stats.resident_bytes = 0;
             state.output_stats.source_texture_bytes = 0;
+            state.output_stats.effect_texture_bytes = 0;
             state.output_stats.waiting_for_frame_release = false;
             previous
         } else {

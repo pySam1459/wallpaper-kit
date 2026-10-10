@@ -7,12 +7,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Identity and explicit omissions of selected-image playback.
+/// Identity and explicit omissions of image playback.
 #[derive(Debug, Serialize)]
 pub struct ImagePlaybackReport {
     /// Hash of the package used to prepare image descriptions and static assets.
     pub package_sha256: String,
-    /// Selected visible images in authored draw order.
+    /// Loaded visible images in authored draw order.
     pub object_ids: Vec<u64>,
     /// Unique animated assets, in the order used by sample frame indices.
     pub animated_assets: Vec<String>,
@@ -63,6 +63,20 @@ impl ImagePlayback {
     /// starts paused at zero; initial animated samples may still be unavailable.
     /// Uses the same checked selected-image profile as the snapshot API.
     pub fn open(source: &SceneSource, objects: &[u64]) -> Result<Self, InspectionError> {
+        Self::prepare(source, Some(objects))
+    }
+
+    /// Discover image objects in authored order without supplying object IDs.
+    /// Uses the checked image profile of [`Self::open`], including its blocking
+    /// preparation and resource bounds. Non-image objects and project-layer
+    /// composition points are reported as omitted. Unsupported image materials
+    /// or properties fail rather than silently dropping that image. This is a
+    /// partial image scene, not full scene compatibility. Starts paused at zero.
+    pub fn open_scene_images(source: &SceneSource) -> Result<Self, InspectionError> {
+        Self::prepare(source, None)
+    }
+
+    fn prepare(source: &SceneSource, objects: Option<&[u64]>) -> Result<Self, InspectionError> {
         let decoder = TextureDecoder::open(source)?;
         let plan = snapshot::plan(&decoder, objects)?;
         let mut indexed = BTreeMap::new();

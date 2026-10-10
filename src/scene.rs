@@ -6,7 +6,7 @@ mod inspect;
 mod layers;
 mod playback;
 pub(crate) mod snapshot;
-pub use layers::{ImageComposition, ImageLayer};
+pub use layers::{GaussianBlur, ImageComposition, ImageLayer};
 pub use playback::{ImagePlayback, ImagePlaybackReport, ImagePlaybackSample};
 pub use snapshot::ImageSnapshot;
 

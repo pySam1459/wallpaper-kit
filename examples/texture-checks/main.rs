@@ -417,6 +417,7 @@ fn main() -> Result<()> {
     let stats = wait_stats(&renderer, resized.sequence())?;
     if stats.texture_uploads != uploads
         || stats.source_texture_bytes != 86
+        || stats.effect_texture_bytes != 288
         || stats.resident_textures > 3
     {
         return Err("composition source reuse/bounds differ".into());

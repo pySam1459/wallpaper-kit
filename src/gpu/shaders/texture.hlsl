@@ -66,3 +66,61 @@ float4 layer_pixel(LayerVertex input) : SV_Target {
     if (layer_grayscale != 0) { color = float4(color.rrr,1); }
     return float4(color.rgb * layer_brightness, color.a * layer_opacity);
 }
+
+Texture2D<float4> horizontal_image : register(t1);
+Texture2D<float4> blur_mask : register(t2);
+cbuffer Blur : register(b2) {
+    float2 blur_sigma;
+    uint blur_has_mask;
+    uint blur_padding;
+    uint2 blur_mask_origin;
+    uint2 blur_mask_extent;
+};
+
+// Independent normalized Gaussian filtering in premultiplied code values.
+// Each axis uses ceil(3*sigma) taps on either side, at most 24.
+float4 original_premultiplied(int2 texel) {
+    texel = clamp(texel, int2(0,0), int2(layer_source_extent) - 1);
+    float4 color = image.Load(int3(int2(layer_source_origin) + texel,0));
+    if (layer_grayscale != 0) { color = float4(color.rrr,1); }
+    return float4(color.rgb * color.a,color.a);
+}
+
+float4 blur_horizontal(Vertex input) : SV_Target {
+    int2 texel = int2(input.position.xy);
+    if (blur_sigma.x == 0) { return original_premultiplied(texel); }
+    int radius = int(ceil(3 * blur_sigma.x));
+    float4 color = 0;
+    float total = 0;
+    for (int dx = -radius; dx <= radius; ++dx) {
+        float distance = float(dx) / blur_sigma.x;
+        float weight = exp(-0.5 * distance * distance);
+        color += original_premultiplied(texel + int2(dx,0)) * weight;
+        total += weight;
+    }
+    return color / total;
+}
+
+float4 blur_vertical(LayerVertex input) : SV_Target {
+    uint2 texel = min(uint2(saturate(input.uv) * layer_source_extent),layer_source_extent - 1);
+    float4 color = horizontal_image.Load(int3(texel,0));
+    if (blur_sigma.y != 0) {
+        int radius = int(ceil(3 * blur_sigma.y));
+        color = 0;
+        float total = 0;
+        for (int dy = -radius; dy <= radius; ++dy) {
+            int2 sample_texel = int2(texel.x,clamp(int(texel.y) + dy,0,int(layer_source_extent.y) - 1));
+            float distance = float(dy) / blur_sigma.y;
+            float weight = exp(-0.5 * distance * distance);
+            color += horizontal_image.Load(int3(sample_texel,0)) * weight;
+            total += weight;
+        }
+        color /= total;
+    }
+    if (blur_has_mask != 0) {
+        uint2 mask_texel = blur_mask_origin + min(uint2(saturate(input.uv) * blur_mask_extent),blur_mask_extent - 1);
+        color = lerp(original_premultiplied(int2(texel)),color,saturate(blur_mask.Load(int3(mask_texel,0)).r));
+    }
+    float3 straight_rgb = color.a > 0 ? color.rgb / color.a : 0;
+    return float4(straight_rgb * layer_brightness,color.a * layer_opacity);
+}

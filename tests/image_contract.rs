@@ -8,8 +8,8 @@ mod playback_checks;
 mod texture_checks;
 
 use scene_renderer::{
-    DeviceMode, Frame, ImageComposition, ImageLayer, ImagePlayback, ImagePlaybackSample,
-    OutputStats, Renderer, SceneSource, Size, TextureDecoder, TextureRegion,
+    DeviceMode, Frame, GaussianBlur, ImageComposition, ImageLayer, ImagePlayback,
+    ImagePlaybackSample, OutputStats, Renderer, SceneSource, Size, TextureDecoder, TextureRegion,
 };
 use serde_json::{Value, json};
 use std::{
@@ -103,6 +103,7 @@ fn placed_layers_are_ordered_reused_and_retained_across_resize() {
     fixture.check(&first.readback().unwrap()).unwrap();
     assert_eq!(first.image_layer_count(), Some(4));
     let initial_stats = stats(&renderer, first.sequence());
+    assert_eq!(initial_stats.effect_texture_bytes, 6 * 6 * 8);
     assert_eq!(
         (
             initial_stats.texture_uploads,
@@ -155,12 +156,118 @@ fn placed_layers_are_ordered_reused_and_retained_across_resize() {
     )
     .unwrap();
     let page_stats = stats(&renderer, page_frame.sequence());
+    assert_eq!(page_stats.effect_texture_bytes, 0);
     assert_eq!(
         (page_stats.texture_uploads, page_stats.source_texture_bytes),
         (3, 16)
     );
     renderer.shutdown().unwrap();
     fixture.check(&first.readback().unwrap()).unwrap();
+}
+
+#[test]
+fn gaussian_blur_parameters_masks_and_axis_bypass_match_pixels() {
+    let cases = texture_checks::cases();
+    let entries: Vec<_> = cases
+        .iter()
+        .map(|case| (case.name, case.tex.as_slice()))
+        .collect();
+    let package = Package::new(&entries);
+    let mut fixture = layers_checks::Fixture::new(&package.decoder()).unwrap();
+    let mask = fixture.composition.layers()[1].region().clone();
+    let (renderer, events) =
+        Renderer::new(Size::new(64, 48).unwrap(), DeviceMode::Software).unwrap();
+    let unblurred = fixture
+        .composition
+        .layers()
+        .iter()
+        .map(|layer| {
+            ImageLayer::new(
+                layer.region().clone(),
+                layer.center(),
+                layer.size(),
+                layer.angle_degrees(),
+                layer.opacity(),
+                layer.brightness(),
+            )
+            .unwrap()
+        })
+        .collect();
+    let id = renderer
+        .render_images(Arc::new(
+            ImageComposition::new(fixture.composition.canvas(), unblurred).unwrap(),
+        ))
+        .unwrap();
+    assert!(
+        fixture
+            .check(&wait(&renderer, &events, id).readback().unwrap())
+            .is_err(),
+        "oracle must detect missing blur"
+    );
+    for sigma in [
+        [0., 0.],
+        [0., 1.1],
+        [1.2, 0.],
+        [2.2, 0.3],
+        [8., 8.],
+        [f32::MIN_POSITIVE / 2., 0.],
+    ] {
+        for masked in [false, true] {
+            let layers = fixture
+                .composition
+                .layers()
+                .iter()
+                .map(|layer| {
+                    ImageLayer::new(
+                        layer.region().clone(),
+                        layer.center(),
+                        layer.size(),
+                        layer.angle_degrees(),
+                        layer.opacity(),
+                        layer.brightness(),
+                    )
+                    .unwrap()
+                    .with_blur(GaussianBlur::new(sigma, masked.then(|| mask.clone())).unwrap())
+                })
+                .collect();
+            fixture.composition =
+                Arc::new(ImageComposition::new(fixture.composition.canvas(), layers).unwrap());
+            let id = renderer.render_images(fixture.composition.clone()).unwrap();
+            let frame = wait(&renderer, &events, id);
+            fixture.check(&frame.readback().unwrap()).unwrap();
+            assert_eq!(
+                stats(&renderer, frame.sequence()).effect_texture_bytes,
+                if sigma == [0., 0.] { 0 } else { 6 * 6 * 8 }
+            );
+        }
+    }
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn blur_bounds_reject_nonfinite_parameters_and_oversized_scratch() {
+    for sigma in [[f32::NAN, 1.], [1., f32::INFINITY], [-1., 0.], [0., 8.01]] {
+        assert!(GaussianBlur::new(sigma, None).is_err());
+    }
+    let wide = texture_checks::tex(9, [8192, 1], &vec![128; 8192], false, false);
+    let tall = texture_checks::tex(9, [1, 8192], &vec![128; 8192], false, false);
+    let package = Package::new(&[("wide", &wide), ("tall", &tall)]);
+    let decoder = package.decoder();
+    let layers = ["wide", "tall"]
+        .into_iter()
+        .map(|name| {
+            let page = Arc::new(decoder.decode_page(name, 0).unwrap());
+            let extent = page.extent();
+            let region = Arc::new(TextureRegion::new(page, [0, 0], extent).unwrap());
+            ImageLayer::new(region, [4., 4.], [8., 8.], 0., 1., 1.)
+                .unwrap()
+                .with_blur(GaussianBlur::new([1., 1.], None).unwrap())
+        })
+        .collect();
+    assert!(matches!(
+        ImageComposition::new(Size::new(8, 8).unwrap(), layers),
+        Err(scene_renderer::Error::InvalidBlur)
+    ));
 }
 
 #[test]
@@ -423,6 +530,90 @@ fn playback_sample(playback: &ImagePlayback) -> ImagePlaybackSample {
 }
 
 #[test]
+fn automatic_images_discover_authored_ids_and_report_other_content() {
+    let scene = serde_json::to_vec(
+        &json!({"version":5,"general":{"orthogonalprojection":{"width":16,"height":12}},"objects":[
+            object(901), {"id":6,"particle":"particles/test.json"},
+            {"id":7,"image":"models/composition.json"}, object(55),
+            {"id":8,"image":"missing-hidden.json","visible":false}
+        ]}),
+    )
+    .unwrap();
+    let model = serde_json::to_vec(&model()).unwrap();
+    let material = serde_json::to_vec(&material(false)).unwrap();
+    let texture = texture_checks::tex(0, [2, 2], &texture_checks::rgba(), false, false);
+    let package = Package::new(&[
+        ("scene.json", &scene),
+        ("models/image.json", &model),
+        (
+            "models/composition.json",
+            br#"{"projectlayer":true,"material":"missing-composition.json"}"#,
+        ),
+        ("materials/image.json", &material),
+        ("materials/image.tex", &texture),
+    ]);
+    let playback = ImagePlayback::open_scene_images(&SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    })
+    .unwrap();
+    assert_eq!(playback.report().object_ids, [901, 55]);
+    for omission in ["Object 6", "Object 7", "Object 8"] {
+        assert!(
+            playback
+                .report()
+                .omissions
+                .iter()
+                .any(|line| line.contains(omission))
+        );
+    }
+    let sample = playback.try_sample().unwrap().unwrap();
+    assert_eq!(sample.composition.layers().len(), 2);
+    assert!(Arc::ptr_eq(
+        sample.composition.layers()[0].region(),
+        sample.composition.layers()[1].region()
+    ));
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn automatic_images_reject_unsupported_images_and_scene_limits_before_decode() {
+    let invalid_texture = texture_checks::tex(0, [2, 2], b"invalid PNG", true, true);
+    let mut unsupported = material(false);
+    unsupported["passes"][0]["shader"] = json!("custom-shader");
+    let mut ambiguous = object(4);
+    ambiguous["particle"] = json!("particles/test.json");
+    for (objects, material, message) in [
+        (
+            json!([object(4)]),
+            unsupported,
+            "unsupported image material",
+        ),
+        (json!([ambiguous]), material(false), "ambiguous"),
+        (json!([object(4), object(4)]), material(false), "duplicate"),
+        (
+            json!((0..33).map(object).collect::<Vec<_>>()),
+            material(false),
+            "1..=32",
+        ),
+        (
+            json!([{"id":4,"sound":["muted.mp3"]}]),
+            material(false),
+            "1..=32",
+        ),
+    ] {
+        let package = snapshot_package(objects, model(), material, &invalid_texture);
+        let error = ImagePlayback::open_scene_images(&SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        })
+        .err()
+        .expect("unsupported input must fail");
+        assert!(error.to_string().contains(message), "{error}");
+    }
+}
+
+#[test]
 fn playback_rejects_invisible_selections_and_propagates_sprite_failures() {
     let texture = texture_checks::tex(0, [2, 2], &texture_checks::rgba(), false, false);
     let mut hidden = object(1);
@@ -465,7 +656,8 @@ fn combined_playback_uses_one_clock_shared_sprites_and_authored_order() {
         package: package.root.join("scene.pkg"),
         engine_assets: package.root.join("engine"),
     };
-    let mut playback = ImagePlayback::open(&source, &playback_checks::OBJECTS).unwrap();
+    // Selection order must not become draw order.
+    let mut playback = ImagePlayback::open(&source, &[4, 3, 2, 1]).unwrap();
     assert!(fs::write(&source.package, b"must remain read-only during playback").is_err());
     assert_eq!(playback.report().object_ids, [1, 2, 3, 4]);
     assert_eq!(

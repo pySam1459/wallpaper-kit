@@ -8,6 +8,8 @@ Build the complete target scene before further performance tuning. [Selected ima
 
 Reuse the existing renderer, extraction, prefetch and resource bounds. Keep decoding off the host UI thread and retain explicit unsupported-feature reports. Add scheduling and lifecycle behavior needed for correct playback; defer cache redesign, scene-wide memory tuning and broader performance experiments until the visual scene works. General content support and production adapters remain later milestones.
 
+Image discovery now belongs to `ImagePlayback::open_scene_images`; the viewer supplies source roots rather than a target-specific ID list. A [reusable Gaussian operation](gaussian-blur.md) establishes two-pass filtering with original/mask inputs and independent fixtures. It is not yet mapped to Wallpaper Engine's precise-blur profile. Validate the authored parameter/kernel conventions before enabling that dispatch, then add cloud motion and its time/mask parameters through the same data-driven loading path.
+
 Once the complete scene plays correctly, measure and optimize that workload against the specification's resource and host-latency targets. Functional completion establishes the baseline for this work; final MVP acceptance still requires the performance and lifecycle gates below.
 
 ## Target and assumptions

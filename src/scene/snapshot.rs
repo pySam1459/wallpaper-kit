@@ -94,10 +94,12 @@ fn scalar(value: Option<&Value>, default: f32, asset: &str) -> Result<f32, Inspe
 
 pub(crate) fn plan(
     decoder: &TextureDecoder,
-    selection: &[u64],
+    selection: Option<&[u64]>,
 ) -> Result<ImagePlan, InspectionError> {
-    let selected: BTreeSet<_> = selection.iter().copied().collect();
-    if selected.is_empty() || selected.len() != selection.len() || selected.len() > 32 {
+    let selected: Option<BTreeSet<_>> = selection.map(|ids| ids.iter().copied().collect());
+    if let (Some(ids), Some(selected)) = (selection, &selected)
+        && (selected.is_empty() || selected.len() != ids.len() || selected.len() > 32)
+    {
         return Err(InspectionError::invalid(
             "scene.json",
             "select 1..=32 distinct image objects",
@@ -127,7 +129,10 @@ pub(crate) fn plan(
                 format!("duplicate object {}", object.id),
             ));
         }
-        if !selected.contains(&object.id) {
+        if selected
+            .as_ref()
+            .is_some_and(|ids| !ids.contains(&object.id))
+        {
             omissions.push(format!(
                 "Object {} ({}) is not selected.",
                 object.id, object.name
@@ -135,6 +140,59 @@ pub(crate) fn plan(
             continue;
         }
         let context = format!("scene.json object {}", object.id);
+        let discovered_model = if selected.is_none() {
+            if let Some(visible) = object.properties.get("visible") {
+                if !visible.is_boolean() {
+                    return Err(InspectionError::invalid(
+                        &context,
+                        "visible must be Boolean",
+                    ));
+                }
+                if visible == false {
+                    omissions.push(format!("Object {} is invisible.", object.id));
+                    continue;
+                }
+            }
+            let selectors = [
+                object.image.is_some(),
+                object.particle.is_some(),
+                object.shape.is_some(),
+                object.sound.is_some(),
+            ];
+            if selectors.iter().filter(|&&present| present).count() > 1 {
+                return Err(InspectionError::invalid(
+                    &context,
+                    "ambiguous object content types",
+                ));
+            }
+            let Some(model) = &object.image else {
+                omissions.push(format!(
+                    "Object {} ({}): non-image content is omitted.",
+                    object.id, object.name
+                ));
+                continue;
+            };
+            let model_json = json(&decoder.package, &asset_key(model)?)?;
+            if model_json
+                .get("projectlayer")
+                .is_some_and(|value| value != true && value != false)
+            {
+                return Err(InspectionError::invalid(
+                    model,
+                    "projectlayer must be Boolean",
+                ));
+            }
+            if model_json.get("projectlayer") == Some(&Value::Bool(true)) {
+                omissions.push(format!(
+                    "Object {} ({}): composition layer and its effects are omitted.",
+                    object.id, object.name
+                ));
+                continue;
+            }
+            Some(model_json)
+        } else {
+            None
+        };
         let model = object
             .image
             .as_ref()
@@ -223,7 +281,10 @@ pub(crate) fn plan(
         ImageLayer::validate_geometry(center, displayed_size, angles[2], opacity, brightness)
             .map_err(|error| InspectionError::invalid(&context, error.to_string()))?;
         let model = asset_key(model)?;
-        let model_json = json(&decoder.package, &model)?;
+        let model_json = match discovered_model {
+            Some(model) => model,
+            None => json(&decoder.package, &model)?,
+        };
         let model_fields = model_json
             .as_object()
             .ok_or_else(|| InspectionError::invalid(&model, "expected image model object"))?;
@@ -331,16 +392,16 @@ pub(crate) fn plan(
         });
         object_ids.push(object.id);
     }
-    if !selected.is_subset(&seen) {
+    if selected.as_ref().is_some_and(|ids| !ids.is_subset(&seen)) {
         return Err(InspectionError::invalid(
             "scene.json",
             "selected object ID is missing",
         ));
     }
-    if layers.is_empty() {
+    if layers.is_empty() || layers.len() > 32 {
         return Err(InspectionError::invalid(
             "scene.json",
-            "selection contains no visible image layers",
+            "image plan requires 1..=32 visible image layers",
         ));
     }
     Ok(ImagePlan {
@@ -356,7 +417,7 @@ pub(crate) fn prepare(
     selection: &[u64],
     frame_index: u32,
 ) -> Result<ImageSnapshot, InspectionError> {
-    let plan = plan(decoder, selection)?;
+    let plan = plan(decoder, Some(selection))?;
     let mut pages: BTreeMap<(String, u32), Arc<TexturePage>> = BTreeMap::new();
     let mut bytes = 0;
     let mut layers = Vec::new();

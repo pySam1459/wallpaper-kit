@@ -3,6 +3,43 @@ use std::sync::Arc;
 
 pub(crate) const MAX_SOURCE_BYTES: u64 = 256 * 1024 * 1024;
 
+/// Separable Gaussian blur in source-crop texels, before layer composition.
+///
+/// The normalized kernel reaches three standard deviations, clamping samples
+/// to the crop edge. Filtering and mask mixing use premultiplied RGBA code
+/// values to avoid transparent-color fringes. This operation does not establish
+/// compatibility with Wallpaper Engine's precise-blur parameter conventions.
+#[derive(Debug)]
+pub struct GaussianBlur {
+    sigma: [f32; 2],
+    mask: Option<Arc<TextureRegion>>,
+}
+
+impl GaussianBlur {
+    /// Standard deviations must be finite and 0..=8 texels per axis. Zero
+    /// disables that axis. Returns [`Error::InvalidBlur`] otherwise. An optional
+    /// mask's red channel mixes the original (zero) and blurred (one) image,
+    /// sampled with normalized crop coordinates and point filtering. Its alpha
+    /// is ignored; the region retains its source page.
+    pub fn new(sigma: [f32; 2], mask: Option<Arc<TextureRegion>>) -> Result<Self, Error> {
+        if sigma
+            .iter()
+            .any(|value| !value.is_finite() || !(0. ..=8.).contains(value))
+        {
+            return Err(Error::InvalidBlur);
+        }
+        Ok(Self { sigma, mask })
+    }
+    /// Standard deviations in cropped source texels, horizontal then vertical.
+    pub fn sigma(&self) -> [f32; 2] {
+        self.sigma
+    }
+    /// Optional normalized red-channel mask.
+    pub fn mask(&self) -> Option<&Arc<TextureRegion>> {
+        self.mask.as_ref()
+    }
+}
+
 /// A cropped image placed on a two-dimensional orthographic canvas.
 ///
 /// The region retains its shared source page. All values are checked at
@@ -15,6 +52,7 @@ pub struct ImageLayer {
     angle: f32,
     opacity: f32,
     brightness: f32,
+    blur: Option<GaussianBlur>,
 }
 
 impl ImageLayer {
@@ -39,6 +77,7 @@ impl ImageLayer {
             angle: angle.rem_euclid(360.),
             opacity,
             brightness,
+            blur: None,
         })
     }
 
@@ -88,6 +127,17 @@ impl ImageLayer {
         self.brightness
     }
 
+    /// Apply one checked blur before placing and blending this image. The
+    /// source and mask join the composition's existing unique-page budget.
+    pub fn with_blur(mut self, blur: GaussianBlur) -> Self {
+        self.blur = Some(blur);
+        self
+    }
+    /// Optional source-space blur applied before placement and appearance.
+    pub fn blur(&self) -> Option<&GaussianBlur> {
+        self.blur.as_ref()
+    }
+
     pub(crate) fn axes(&self) -> [[f32; 2]; 2] {
         let (sin, cos) = match self.angle {
             0. => (0., 1.),
@@ -107,12 +157,15 @@ impl ImageLayer {
 ///
 /// The canvas fills the output, without preserving aspect ratio. At most 32
 /// layers and 256 MiB of unique source-page payloads are admitted. The budget
-/// excludes output/consumer textures, driver overhead and caller-owned content.
+/// includes masks but excludes output/consumer textures, driver overhead and
+/// caller-owned content. Blur uses one additional RGBA16F target capped at
+/// 128 MiB; maximum crop width/height across blurred layers determine its size.
 #[derive(Debug)]
 pub struct ImageComposition {
     canvas: Size,
     layers: Vec<ImageLayer>,
     pages: Vec<Arc<TexturePage>>,
+    blur_extent: Option<Size>,
 }
 
 impl ImageComposition {
@@ -126,8 +179,14 @@ impl ImageComposition {
         }
         let mut pages = Vec::new();
         let mut bytes = 0;
-        for layer in &layers {
-            let page = layer.region.page();
+        for page in layers.iter().flat_map(|layer| {
+            std::iter::once(layer.region.page()).chain(
+                layer
+                    .blur()
+                    .and_then(GaussianBlur::mask)
+                    .map(|mask| mask.page()),
+            )
+        }) {
             if !pages.iter().any(|existing| Arc::ptr_eq(existing, page)) {
                 bytes += page.data().len() as u64;
                 if bytes > MAX_SOURCE_BYTES {
@@ -136,10 +195,26 @@ impl ImageComposition {
                 pages.push(page.clone());
             }
         }
+        let mut extent = [0, 0];
+        for layer in &layers {
+            if layer.blur().is_some_and(|blur| blur.sigma() != [0.; 2]) {
+                let source = layer.region.extent();
+                extent = [extent[0].max(source[0]), extent[1].max(source[1])];
+            }
+        }
+        // One reusable RGBA16F horizontal target; Size's 64 MiB RGBA8 cap
+        // bounds this target to 128 MiB. Final vertical filtering draws directly
+        // into the output. No target exists for compositions without blur.
+        let blur_extent = if extent[0] == 0 {
+            None
+        } else {
+            Some(Size::new(extent[0], extent[1]).map_err(|_| Error::InvalidBlur)?)
+        };
         Ok(Self {
             canvas,
             layers,
             pages,
+            blur_extent,
         })
     }
     /// Logical canvas dimensions, independent of output resolution.
@@ -152,5 +227,8 @@ impl ImageComposition {
     }
     pub(crate) fn pages(&self) -> &[Arc<TexturePage>] {
         &self.pages
+    }
+    pub(crate) fn blur_extent(&self) -> Option<Size> {
+        self.blur_extent
     }
 }

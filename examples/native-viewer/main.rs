@@ -601,28 +601,22 @@ fn main() -> Result<()> {
     }
     let (output, mode) = support::options(common.into_iter())?;
     let images = if image_fixture || scene_path.is_some() {
-        let (source, objects) = if image_fixture {
+        let source = if image_fixture {
             let generated = output.join("generated");
             std::fs::create_dir(&generated)?;
             std::fs::create_dir(generated.join("engine"))?;
             std::fs::write(generated.join("scene.pkg"), playback_checks::package())?;
-            (
-                SceneSource {
-                    package: generated.join("scene.pkg"),
-                    engine_assets: generated.join("engine"),
-                },
-                playback_checks::OBJECTS.to_vec(),
-            )
+            SceneSource {
+                package: generated.join("scene.pkg"),
+                engine_assets: generated.join("engine"),
+            }
         } else {
-            (
-                SceneSource {
-                    package: scene_path.expect("paired source"),
-                    engine_assets: engine_assets.expect("paired source"),
-                },
-                vec![28, 32, 22, 72, 89, 77, 86],
-            )
+            SceneSource {
+                package: scene_path.expect("paired source"),
+                engine_assets: engine_assets.expect("paired source"),
+            }
         };
-        let playback = ImagePlayback::open(&source, &objects)?;
+        let playback = ImagePlayback::open_scene_images(&source)?;
         support::write_json(
             &output.join("image-playback.json"),
             &serde_json::to_value(playback.report())?,

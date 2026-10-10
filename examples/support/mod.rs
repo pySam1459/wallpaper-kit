@@ -65,6 +65,7 @@ pub fn pool_info(stats: OutputStats) -> Value {
     json!({"resident_textures":stats.resident_textures,"resident_bytes":stats.resident_bytes,
         "texture_allocations":stats.texture_allocations,"submitted_frames":stats.submitted_frames,
         "source_texture_bytes":stats.source_texture_bytes,"texture_uploads":stats.texture_uploads,
+        "effect_texture_bytes":stats.effect_texture_bytes,
         "published_frames":stats.published_frames,"waiting_for_frame_release":stats.waiting_for_frame_release})
 }
 

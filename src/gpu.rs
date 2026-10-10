@@ -184,6 +184,7 @@ impl Gpu {
             texture_allocations: self.allocations,
             submitted_frames: self.submissions,
             source_texture_bytes: self.image.as_ref().map_or(0, |image| image.bytes()),
+            effect_texture_bytes: self.image.as_ref().map_or(0, |image| image.effect_bytes()),
             texture_uploads: self.image.as_ref().map_or(0, |image| image.uploads),
             ..Default::default()
         }
@@ -274,7 +275,14 @@ impl Gpu {
             self.image
                 .as_mut()
                 .expect("image pipeline initialized")
-                .prepare(&self.device, pages)?;
+                .prepare(
+                    &self.device,
+                    pages,
+                    match &request.content {
+                        Content::Images(composition) => composition.blur_extent(),
+                        _ => None,
+                    },
+                )?;
             if !acquire(&self.slots[index].output.mutex)? {
                 return Ok(Submission::Busy);
             }

@@ -4,8 +4,6 @@ use super::texture_checks as texture;
 use scene_renderer::Pixels;
 use serde_json::json;
 
-pub const OBJECTS: [u64; 4] = [4, 3, 2, 1]; // Selection order must not become draw order.
-
 pub fn package() -> Vec<u8> {
     let scene = json!({"version":5,"general":{"orthogonalprojection":{"width":8,"height":4}},"objects":[
         {"id":1,"image":"models/background.json","origin":"4 2 0","size":"8 4"},

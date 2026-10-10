@@ -53,6 +53,22 @@ function Send-Command([hashtable]$Command) {
     return $reply
 }
 
+$metadataId = 1000
+function Assert-EffectBytes([long]$Expected) {
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ($true) {
+        $script:metadataId += 1
+        $reply = Send-Command @{id=$script:metadataId; command='inspect'}
+        $stats = $reply.state.output_pool
+        if ($null -ne $stats -and $stats.published_frames -eq $reply.state.frame.sequence) {
+            if ($stats.effect_texture_bytes -ne $Expected) { throw 'Native blur scratch accounting differs' }
+            return
+        }
+        if ([DateTime]::UtcNow -ge $deadline) { throw 'Native blur statistics timed out' }
+        Start-Sleep -Milliseconds 10
+    }
+}
+
 try {
     if (-not $process.Start()) { throw 'Viewer launch failed' }
     $started = $true
@@ -66,6 +82,7 @@ try {
         if ($initialCapture.texture_check -ne $true) { throw 'Initial native texture pixels differ' }
     } elseif (($initialCapture.uniform_rgba -join ',') -ne '16,24,32,255') { throw 'Initial native GPU pixels differ' }
     $before = Send-Command @{id=2; command='inspect'}
+    if ($LayersFixture) { Assert-EffectBytes 288 }
     $sampleStart = Get-Date
     $cpuBefore = $process.TotalProcessorTime.TotalMilliseconds
     # This wait defines an idle measurement interval, not a guessed readiness delay.
@@ -88,6 +105,7 @@ try {
         if ($resizedCapture.texture_check -ne $true) { throw 'Resized native texture pixels differ' }
     } elseif (($resizedCapture.uniform_rgba -join ',') -ne '16,24,32,255') { throw 'Resized native GPU pixels differ' }
     $null = Send-Command @{id=6; command='fixture_at'; time_ms=0}
+    if ($LayersFixture) { Assert-EffectBytes 0 }
     $motionInitial = Send-Command @{id=7; command='capture'; name='motion-0000.png'}
     if ($motionInitial.motion_check -ne $true) { throw 'Native fixture start differs' }
     $null = Send-Command @{id=8; command='fixture_at'; time_ms=1000}

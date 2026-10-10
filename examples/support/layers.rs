@@ -1,7 +1,9 @@
 //! Generated composition with an independent inverse-transform pixel oracle.
 
 use crate::texture_checks;
-use scene_renderer::{ImageComposition, ImageLayer, Pixels, Size, TextureDecoder, TextureRegion};
+use scene_renderer::{
+    GaussianBlur, ImageComposition, ImageLayer, Pixels, Size, TextureDecoder, TextureRegion,
+};
 use std::sync::Arc;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -17,6 +19,8 @@ impl Fixture {
         let mut layers = Vec::new();
         let mut rgba = Vec::new();
         let mut shared = None;
+        let mask_page = Arc::new(decoder.decode_page("r8-raw", 0)?);
+        let mask = Arc::new(TextureRegion::new(mask_page.clone(), [0, 0], [3, 2])?);
         for (name, origin, extent, center, size, angle, opacity, brightness) in [
             (
                 "rgba-raw",
@@ -63,7 +67,9 @@ impl Fixture {
                 .iter()
                 .find(|case| case.name == name)
                 .expect("fixture exists");
-            let page = if let Some(page) = &shared
+            let page = if name == "r8-raw" {
+                mask_page.clone()
+            } else if let Some(page) = &shared
                 && name == "rgba-raw"
             {
                 Arc::clone(page)
@@ -73,14 +79,19 @@ impl Fixture {
             if name == "rgba-raw" {
                 shared = Some(page.clone());
             }
-            layers.push(ImageLayer::new(
+            let layer = ImageLayer::new(
                 Arc::new(TextureRegion::new(page, origin, extent)?),
                 center,
                 size,
                 angle,
                 opacity,
                 brightness,
-            )?);
+            )?;
+            layers.push(match layers.len() {
+                0 => layer.with_blur(GaussianBlur::new([0.8, 1.4], Some(mask.clone()))?),
+                2 => layer.with_blur(GaussianBlur::new([0.4, 0.], None)?),
+                _ => layer,
+            });
             rgba.push(texture_checks::crop(
                 &case.rgba,
                 case.extent,
@@ -95,6 +106,21 @@ impl Fixture {
     }
 
     pub fn check(&self, pixels: &Pixels) -> Result<()> {
+        // Direct two-dimensional f64 convolution, independent of the GPU's
+        // separable RGBA16F intermediate and shader implementation.
+        let filtered: Vec<_> = self
+            .composition
+            .layers()
+            .iter()
+            .zip(&self.rgba)
+            .map(|(layer, rgba)| {
+                filter(
+                    rgba,
+                    layer.region().extent(),
+                    layer.blur().map_or([0., 0.], GaussianBlur::sigma),
+                )
+            })
+            .collect();
         for y in 0..pixels.size.height() {
             for x in 0..pixels.size.width() {
                 let point = [
@@ -102,7 +128,13 @@ impl Fixture {
                     24. - (f64::from(y) + 0.5) * 24. / f64::from(pixels.size.height()),
                 ];
                 let mut expected = [16_u8, 24, 32, 255];
-                for (layer, rgba) in self.composition.layers().iter().zip(&self.rgba) {
+                for ((layer, rgba), filtered) in self
+                    .composition
+                    .layers()
+                    .iter()
+                    .zip(&self.rgba)
+                    .zip(&filtered)
+                {
                     let angle = f64::from(layer.angle_degrees()).to_radians();
                     let (sin, cos) = angle.sin_cos();
                     let dx = point[0] - f64::from(layer.center()[0]);
@@ -116,11 +148,34 @@ impl Fixture {
                     let texel = ((v * f64::from(extent[1])) as usize * extent[0] as usize
                         + (u * f64::from(extent[0])) as usize)
                         * 4;
-                    let source = &rgba[texel..texel + 4];
-                    let alpha = f64::from(source[3]) / 255. * f64::from(layer.opacity());
+                    let mut source = filtered[texel / 4];
+                    if let Some(mask) = layer.blur().and_then(GaussianBlur::mask) {
+                        let [width, height] = mask.extent();
+                        let [left, top] = mask.origin();
+                        let mx = left + (u * f64::from(width)) as u32;
+                        let my = top + (v * f64::from(height)) as u32;
+                        let amount = f64::from(
+                            mask.page().data()[(my * mask.page().extent()[0] + mx) as usize],
+                        ) / 255.;
+                        let original_alpha = f64::from(rgba[texel + 3]) / 255.;
+                        let original = [
+                            f64::from(rgba[texel]) * original_alpha,
+                            f64::from(rgba[texel + 1]) * original_alpha,
+                            f64::from(rgba[texel + 2]) * original_alpha,
+                            original_alpha,
+                        ];
+                        for channel in 0..4 {
+                            source[channel] =
+                                original[channel] * (1. - amount) + source[channel] * amount;
+                        }
+                    }
+                    let alpha = source[3] * f64::from(layer.opacity());
                     for channel in 0..3 {
-                        let color =
-                            (f64::from(source[channel]) * f64::from(layer.brightness())).min(255.);
+                        let color = if source[3] == 0. {
+                            0.
+                        } else {
+                            (source[channel] / source[3] * f64::from(layer.brightness())).min(255.)
+                        };
                         expected[channel] = (color * alpha
                             + f64::from(expected[channel]) * (1. - alpha))
                             .round() as u8;
@@ -140,4 +195,45 @@ impl Fixture {
         }
         Ok(())
     }
+}
+
+fn filter(rgba: &[u8], extent: [u32; 2], sigma: [f32; 2]) -> Vec<[f64; 4]> {
+    let weights = sigma.map(|sigma| {
+        let radius = (3. * f64::from(sigma)).ceil() as i32;
+        let mut values: Vec<_> = (-radius..=radius)
+            .map(|offset| {
+                let weight = if sigma == 0. {
+                    1.
+                } else {
+                    (-0.5 * (f64::from(offset) / f64::from(sigma)).powi(2)).exp()
+                };
+                (offset, weight)
+            })
+            .collect();
+        let total: f64 = values.iter().map(|(_, weight)| weight).sum();
+        for (_, weight) in &mut values {
+            *weight /= total;
+        }
+        values
+    });
+    let mut result = Vec::new();
+    for y in 0..extent[1] as i32 {
+        for x in 0..extent[0] as i32 {
+            let mut color = [0.; 4];
+            for &(dy, wy) in &weights[1] {
+                for &(dx, wx) in &weights[0] {
+                    let sx = (x + dx).clamp(0, extent[0] as i32 - 1) as usize;
+                    let sy = (y + dy).clamp(0, extent[1] as i32 - 1) as usize;
+                    let offset = (sy * extent[0] as usize + sx) * 4;
+                    let alpha = f64::from(rgba[offset + 3]) / 255.;
+                    for channel in 0..3 {
+                        color[channel] += f64::from(rgba[offset + channel]) * alpha * wx * wy;
+                    }
+                    color[3] += alpha * wx * wy;
+                }
+            }
+            result.push(color);
+        }
+    }
+    result
 }
