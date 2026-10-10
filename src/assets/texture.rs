@@ -1,7 +1,211 @@
-use super::package::AssetReader;
-use crate::scene::{InspectionError, PageSummary, TextureSummary};
+use super::package::{AssetReader, Package};
+use crate::scene::{InspectionError, PageSummary, SceneSource, TextureSummary};
+
+/// Storage delivered to the GPU after container decompression.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextureFormat {
+    /// Tightly packed, top-to-bottom RGBA8 code values; no color conversion.
+    Rgba8,
+    /// BC3 blocks, preserved compressed for GPU sampling.
+    Bc3,
+    /// One unsigned normalized byte per pixel.
+    R8,
+}
+
+/// One validated base-mip TEX page, independent of a graphics device.
+///
+/// Owns at most 256 MiB of pixels or BC3 blocks. This is not a sprite frame;
+/// authored atlas coordinates, durations and material semantics are separate.
+#[derive(Debug)]
+pub struct TexturePage {
+    extent: [u32; 2],
+    format: TextureFormat,
+    data: Vec<u8>,
+}
+
+impl TexturePage {
+    /// Width and height of the page in pixels.
+    pub fn extent(&self) -> [u32; 2] {
+        self.extent
+    }
+
+    /// Checked storage layout, without inferred scene color/alpha semantics.
+    pub fn format(&self) -> TextureFormat {
+        self.format
+    }
+
+    /// Packed rows for RGBA8/R8, or row-major 4 × 4 BC3 blocks.
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+}
+
+struct PageLocation {
+    offset: u64,
+    stored: u64,
+    declared: u64,
+    compressed: bool,
+}
+
+struct Index {
+    summary: TextureSummary,
+    locations: Vec<PageLocation>,
+    png: bool,
+}
+
+const MAX_PAGE_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_ENCODED_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Read-only TEX decoder session retaining one checked package index.
+///
+/// Indexing, hashing, I/O and decoding block. Use a tool or asset worker,
+/// never the host UI thread. A session holds the package open read-only,
+/// excluding writes/replacement, and hashes it once. Decoded pages are owned
+/// by the caller; concurrent calls and retained pages have no global budget.
+pub struct TextureDecoder {
+    package: Package,
+}
+
+impl TextureDecoder {
+    /// Open and validate the package/root, then stream its identity hash once.
+    pub fn open(source: &SceneSource) -> Result<Self, InspectionError> {
+        Ok(Self {
+            package: Package::open(source)?,
+        })
+    }
+
+    /// SHA-256 of the read-locked package, computed by [`Self::open`].
+    pub fn package_sha256(&self) -> &str {
+        &self.package.summary.sha256
+    }
+
+    /// Decode a base mip after validating the entire TEX metadata structure.
+    ///
+    /// Package-local assets take precedence over the installed engine root.
+    /// Raw/LZ4 RGBA8/R8/BC3 and PNG are supported. Other pages/mips are skipped,
+    /// not allocated. Malformed payloads, missing assets/pages and allocation
+    /// limits return an asset-named error. Encoded payloads are limited to
+    /// 64 MiB and decoded storage to 256 MiB. PNG conversion preserves code
+    /// values and alpha, without applying gamma or color profiles.
+    pub fn decode_page(&self, asset: &str, page: u32) -> Result<TexturePage, InspectionError> {
+        let mut reader = self
+            .package
+            .reader(asset)?
+            .ok_or_else(|| InspectionError::invalid(asset, "texture asset is missing"))?;
+        let index = index(&mut reader)?;
+        let summary = index
+            .summary
+            .pages
+            .get(page as usize)
+            .ok_or_else(|| reader.invalid("texture page index is out of range"))?;
+        let location = &index.locations[page as usize];
+        if summary.decoded_bytes > MAX_PAGE_BYTES {
+            return Err(reader.invalid("decoded page exceeds 256 MiB"));
+        }
+        if location.compressed {
+            let limit = if index.png {
+                MAX_ENCODED_BYTES
+            } else {
+                MAX_PAGE_BYTES
+            };
+            if location.declared == 0 || location.declared > limit {
+                return Err(reader.invalid("LZ4 decoded length exceeds allocation limit"));
+            }
+        }
+        let encoded = index.png || location.compressed;
+        reader.seek_to(location.offset)?;
+        let payload = reader.bytes(
+            location.stored,
+            if encoded {
+                MAX_ENCODED_BYTES
+            } else {
+                MAX_PAGE_BYTES
+            },
+        )?;
+        let payload = if location.compressed {
+            let mut decoded = vec![0; location.declared as usize];
+            let written = lz4_flex::block::decompress_into(&payload, &mut decoded)
+                .map_err(|error| reader.invalid(format!("invalid LZ4 payload: {error}")))?;
+            if written != decoded.len() {
+                return Err(reader.invalid("LZ4 decoded length disagrees with declaration"));
+            }
+            decoded
+        } else {
+            payload
+        };
+        let data = if index.png {
+            decode_png(&reader, &payload, summary.extent)?
+        } else {
+            payload
+        };
+        if data.len() as u64 != summary.decoded_bytes {
+            return Err(reader.invalid("decoded payload disagrees with page layout"));
+        }
+        Ok(TexturePage {
+            extent: summary.extent,
+            format: match index.summary.format {
+                0 => TextureFormat::Rgba8,
+                4 => TextureFormat::Bc3,
+                9 => TextureFormat::R8,
+                _ => unreachable!("index validated the pixel format"),
+            },
+            data,
+        })
+    }
+}
+
+fn decode_png(
+    reader: &AssetReader,
+    payload: &[u8],
+    extent: [u32; 2],
+) -> Result<Vec<u8>, InspectionError> {
+    let failure =
+        |error: png::DecodingError| reader.invalid(format!("invalid PNG payload: {error}"));
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(payload));
+    decoder.set_limits(png::Limits {
+        bytes: MAX_ENCODED_BYTES as usize,
+    });
+    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+    let mut image = decoder.read_info().map_err(failure)?;
+    if [image.info().width, image.info().height] != extent
+        || image.info().animation_control.is_some()
+    {
+        return Err(reader.invalid("PNG dimensions or animation disagree with TEX page"));
+    }
+    let length = image
+        .output_buffer_size()
+        .ok_or_else(|| reader.invalid("PNG output size overflow"))?;
+    if length as u64 > layout_bytes(0, extent) {
+        return Err(reader.invalid("PNG output exceeds page layout"));
+    }
+    let mut pixels = vec![0; length];
+    let info = image.next_frame(&mut pixels).map_err(failure)?;
+    image.finish().map_err(failure)?;
+    pixels.truncate(info.buffer_size());
+    if info.bit_depth != png::BitDepth::Eight {
+        return Err(reader.invalid("unsupported PNG output depth"));
+    }
+    if info.color_type == png::ColorType::Rgba {
+        return Ok(pixels);
+    }
+    let mut rgba = Vec::with_capacity(layout_bytes(0, extent) as usize);
+    for pixel in pixels.chunks_exact(info.color_type.samples()) {
+        let value = match info.color_type {
+            png::ColorType::Rgb => [pixel[0], pixel[1], pixel[2], 255],
+            png::ColorType::Grayscale => [pixel[0], pixel[0], pixel[0], 255],
+            png::ColorType::GrayscaleAlpha => [pixel[0], pixel[0], pixel[0], pixel[1]],
+            _ => return Err(reader.invalid("unsupported PNG output color type")),
+        };
+        rgba.extend_from_slice(&value);
+    }
+    Ok(rgba)
+}
 
 pub(crate) fn inspect(reader: &mut AssetReader) -> Result<TextureSummary, InspectionError> {
+    Ok(index(reader)?.summary)
+}
+
+fn index(reader: &mut AssetReader) -> Result<Index, InspectionError> {
     let mut signatures = vec![reader.signature()?, reader.signature()?];
     if signatures != ["TEXV0005", "TEXI0001"] {
         return Err(reader.invalid("unsupported TEX header signatures"));
@@ -45,6 +249,7 @@ pub(crate) fn inspect(reader: &mut AssetReader) -> Result<TextureSummary, Inspec
         return Err(reader.invalid("unsupported embedded TEX video"));
     }
     let mut pages = Vec::new();
+    let mut locations = Vec::new();
     for page in 0..page_count {
         let mips = reader.count(16, "mip levels")?;
         if mips == 0 {
@@ -85,8 +290,13 @@ pub(crate) fn inspect(reader: &mut AssetReader) -> Result<TextureSummary, Inspec
                     reader.invalid("mip decoded length disagrees with pixel format and dimensions")
                 );
             }
-            reader.skip(stored)?;
             if level == 0 {
+                locations.push(PageLocation {
+                    offset: reader.position,
+                    stored,
+                    declared,
+                    compressed: compression == 1,
+                });
                 pages.push(PageSummary {
                     extent: mip_extent,
                     mips,
@@ -95,6 +305,7 @@ pub(crate) fn inspect(reader: &mut AssetReader) -> Result<TextureSummary, Inspec
                     decoded_mip_bytes: 0,
                 });
             }
+            reader.skip(stored)?;
         }
         pages
             .last_mut()
@@ -157,14 +368,18 @@ pub(crate) fn inspect(reader: &mut AssetReader) -> Result<TextureSummary, Inspec
     if reader.position != reader.length {
         return Err(reader.invalid("unexpected trailing TEX data"));
     }
-    Ok(TextureSummary {
-        path: reader.asset.clone(),
-        format,
-        extent,
-        signatures,
-        pages,
-        frames,
-        duration_seconds,
+    Ok(Index {
+        summary: TextureSummary {
+            path: reader.asset.clone(),
+            format,
+            extent,
+            signatures,
+            pages,
+            frames,
+            duration_seconds,
+        },
+        locations,
+        png: codec == 13,
     })
 }
 

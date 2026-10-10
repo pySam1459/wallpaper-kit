@@ -2,7 +2,7 @@
 
 ## Status
 
-Blank verification reports one measured native idle interval with process CPU time, working set and handles. [Diagnostic motion](diagnostic-motion.md) records a separate warmed run's readiness percentiles, missed deadlines, skipped slots and acquisition duration, plus native presentation-call return samples. Full scene metrics, GPU timing, host input latency and steady-state acceptance remain planned; proposed scene budgets are in the specification.
+Blank verification reports one measured native idle interval with process CPU time, working set and handles. [Diagnostic motion](diagnostic-motion.md) records a separate warmed run's readiness percentiles, missed deadlines, skipped slots and acquisition duration, plus native presentation-call return samples. [TEX page checks](texture-pages.md) record source payload bytes, cumulative uploads and diagnostic decode times, with repeated draws/resize verifying upload reuse. Full scene metrics, GPU timing, host input latency and steady-state acceptance remain planned; proposed scene budgets are in the specification.
 
 ## Consumer outcome
 

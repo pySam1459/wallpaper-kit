@@ -8,7 +8,7 @@ The diagnostic renderer reuses at most three shared output textures, including r
 
 A retained frame leases its output. If all three outputs are leased, rendering stops until an older frame is released. The renderer itself retains the latest frame: dropping only the consumer's reference to that latest frame does not free its slot. Pending resize and motion requests still coalesce during saturation, and shutdown remains possible. Retained frames stay readable after resize and healthy-device shutdown.
 
-`Renderer::try_output_stats()` provides a nonblocking metadata snapshot. It returns `None` when that metadata is locked. Reports expose owned texture count/payload bytes, cumulative allocations/submissions/publications and lease saturation. These counters describe output resources, not total process or physical GPU memory.
+`Renderer::try_output_stats()` provides a nonblocking metadata snapshot. It returns `None` when that metadata is locked. Reports expose owned output count/payload bytes, cumulative allocations/submissions/publications and lease saturation. Source-page bytes and uploads are recorded separately for [TEX drawing](texture-pages.md). These counters do not measure total process or physical GPU memory.
 
 ## Worker and GPU ownership
 

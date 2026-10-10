@@ -6,7 +6,7 @@ The project starts on Windows. The consuming application's responsiveness takes 
 
 ## Status
 
-The Rust library renders blank Direct3D 11 textures and a controlled-time diagnostic animation through a bounded reusable output pool. It also inspects local scene packages and their asset dependencies through a read-only public API. A native Windows viewer and headless verification runners consume its public API. Scene rendering, production animation, photo/video playback, and framework adapters remain unimplemented.
+The Rust library renders blank Direct3D 11 textures, controlled-time diagnostic motion and decoded TEX pages through a bounded reusable output pool. It also inspects local scene packages and their asset dependencies through a read-only public API. A native Windows viewer and headless verification runners consume its public API. [TEX page verification](docs/texture-pages.md) covers PNG/LZ4 decoding and RGBA8/R8/BC3 drawing. Authored scene rendering, production animation, photo/video playback, and framework adapters remain unimplemented.
 
 The [renderer specification](docs/spec/scene-renderer.md) defines the architecture, dependency choices, delivery gates, and measurable MVP acceptance criteria.
 
@@ -88,7 +88,7 @@ Threads and separate processes still share hardware resources. Zero impact canno
 
 ## Architecture direction
 
-The core is a Rust library with a diagnostic Direct3D 11 backend and scene-inspection modules. Production asset streaming, scene state and animation follow later. GPUI remains an optional integration layer rather than a core dependency. JSON parsing and hashing are library dependencies for inspection; Winit and PNG capture tooling remain example-only. A checked Cargo dependency boundary enforces the host separation.
+The core is a Rust library with a diagnostic Direct3D 11 backend, scene inspection and TEX page decoding/drawing. Production asset streaming, scene state and animation follow later. GPUI remains an optional integration layer rather than a core dependency. JSON parsing, hashing, PNG and LZ4 decoding are library dependencies; Winit and capture/report consumers remain example-only. A checked Cargo dependency boundary enforces the host separation.
 
 The blank prototype verifies same-adapter Direct3D 11 texture sharing into an independent native consumer device. This does not settle production scene performance or GPUI integration. Media Foundation remains a candidate for video decoding; `wgpu` is a portability alternative, and raw Vulkan is not a committed requirement.
 

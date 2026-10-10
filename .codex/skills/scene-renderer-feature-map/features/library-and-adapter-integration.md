@@ -2,7 +2,7 @@
 
 ## Status
 
-The public blank/fixture API and native/headless consumers are implemented; use [blank verification](blank-renderer.md) and [diagnostic motion](diagnostic-motion.md). A native consumer imports immutable frames on a separate same-adapter D3D11 device. C ABI, GPUI, Electron, WebView2 and embedded Chromium adapters remain planned.
+The public blank/motion/page API and native/headless consumers are implemented; use [blank verification](blank-renderer.md), [diagnostic motion](diagnostic-motion.md) and [TEX page drawing](texture-pages.md). A native consumer imports immutable frames on a separate same-adapter D3D11 device. C ABI, GPUI, Electron, WebView2 and embedded Chromium adapters remain planned.
 
 ## Consumer outcome
 

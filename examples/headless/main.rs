@@ -59,7 +59,7 @@ fn wait_stats(renderer: &Renderer, ready: impl Fn(OutputStats) -> bool) -> Resul
 }
 
 fn main() -> Result<()> {
-    let (output, mode) = support::options()?;
+    let (output, mode) = support::options(std::env::args().skip(1))?;
     let started = Instant::now();
     let (renderer, events) = Renderer::new(Size::new(640, 360)?, mode)?;
     let first = wait_frame(&renderer, &events, 1)?;

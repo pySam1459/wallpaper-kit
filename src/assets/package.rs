@@ -143,7 +143,7 @@ fn canonical(path: &Path) -> Result<PathBuf, InspectionError> {
         .map_err(|error| InspectionError::io(&path.display().to_string(), error))
 }
 
-/// A file-backed, range-checked view. No texture payload is allocated here.
+/// A file-backed, range-checked view of one asset.
 pub(crate) struct AssetReader {
     file: File,
     start: u64,
@@ -249,6 +249,17 @@ impl AssetReader {
         self.file
             .seek(SeekFrom::Start(self.start + self.position))
             .map_err(|error| InspectionError::io(&self.asset, error))?;
+        Ok(())
+    }
+
+    pub(crate) fn seek_to(&mut self, position: u64) -> Result<(), InspectionError> {
+        if position > self.length {
+            return Err(self.invalid("seek extends beyond asset"));
+        }
+        self.file
+            .seek(SeekFrom::Start(self.start + position))
+            .map_err(|error| InspectionError::io(&self.asset, error))?;
+        self.position = position;
         Ok(())
     }
 

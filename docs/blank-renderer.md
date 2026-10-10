@@ -14,7 +14,7 @@ The library owns a worker, its Direct3D 11 immediate context, one pending reques
 
 `Frame::readback` is an explicit blocking diagnostic operation. It is absent from ordinary native presentation. No raw shared handle is exposed as a public API.
 
-The core uses Windows bindings, JSON parsing and hashing for scene inspection. Winit and PNG encoding are development dependencies used by the examples. `scripts/check-boundaries.ps1` traverses production/build dependency edges and rejects host packages entering the core. Its negative fixture changes the real Winit edge to a production edge and confirms rejection.
+The core uses Windows bindings, JSON parsing and hashing for scene inspection, plus PNG/LZ4 for [TEX decoding](texture-pages.md). Winit remains an example dependency. `scripts/check-boundaries.ps1` traverses production/build dependency edges and rejects host packages entering the core. Its negative fixture changes the real Winit edge to a production edge and confirms rejection.
 
 This is an experimental API. It reuses at most three output textures, pauses when retained frames exhaust the pool and resumes after release. `Frame::sequence()` identifies each accepted publication; `Renderer::try_output_stats()` exposes nonblocking output counters. Scene residency budgets, production animation, device-loss recovery and production host adapters remain future work.
 
@@ -41,7 +41,7 @@ Requires PowerShell 7 and the Windows MSVC build toolchain:
 pwsh -File ./scripts/verify.ps1
 ```
 
-The command runs format and Clippy checks, tests, Rustdoc, example builds, the dependency checker and its negative fixture, the headless blank and motion consumers, and an owned native-viewer scenario. Each run retains the dependency result in `boundaries.json`. Native operations wait for replies and verify process identity. The scenario checks blank capture/idle/resize, fixture capture/play/pause, and process exit. Failure cleanup targets only the process handle created for that run.
+The command runs format and Clippy checks, tests, Rustdoc, example builds, the dependency checker and its negative fixture, headless blank/motion/texture consumers, and owned native-viewer scenarios. Each run retains the dependency result in `boundaries.json`. Native operations wait for replies and verify process identity. The scenarios check blank and texture capture/idle/resize, motion capture/play/pause, and process exit. Failure cleanup targets only the process handle created for that run.
 
 ```powershell
 pwsh -File ./scripts/verify.ps1 -Software -SkipNative
@@ -74,7 +74,7 @@ Resize replies after a frame matching the actual window size has been presented.
 pwsh -File ./.codex/skills/control-scene-renderer/scripts/doctor.ps1
 ```
 
-Doctor remains read-only. It reports diagnostic readiness only when a successful blank/motion/native receipt from this checkout matches the current runtime source set, source hashes and four executable hashes. A build without a matching receipt is unverified. Exit codes are 0 for ready, 2 for blocked/unverified, and 1 for a doctor failure.
+Doctor remains read-only. It reports diagnostic readiness only when a successful blank/motion/texture/native receipt from this checkout matches the current runtime source set, source hashes and five executable hashes. A build without a matching receipt is unverified. Exit codes are 0 for ready, 2 for blocked/unverified, and 1 for a doctor failure.
 
 Supplying `-ScenePath` checks file existence and reports scene verification as blocked even when the blank runtime has been verified. It does not open or modify the package. A prior receipt describes its recorded build/configuration; it is not proof of general hardware support.
 

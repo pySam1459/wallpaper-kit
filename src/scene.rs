@@ -4,7 +4,7 @@ use std::{fmt, path::PathBuf};
 
 mod inspect;
 
-/// Explicit read-only inputs for inspecting a Wallpaper Engine package.
+/// Explicit read-only package and engine roots for inspection or TEX decoding.
 #[derive(Debug, Clone)]
 pub struct SceneSource {
     /// Path to the local `scene.pkg` file.
@@ -260,7 +260,7 @@ impl SceneInspection {
     }
 }
 
-/// Fatal I/O or structural failure preventing a reliable inspection report.
+/// Asset-named I/O, structural or payload failure in inspection/TEX decoding.
 #[derive(Debug)]
 pub struct InspectionError {
     asset: String,

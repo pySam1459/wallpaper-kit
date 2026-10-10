@@ -10,8 +10,7 @@ use std::{
 
 pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-pub fn options() -> Result<(PathBuf, DeviceMode)> {
-    let mut args = std::env::args().skip(1);
+pub fn options(mut args: impl Iterator<Item = String>) -> Result<(PathBuf, DeviceMode)> {
     let mut output = None;
     let mut mode = DeviceMode::Hardware;
     while let Some(arg) = args.next() {
@@ -52,7 +51,8 @@ pub fn frame_info(frame: &Frame) -> Value {
         "frame_id": frame.id(), "sequence": frame.sequence(),
         "width": frame.size().width(), "height": frame.size().height(),
         "backend": "direct3d11", "format": "rgba8-unorm", "alpha": "opaque",
-        "content": if frame.fixture_time().is_some() { "motion-fixture" } else { "blank" },
+        "content": if frame.fixture_time().is_some() { "motion-fixture" } else if frame.texture_format().is_some() { "texture-page" } else { "blank" },
+        "source_format": frame.texture_format().map(|format| format!("{format:?}")),
         "fixture_time_ms": frame.fixture_time().map(|time| time.as_millis()),
         "adapter": {"name": adapter.name, "vendor_id": adapter.vendor_id, "device_id": adapter.device_id,
             "luid": adapter.luid, "software": adapter.software},
@@ -62,6 +62,7 @@ pub fn frame_info(frame: &Frame) -> Value {
 pub fn pool_info(stats: OutputStats) -> Value {
     json!({"resident_textures":stats.resident_textures,"resident_bytes":stats.resident_bytes,
         "texture_allocations":stats.texture_allocations,"submitted_frames":stats.submitted_frames,
+        "source_texture_bytes":stats.source_texture_bytes,"texture_uploads":stats.texture_uploads,
         "published_frames":stats.published_frames,"waiting_for_frame_release":stats.waiting_for_frame_release})
 }
 

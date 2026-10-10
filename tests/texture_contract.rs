@@ -1,0 +1,314 @@
+//! Public TEX decoding contract with generated payloads.
+
+#[path = "../examples/support/texture.rs"]
+mod fixture;
+
+use scene_renderer::{DeviceMode, Frame, Renderer, Size};
+use scene_renderer::{SceneSource, TextureDecoder, TextureFormat};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+};
+use std::{
+    sync::{Arc, mpsc::Receiver},
+    time::{Duration, Instant},
+};
+
+static RUN: AtomicU64 = AtomicU64::new(0);
+
+struct Package {
+    root: PathBuf,
+}
+
+impl Package {
+    fn new(texture: &[u8]) -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "texture-contract-{}-{}",
+            std::process::id(),
+            RUN.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).unwrap();
+        fs::create_dir(root.join("engine")).unwrap();
+        fs::write(
+            root.join("scene.pkg"),
+            fixture::package(&[("image.tex", texture)]),
+        )
+        .unwrap();
+        Self { root }
+    }
+    fn source(&self) -> SceneSource {
+        SceneSource {
+            package: self.root.join("scene.pkg"),
+            engine_assets: self.root.join("engine"),
+        }
+    }
+}
+
+impl Drop for Package {
+    fn drop(&mut self) {
+        assert_eq!(
+            self.root.canonicalize().unwrap(),
+            self.root
+                .parent()
+                .unwrap()
+                .canonicalize()
+                .unwrap()
+                .join(self.root.file_name().unwrap())
+        );
+        fs::remove_dir_all(&self.root).unwrap();
+    }
+}
+
+#[test]
+fn decodes_raw_lz4_and_png_without_color_or_block_conversion() {
+    for (format, extent, data, expected) in [
+        (0, [2, 2], fixture::rgba(), TextureFormat::Rgba8),
+        (9, [3, 1], vec![0, 128, 255], TextureFormat::R8),
+        (4, [8, 8], fixture::bc3(), TextureFormat::Bc3),
+    ] {
+        for compressed in [false, true] {
+            let package = Package::new(&fixture::tex(format, extent, &data, compressed, false));
+            let page = TextureDecoder::open(&package.source())
+                .unwrap()
+                .decode_page("image.tex", 0)
+                .unwrap();
+            assert_eq!(page.extent(), extent);
+            assert_eq!(page.format(), expected);
+            assert_eq!(page.data(), data);
+        }
+    }
+    for compressed in [false, true] {
+        let rgba = fixture::rgba();
+        let png = fixture::png([2, 2], png::ColorType::Rgba, &rgba);
+        let package = Package::new(&fixture::tex(0, [2, 2], &png, compressed, true));
+        assert_eq!(
+            TextureDecoder::open(&package.source())
+                .unwrap()
+                .decode_page("image.tex", 0)
+                .unwrap()
+                .data(),
+            rgba
+        );
+    }
+}
+
+#[test]
+fn expands_png_rgb_and_gray_alpha_to_rgba() {
+    for (color, bytes, expected) in [
+        (
+            png::ColorType::Rgb,
+            vec![1, 2, 3, 4, 5, 6],
+            vec![1, 2, 3, 255, 4, 5, 6, 255],
+        ),
+        (
+            png::ColorType::GrayscaleAlpha,
+            vec![3, 7, 5, 9],
+            vec![3, 3, 3, 7, 5, 5, 5, 9],
+        ),
+    ] {
+        let png = fixture::png([2, 1], color, &bytes);
+        let package = Package::new(&fixture::tex(0, [2, 1], &png, false, true));
+        assert_eq!(
+            TextureDecoder::open(&package.source())
+                .unwrap()
+                .decode_page("image.tex", 0)
+                .unwrap()
+                .data(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn rejects_corrupt_payloads_and_png_extent_mismatch() {
+    let png = fixture::png([2, 1], png::ColorType::Rgb, &[1; 6]);
+    for texture in [
+        fixture::tex(0, [2, 2], &[0; 16], false, true),
+        fixture::tex(0, [2, 2], &png, false, true),
+        fixture::tex(0, [2, 2], &[0; 4], true, false),
+    ] {
+        let package = Package::new(&texture);
+        let error = TextureDecoder::open(&package.source())
+            .unwrap()
+            .decode_page("image.tex", 0)
+            .unwrap_err();
+        assert!(error.to_string().starts_with("image.tex:"));
+    }
+    // Invalid LZ4 back-reference offset zero, while metadata remains valid.
+    let mut texture = fixture::tex(0, [2, 2], &[0; 16], true, false);
+    texture.truncate(91);
+    texture[87..91].copy_from_slice(&3_u32.to_le_bytes());
+    texture.extend_from_slice(&[0, 0, 0]);
+    let package = Package::new(&texture);
+    assert!(
+        TextureDecoder::open(&package.source())
+            .unwrap()
+            .decode_page("image.tex", 0)
+            .is_err()
+    );
+}
+
+#[test]
+fn rejects_missing_assets_pages_and_allocation_bombs() {
+    let texture = fixture::tex(0, [2, 2], &fixture::rgba(), false, false);
+    let package = Package::new(&texture);
+    assert!(
+        TextureDecoder::open(&package.source())
+            .unwrap()
+            .decode_page("missing.tex", 0)
+            .is_err()
+    );
+    assert!(
+        TextureDecoder::open(&package.source())
+            .unwrap()
+            .decode_page("../image.tex", 0)
+            .is_err()
+    );
+    assert!(
+        TextureDecoder::open(&package.source())
+            .unwrap()
+            .decode_page("image.tex", 1)
+            .is_err()
+    );
+    let png = fixture::png([1, 1], png::ColorType::Rgba, &[0; 4]);
+    let oversized = Package::new(&fixture::tex(0, [16_384, 16_384], &png, false, true));
+    assert!(
+        TextureDecoder::open(&oversized.source())
+            .unwrap()
+            .decode_page("image.tex", 0)
+            .unwrap_err()
+            .to_string()
+            .contains("256 MiB")
+    );
+    let mut texture = fixture::tex(0, [2, 2], &png, true, true);
+    texture[83..87].copy_from_slice(&u32::MAX.to_le_bytes());
+    let oversized = Package::new(&texture);
+    assert!(
+        TextureDecoder::open(&oversized.source())
+            .unwrap()
+            .decode_page("image.tex", 0)
+            .is_err()
+    );
+}
+
+#[test]
+fn decodes_only_the_selected_base_mip_and_checks_unselected_ranges() {
+    let png = fixture::png([2, 2], png::ColorType::Rgba, &fixture::rgba());
+    let first = fixture::tex(0, [2, 2], b"invalid PNG", false, true);
+    let second = fixture::tex(0, [2, 2], &png, false, true);
+    let mut texture = first;
+    texture[55..59].copy_from_slice(&2_u32.to_le_bytes());
+    texture.extend_from_slice(&second[67..]);
+    let package = Package::new(&texture);
+    assert!(
+        TextureDecoder::open(&package.source())
+            .unwrap()
+            .decode_page("image.tex", 0)
+            .is_err()
+    );
+    assert_eq!(
+        TextureDecoder::open(&package.source())
+            .unwrap()
+            .decode_page("image.tex", 1)
+            .unwrap()
+            .data(),
+        fixture::rgba()
+    );
+
+    let mut texture = second;
+    texture[67..71].copy_from_slice(&2_u32.to_le_bytes());
+    let mip = fixture::tex(0, [1, 1], b"invalid PNG", false, true);
+    texture.extend_from_slice(&mip[71..]);
+    let package = Package::new(&texture);
+    assert_eq!(
+        TextureDecoder::open(&package.source())
+            .unwrap()
+            .decode_page("image.tex", 0)
+            .unwrap()
+            .data(),
+        fixture::rgba()
+    );
+    texture.pop();
+    let truncated = Package::new(&texture);
+    assert!(
+        TextureDecoder::open(&truncated.source())
+            .unwrap()
+            .decode_page("image.tex", 0)
+            .is_err()
+    );
+}
+
+fn wait_frame(renderer: &Renderer, events: &Receiver<()>, id: u64) -> Arc<Frame> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if let Some(frame) = renderer.try_frame().unwrap()
+            && frame.id() == id
+        {
+            return frame;
+        }
+        assert!(Instant::now() < deadline, "texture frame timed out");
+        let _ = events.recv_timeout(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn gpu_samples_all_storage_formats_and_preserves_old_frames() {
+    let (renderer, events) =
+        Renderer::new(Size::new(32, 24).unwrap(), DeviceMode::Software).unwrap();
+    for case in fixture::cases() {
+        let package = Package::new(&case.tex);
+        let page = Arc::new(
+            TextureDecoder::open(&package.source())
+                .unwrap()
+                .decode_page("image.tex", 0)
+                .unwrap(),
+        );
+        let id = renderer.render_texture_page(page.clone()).unwrap();
+        let first = wait_frame(&renderer, &events, id);
+        assert_eq!(first.texture_format(), Some(page.format()));
+        assert!(first.fixture_time().is_none());
+        fixture::check(&first.readback().unwrap(), case.extent, &case.rgba)
+            .unwrap_or_else(|error| panic!("{}: {error}", case.name));
+        for _ in 0..12 {
+            let id = renderer.render_texture_page(page.clone()).unwrap();
+            let frame = wait_frame(&renderer, &events, id);
+            fixture::check(&frame.readback().unwrap(), case.extent, &case.rgba).unwrap();
+        }
+        let id = renderer.resize(Size::new(31, 23).unwrap()).unwrap();
+        let resized = wait_frame(&renderer, &events, id);
+        fixture::check(&resized.readback().unwrap(), case.extent, &case.rgba).unwrap();
+        fixture::check(&first.readback().unwrap(), case.extent, &case.rgba).unwrap();
+        drop(resized);
+        drop(first);
+        let id = renderer.resize(Size::new(32, 24).unwrap()).unwrap();
+        drop(wait_frame(&renderer, &events, id));
+    }
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn texture_oracle_detects_orientation_alpha_and_channel_faults() {
+    let case = fixture::cases().remove(0);
+    let mut rgba = case.rgba.clone();
+    // Direct expected composition for the 2x2 corner fixture.
+    rgba[4..8].copy_from_slice(&[8, 140, 16, 255]);
+    rgba[8..12].copy_from_slice(&[16, 24, 32, 255]);
+    let mut pixels = scene_renderer::Pixels {
+        size: Size::new(2, 2).unwrap(),
+        rgba,
+    };
+    fixture::check(&pixels, case.extent, &case.rgba).unwrap();
+    let original = pixels.rgba.clone();
+    pixels.rgba.rotate_left(8);
+    assert!(fixture::check(&pixels, case.extent, &case.rgba).is_err());
+    pixels.rgba = original;
+    pixels.rgba[3] = 254;
+    assert!(fixture::check(&pixels, case.extent, &case.rgba).is_err());
+    pixels.rgba[3] = 255;
+    pixels.rgba.swap(0, 2);
+    assert!(fixture::check(&pixels, case.extent, &case.rgba).is_err());
+    pixels.rgba.swap(0, 2);
+    pixels.rgba[8..12].copy_from_slice(&[0, 0, 255, 255]);
+    assert!(fixture::check(&pixels, case.extent, &case.rgba).is_err());
+}

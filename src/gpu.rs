@@ -10,7 +10,12 @@ use windows::Win32::Graphics::Dxgi::Common::*;
 use windows::Win32::Graphics::Dxgi::*;
 use windows::core::{HRESULT, Interface};
 
-use crate::{BLANK_RGBA, Content, DeviceMode, Error, OutputStats, Request, Shared, Size, motion};
+use crate::{
+    BLANK_RGBA, Content, DeviceMode, Error, OutputStats, Request, Shared, Size, TextureFormat,
+    TexturePage, motion,
+};
+
+mod image;
 
 /// Adapter identity used by the producer. Adapter LUID is local to this system.
 #[derive(Clone, Debug)]
@@ -35,6 +40,7 @@ pub(crate) struct Gpu {
     slots: Vec<Slot>,
     allocations: u64,
     submissions: u64,
+    image: Option<image::ImageRenderer>,
 }
 
 struct Slot {
@@ -113,6 +119,7 @@ impl Gpu {
             slots: Vec::new(),
             allocations: 0,
             submissions: 0,
+            image: None,
         })
     }
 
@@ -176,11 +183,13 @@ impl Gpu {
                 .sum(),
             texture_allocations: self.allocations,
             submitted_frames: self.submissions,
+            source_texture_bytes: self.image.as_ref().map_or(0, |image| image.bytes()),
+            texture_uploads: self.image.as_ref().map_or(0, |image| image.uploads),
             ..Default::default()
         }
     }
 
-    pub(crate) fn try_submit(&mut self, request: Request) -> Result<Submission, Error> {
+    pub(crate) fn try_submit(&mut self, request: &Request) -> Result<Submission, Error> {
         debug_assert!(!self.has_pending());
         let mut selected = None;
         let mut busy = false;
@@ -245,13 +254,33 @@ impl Gpu {
                 Submission::Leased
             });
         };
+        if let Content::TexturePage(page) = &request.content {
+            // Release GPU access during fallible compilation/upload. No Frame
+            // can appear for this available slot while the worker prepares it.
+            // SAFETY: slot selection acquired this output's key 0.
+            unsafe {
+                self.slots[index].output.mutex.ReleaseSync(0)?;
+            }
+            if self.image.is_none() {
+                self.image = Some(image::ImageRenderer::new(&self.device)?);
+            }
+            self.image
+                .as_mut()
+                .expect("image pipeline initialized")
+                .prepare(&self.device, page)?;
+            if !acquire(&self.slots[index].output.mutex)? {
+                return Ok(Submission::Busy);
+            }
+        } else if let Some(image) = &mut self.image {
+            image.release_texture();
+        }
         let slot = &mut self.slots[index];
         let output = &slot.output;
         // Prepare fallible interface access before drawing. Always release the
         // acquired mutex, including when interface lookup fails.
-        let context1 = match request.content {
+        let context1 = match &request.content {
             Content::MotionFixture(_) => self.context.cast::<ID3D11DeviceContext1>().map(Some),
-            Content::Blank => Ok(None),
+            Content::Blank | Content::TexturePage(_) => Ok(None),
         };
         let context1 = match context1 {
             Ok(context) => context,
@@ -270,8 +299,8 @@ impl Gpu {
                 &output.view,
                 &BLANK_RGBA.map(|component| f32::from(component) / 255.0),
             );
-            if let Content::MotionFixture(time) = request.content {
-                let [left, top, right, bottom] = motion::rectangle(request.size, time);
+            if let Content::MotionFixture(time) = &request.content {
+                let [left, top, right, bottom] = motion::rectangle(request.size, *time);
                 context1
                     .expect("motion fixture requires context1")
                     .ClearView(
@@ -285,12 +314,19 @@ impl Gpu {
                         }]),
                     );
             }
+            if let Content::TexturePage(page) = &request.content {
+                self.image.as_ref().expect("image prepared").draw(
+                    &self.context,
+                    output,
+                    page.format(),
+                );
+            }
             output.mutex.ReleaseSync(0)?;
             self.context.End(&output.query);
             self.context.Flush();
         }
         slot.state = SlotState::Submitted {
-            request,
+            request: request.clone(),
             started: Instant::now(),
         };
         self.submissions += 1;
@@ -304,7 +340,7 @@ impl Gpu {
         shared: Weak<Shared>,
     ) -> Result<Option<Arc<Frame>>, Error> {
         for slot in &mut self.slots {
-            let SlotState::Submitted { request, started } = slot.state else {
+            let SlotState::Submitted { request, started } = &slot.state else {
                 continue;
             };
             // SAFETY: exclusive worker immediate context; live query. Status
@@ -337,9 +373,13 @@ impl Gpu {
                 sequence,
                 output: slot.output.clone(),
                 shared,
-                fixture_time: match request.content {
-                    Content::Blank => None,
-                    Content::MotionFixture(time) => Some(time),
+                fixture_time: match &request.content {
+                    Content::Blank | Content::TexturePage(_) => None,
+                    Content::MotionFixture(time) => Some(*time),
+                },
+                texture_format: match &request.content {
+                    Content::TexturePage(page) => Some(page.format()),
+                    _ => None,
                 },
             });
             slot.state = SlotState::Leased(Arc::downgrade(&frame));
@@ -404,12 +444,18 @@ pub struct Frame {
     output: Arc<Output>,
     shared: Weak<Shared>,
     fixture_time: Option<Duration>,
+    texture_format: Option<TextureFormat>,
 }
 
 impl Frame {
-    /// Explicit fixture playback time, or `None` for blank output.
+    /// Explicit fixture playback time, or `None` for blank/texture output.
     pub fn fixture_time(&self) -> Option<Duration> {
         self.fixture_time
+    }
+
+    /// Source storage of a diagnostic full-page draw, or `None` otherwise.
+    pub fn texture_format(&self) -> Option<TextureFormat> {
+        self.texture_format
     }
 
     /// Request identity, including skipped/coalesced requests.

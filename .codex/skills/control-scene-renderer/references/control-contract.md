@@ -4,7 +4,7 @@
 
 `scripts/doctor.ps1` resolves the repository from its own location, so invoking the copy in a worktree inspects that worktree. It reads filesystem presence and tool versions without building, downloading, launching a viewer, or contacting an existing application.
 
-The JSON report contains checkout and toolchain identity, manifest presence, scene input existence, readiness, blockers, verification scope, and the matching evidence receipt. Scene input is never opened or parsed. Diagnostic runtime readiness requires passed blank, motion and native scenarios with a source-set/hash and three executable-hash matches for this checkout. A build alone is insufficient.
+The JSON report contains checkout and toolchain identity, manifest presence, scene input existence, readiness, blockers, verification scope, and the matching evidence receipt. Scene input is never opened or parsed. Diagnostic runtime readiness requires passed blank, motion, texture and native scenarios with a source-set/hash and five executable-hash matches for this checkout. A build alone is insufficient.
 
 Exit code `0` means the diagnostic runtime has matching verified evidence. Code `2` means blocked or unverified. Code `1` means doctor failed. Supplying a scene path remains blocked because loading is unavailable. Headless-only evidence is identified separately and does not establish native readiness.
 
@@ -13,6 +13,8 @@ Exit code `0` means the diagnostic runtime has matching verified evidence. Code 
 `scripts/verify.ps1` builds and runs the consumers. `scripts/verify-native.ps1` launches a unique native instance, reads its readiness event, sends JSON inspect/resize/capture/stop commands over redirected streams, and verifies exit. It retains only its own process handle for cleanup. [The protocol](../../../../docs/blank-renderer.md#controller-protocol) documents actual commands.
 
 Headless verification checks actual GPU output, idle behavior, resize, input bounds and retained-frame lifetime. Native captures check the imported/copied swap-chain back buffer. One measured native idle interval reports process CPU time, working set and handle count. GPU timings and host input latency remain unavailable.
+
+The [TEX page procedure](../../../../docs/texture-pages.md) adds selected payload decoding, independent format/alpha/sampling checks, upload reuse and a native PNG/LZ4 fixture. Source-page memory is reported separately from the three-output pool. This does not implement authored scene layers or sprite animation.
 
 The [motion procedure](../../../../docs/motion-verification.md) adds fixed-time pixel checks, oracle fault cases, separate live readiness telemetry and native fixture step/play/pause controls. Contact sheets establish checkpoint appearance; raw live observations establish readiness or presentation-call cadence. They do not measure displayed frames.
 

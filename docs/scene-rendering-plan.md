@@ -1,6 +1,6 @@
 # Scene rendering implementation plan
 
-Status: implementation started, 10 October 2026. [Read-only inspection](scene-inspection.md) and [bounded frame exchange](frame-pool.md) are implemented. Runtime scene compilation and textured rendering remain proposed. This plan extends the [specification](spec/scene-renderer.md). It does not establish scene support or measured scene playback performance. The diagnostic motion fixture supplies the verified baseline.
+Status: implementation started, 10 October 2026. [Read-only inspection](scene-inspection.md), [bounded frame exchange](frame-pool.md) and [TEX page decoding/drawing](texture-pages.md) are implemented. The first stage-3 slice establishes storage formats and diagnostic full-page GPU sampling. Runtime scene compilation, authored geometry/order/crops and subsequent animation/effects remain proposed. This plan extends the [specification](spec/scene-renderer.md). It does not establish scene support or measured scene playback performance.
 
 ## Target and assumptions
 
@@ -140,9 +140,9 @@ Keep one decode operation active. A seek or scene replacement invalidates older 
 
 Keep the existing focused `windows` bindings and standard threads/channels. Add the Windows shader compiler binding only when the first HLSL draw requires it. Pin and review versions, licenses, MSRV and enabled features before adding dependencies.
 
-Use [Serde](https://github.com/serde-rs/serde) and the already pinned `serde_json` for runtime asset JSON. Move the existing [PNG crate](https://github.com/image-rs/image-png) into production dependencies when TEX decoding requires PNG. This is a narrower MVP choice than the specification's candidate `image` dependency; broader photo codecs can follow their own milestone. Keep screenshot/report usage in examples.
+Use [Serde](https://github.com/serde-rs/serde) and the already pinned `serde_json` for runtime asset JSON. The pinned [PNG crate](https://github.com/image-rs/image-png) now decodes TEX payloads in the library; screenshot/report usage remains in examples. This is a narrower MVP choice than the specification's candidate `image` dependency; broader photo codecs can follow their own milestone.
 
-Use [lz4_flex](https://github.com/PSeitz/lz4_flex) with safe decoding for the required TEX blocks. Use [glam](https://github.com/bitshifter/glam-rs) when transforms and perspective effects require it. Add error or tracing helper crates only if the implemented errors/instrumentation warrant them. Do not introduce framework, video, scripting or general shader-translation dependencies for this target.
+The [TEX page guide](texture-pages.md) records the pinned [lz4_flex](https://github.com/PSeitz/lz4_flex) safe decoder and Windows shader compiler binding. Use [glam](https://github.com/bitshifter/glam-rs) when transforms and perspective effects require it. Add error or tracing helper crates only if the implemented errors/instrumentation warrant them. Do not introduce framework, video, scripting or general shader-translation dependencies for this target.
 
 ## Delivery stages and verification
 

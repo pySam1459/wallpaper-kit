@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory)][string]$Executable,
     [Parameter(Mandatory)][string]$Output,
-    [switch]$Software
+    [switch]$Software,
+    [switch]$TextureFixture
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,6 +19,7 @@ $start.WorkingDirectory = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $start.ArgumentList.Add('--output')
 $start.ArgumentList.Add($outputPath)
 if ($Software) { $start.ArgumentList.Add('--software') }
+if ($TextureFixture) { $start.ArgumentList.Add('--texture-fixture') }
 $process = [Diagnostics.Process]::new()
 $process.StartInfo = $start
 $transcript = [Collections.Generic.List[object]]::new()
@@ -50,7 +52,9 @@ try {
     $ready = Read-Reply
     if ($ready.event -ne 'ready' -or $ready.state.pid -ne $process.Id) { throw 'Viewer readiness identity mismatch' }
     $initialCapture = Send-Command @{id=1; command='capture'; name='initial.png'}
-    if (($initialCapture.uniform_rgba -join ',') -ne '16,24,32,255') { throw 'Initial native GPU pixels differ' }
+    if ($TextureFixture) {
+        if ($initialCapture.texture_check -ne $true) { throw 'Initial native texture pixels differ' }
+    } elseif (($initialCapture.uniform_rgba -join ',') -ne '16,24,32,255') { throw 'Initial native GPU pixels differ' }
     $before = Send-Command @{id=2; command='inspect'}
     $sampleStart = Get-Date
     $cpuBefore = $process.TotalProcessorTime.TotalMilliseconds
@@ -68,7 +72,9 @@ try {
     $resized = Send-Command @{id=4; command='resize'; width=317; height=193}
     if ($resized.state.frame.width -ne 317 -or $resized.state.frame.height -ne 193) { throw 'Viewer resize dimensions differ' }
     $resizedCapture = Send-Command @{id=5; command='capture'; name='resized.png'}
-    if (($resizedCapture.uniform_rgba -join ',') -ne '16,24,32,255') { throw 'Resized native GPU pixels differ' }
+    if ($TextureFixture) {
+        if ($resizedCapture.texture_check -ne $true) { throw 'Resized native texture pixels differ' }
+    } elseif (($resizedCapture.uniform_rgba -join ',') -ne '16,24,32,255') { throw 'Resized native GPU pixels differ' }
     $null = Send-Command @{id=6; command='fixture_at'; time_ms=0}
     $motionInitial = Send-Command @{id=7; command='capture'; name='motion-0000.png'}
     if ($motionInitial.motion_check -ne $true) { throw 'Native fixture start differs' }
@@ -98,8 +104,9 @@ try {
         idle_sample=[ordered]@{elapsed_ms=$elapsedMs; process_cpu_ms=($cpuAfter-$cpuBefore); working_set_bytes=$workingSet; handles=$handles;
             method='Process.TotalProcessorTime delta over measured wall time; one sample, includes host and helper threads'};
         cleanup='Owned process exited'; capture='GPU copy into native swap-chain back buffer, followed by diagnostic readback';
+        texture_fixture=[bool]$TextureFixture;
         motion_fixture=[ordered]@{checkpoint_pixels='passed'; live_samples=$live.Count; two_loops='passed'; paused_idle='passed'};
-        limits=@('Blank and diagnostic motion only.', 'Captures do not establish final desktop composition.', 'No GPU time or host input latency measured.');
+        limits=@('Blank, diagnostic texture pages and motion only.', 'Captures do not establish final desktop composition.', 'No GPU time or host input latency measured.');
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outputPath 'report.json') -Encoding utf8
 } finally {
     # Only this process handle is eligible for cleanup. Never kill by name.

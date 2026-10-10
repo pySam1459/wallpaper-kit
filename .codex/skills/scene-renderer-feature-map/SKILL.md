@@ -13,7 +13,8 @@ Map behavior from the library consumer's point of view: what the capability does
 | --- | --- | --- |
 | [Blank renderer infrastructure](features/blank-renderer.md) | Native/headless blank GPU frames, bounded output reuse, resize, idle, capture and cleanup | Verified on recorded Windows build |
 | [Diagnostic motion](features/diagnostic-motion.md) | Fixed-time GPU animation, independent pixel checks, live readiness and native play/pause | Verified on recorded Windows build |
-| [Workshop scene MVP](features/workshop-scene-mvp.md) | Inspect and later render Workshop item `3780699842`, including animation | Inspection verified; rendering planned |
+| [TEX page drawing](features/texture-pages.md) | Selected raw/PNG/LZ4 pages, RGBA8/R8/BC3 GPU sampling, reuse and native capture | Verified on recorded Windows build |
+| [Workshop scene MVP](features/workshop-scene-mvp.md) | Inspect and later render Workshop item `3780699842`, including animation | Inspection and page drawing verified; authored scene rendering planned |
 | [Playback and lifecycle](features/playback-and-lifecycle.md) | Pause/resume plus production lifecycle | Fixture play/pause, frame lifetime and pool backpressure verified; scene lifecycle planned |
 | [Performance and host impact](features/performance-and-host-impact.md) | Playback resource usage and consuming-app responsiveness | Idle and fixture readiness diagnostics implemented; scene/host performance planned |
 | [Library and adapter integration](features/library-and-adapter-integration.md) | Public consumer API and individual framework adapters | Native/headless blank consumers implemented; framework adapters planned |

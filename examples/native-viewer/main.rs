@@ -6,9 +6,11 @@ mod motion_checks;
 mod presentation;
 #[path = "../support/mod.rs"]
 mod support;
+#[path = "../support/texture.rs"]
+mod texture_checks;
 
 use presentation::Presentation;
-use scene_renderer::{DeviceMode, Frame, Renderer, Size};
+use scene_renderer::{DeviceMode, Frame, Renderer, SceneSource, Size, TextureDecoder, TexturePage};
 use serde_json::{Value, json};
 use std::{
     io::{self, BufRead, Write},
@@ -46,6 +48,7 @@ struct App {
     proxy: winit::event_loop::EventLoopProxy<Event>,
     failure: Option<String>,
     presented: u64,
+    texture_fixture: Option<(Arc<TexturePage>, texture_checks::Case)>,
 }
 
 fn emit(value: Value) {
@@ -210,9 +213,19 @@ impl App {
                 } else {
                     None
                 };
+                let texture_check = if frame.texture_format().is_some() {
+                    let (_, case) = self
+                        .texture_fixture
+                        .as_ref()
+                        .ok_or("no texture fixture oracle")?;
+                    texture_checks::check(&pixels, case.extent, &case.rgba)?;
+                    Some(true)
+                } else {
+                    None
+                };
                 emit(
                     json!({"id": command["id"], "ok": true, "capture": name, "state": self.inspect(),
-                        "readback": true, "uniform_rgba": support::uniform_rgba(&pixels),"motion_check":motion_check}),
+                        "readback": true, "uniform_rgba": support::uniform_rgba(&pixels),"motion_check":motion_check,"texture_check":texture_check}),
                 );
             }
             "stop" => {
@@ -238,11 +251,14 @@ impl ApplicationHandler<Event> for App {
         let result: Result<()> = (|| {
             let window = event_loop.create_window(
                 Window::default_attributes()
-                    .with_title("Scene renderer | blank and motion diagnostics | Esc to close")
+                    .with_title("Scene renderer | texture and motion diagnostics | Esc to close")
                     .with_inner_size(PhysicalSize::new(640, 360)),
             )?;
             let size = window.inner_size();
             let (renderer, events) = Renderer::new(Size::new(size.width, size.height)?, self.mode)?;
+            if let Some((page, _)) = &self.texture_fixture {
+                self.expected_id = renderer.render_texture_page(page.clone())?;
+            }
             let proxy = self.proxy.clone();
             std::thread::Builder::new()
                 .name("viewer-render-events".into())
@@ -362,7 +378,42 @@ impl ApplicationHandler<Event> for App {
 }
 
 fn main() -> Result<()> {
-    let (output, mode) = support::options()?;
+    let mut args = std::env::args().skip(1);
+    let mut common = Vec::new();
+    let mut texture = false;
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--texture-fixture" => texture = true,
+            "--output" => {
+                common.push(arg);
+                common.push(args.next().ok_or("--output needs a directory")?);
+            }
+            _ => common.push(arg),
+        }
+    }
+    let (output, mode) = support::options(common.into_iter())?;
+    // Diagnostic input is prepared before a window/event loop exists. Host
+    // controls only enqueue GPU work; file I/O and decode never run in update.
+    let texture_fixture = if texture {
+        let case = texture_checks::cases()
+            .into_iter()
+            .find(|case| case.name == "rgba-png-lz4")
+            .expect("PNG/LZ4 fixture exists");
+        let generated = output.join("generated");
+        std::fs::create_dir(&generated)?;
+        std::fs::create_dir(generated.join("engine"))?;
+        std::fs::write(
+            generated.join("scene.pkg"),
+            texture_checks::package(&[(case.name, &case.tex)]),
+        )?;
+        let decoder = TextureDecoder::open(&SceneSource {
+            package: generated.join("scene.pkg"),
+            engine_assets: generated.join("engine"),
+        })?;
+        Some((Arc::new(decoder.decode_page(case.name, 0)?), case))
+    } else {
+        None
+    };
     let event_loop = EventLoop::<Event>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
     let command_proxy = proxy.clone();
@@ -396,6 +447,7 @@ fn main() -> Result<()> {
         proxy,
         failure: None,
         presented: 0,
+        texture_fixture,
     };
     event_loop.run_app(&mut app)?;
     if let Some(error) = app.failure {

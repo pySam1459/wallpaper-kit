@@ -50,4 +50,4 @@ The binary layout interpretation was checked against the MIT-licensed [RePKG for
 
 ## Next boundary
 
-With [bounded frame exchange](frame-pool.md) implemented, the [implementation plan](scene-rendering-plan.md) continues with texture decoding/upload, playback streaming and authored effects. Inspection does not yet produce a complete runtime scene, decode image pixels or establish visual fidelity. Native rendering comparisons and performance acceptance remain separate gates.
+With [bounded frame exchange](frame-pool.md) and [TEX page decoding/drawing](texture-pages.md) implemented, the [implementation plan](scene-rendering-plan.md) continues with runtime scene compilation, authored layers, playback streaming and effects. Inspection itself remains metadata-only; the separate decoder does not yet produce a complete runtime scene or establish scene fidelity. Native reference comparisons and performance acceptance remain separate gates.

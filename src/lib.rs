@@ -13,6 +13,8 @@ mod gpu;
 mod motion;
 mod scene;
 
+pub use assets::texture::{TextureDecoder, TextureFormat, TexturePage};
+
 pub use scene::{
     AssetSummary, DependencySummary, Diagnostic, DiagnosticSeverity, EffectBindingSummary,
     EffectPassSummary, EffectSummary, InspectionError, MaterialPassSummary, MaterialSummary,
@@ -108,13 +110,14 @@ impl From<windows::core::Error> for Error {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum Content {
     Blank,
     MotionFixture(Duration),
+    TexturePage(Arc<TexturePage>),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Request {
     id: u64,
     size: Size,
@@ -123,8 +126,9 @@ struct Request {
 
 /// Diagnostic snapshot of output resources owned by the render worker.
 ///
-/// Counts cover the three-slot output pool, including retained old sizes. They
-/// exclude consumer textures, driver allocations, and diagnostic readback.
+/// Resident output counts cover the three-slot pool, including old sizes.
+/// Source-page bytes are reported separately. Both exclude consumer textures,
+/// driver allocations and diagnostic readback.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct OutputStats {
     /// Currently owned output textures, at most three.
@@ -139,6 +143,10 @@ pub struct OutputStats {
     pub published_frames: u64,
     /// A pending request is waiting because all output slots have frame leases.
     pub waiting_for_frame_release: bool,
+    /// GPU payload bytes for the selected source page, outside the output cap.
+    pub source_texture_bytes: u64,
+    /// Cumulative source-page uploads; repeated use of the same Arc reuses it.
+    pub texture_uploads: u64,
 }
 
 struct State {
@@ -230,6 +238,21 @@ impl Renderer {
         self.request(None, Some(Content::MotionFixture(time)))
     }
 
+    /// Schedules a diagnostic full-page draw, stretched to the output size.
+    ///
+    /// Decoding happens separately through [`TextureDecoder`]. This call
+    /// only enqueues an Arc; shader compilation and upload run on the worker.
+    /// Point sampling preserves code values without color conversion. RGBA/BC3
+    /// use straight alpha over [`BLANK_RGBA`]; R8 displays opaque grayscale.
+    /// Output is opaque. These explicit diagnostic conventions do not implement
+    /// authored scene geometry, color/alpha semantics, effects or sprite timing.
+    /// Resize preserves the page; reusing the same Arc avoids another upload.
+    /// The worker retains one GPU source page, at most 256 MiB, outside the
+    /// three-output cap. Caller-owned pages have no aggregate memory budget.
+    pub fn render_texture_page(&self, page: Arc<TexturePage>) -> Result<u64, Error> {
+        self.request(None, Some(Content::TexturePage(page)))
+    }
+
     fn request(&self, size: Option<Size>, content: Option<Content>) -> Result<u64, Error> {
         let mut state = self
             .shared
@@ -242,17 +265,20 @@ impl Renderer {
         if let Some(size) = size {
             state.size = size;
         }
-        if let Some(content) = content {
-            state.content = content;
-        }
+        // Keep the previous content alive until metadata is unlocked: replacing
+        // a pending page must not free its large buffer under the control lock.
+        let previous_content =
+            content.map(|content| std::mem::replace(&mut state.content, content));
         state.next_id += 1;
         let id = state.next_id;
         state.requested = Some(Request {
             id,
             size: state.size,
-            content: state.content,
+            content: state.content.clone(),
         });
         self.shared.changed.notify_one();
+        drop(state);
+        drop(previous_content);
         Ok(id)
     }
 
@@ -317,6 +343,8 @@ fn run_worker(shared: Arc<Shared>, notify: mpsc::SyncSender<()>, mode: DeviceMod
             state.stopped = true;
             state.output_stats.resident_textures = 0;
             state.output_stats.resident_bytes = 0;
+            state.output_stats.source_texture_bytes = 0;
+            state.output_stats.waiting_for_frame_release = false;
             previous
         } else {
             None
@@ -343,7 +371,7 @@ fn worker_loop(
                 return Ok(());
             }
             (
-                state.requested,
+                state.requested.clone(),
                 state.next_id,
                 state.output_stats.published_frames + 1,
                 state.released_epoch,
@@ -370,7 +398,7 @@ fn worker_loop(
         let mut submitted_now = false;
         let mut poll_again = gpu.has_pending();
         if !poll_again && let Some(request) = request {
-            match gpu.try_submit(request)? {
+            match gpu.try_submit(&request)? {
                 gpu::Submission::Submitted => {
                     poll_again = true;
                     submitted_now = true;
@@ -380,6 +408,7 @@ fn worker_loop(
                         .map_err(|error| Error::Worker(error.to_string()))?;
                     if state
                         .requested
+                        .as_ref()
                         .is_some_and(|current| current.id == request.id)
                     {
                         state.requested = None;

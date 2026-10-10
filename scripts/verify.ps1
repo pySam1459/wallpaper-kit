@@ -38,15 +38,21 @@ try {
     if ($Software) { $motionArgs += '--software' }
     & (Join-Path $target 'motion-checks.exe') @motionArgs
     if ($LASTEXITCODE -ne 0) { throw 'Motion verification failed' }
+    $textureArgs = @('--output', (Join-Path $output 'textures'))
+    if ($Software) { $textureArgs += '--software' }
+    if ($ScenePath) { $textureArgs += @('--scene', $ScenePath, '--engine-assets', $EngineAssets) }
+    & (Join-Path $target 'texture-checks.exe') @textureArgs
+    if ($LASTEXITCODE -ne 0) { throw 'Texture verification failed' }
     if (-not $SkipNative) {
         & "$PSScriptRoot/verify-native.ps1" -Executable (Join-Path $target 'native-viewer.exe') -Output (Join-Path $output 'native') -Software:$Software
+        & "$PSScriptRoot/verify-native.ps1" -Executable (Join-Path $target 'native-viewer.exe') -Output (Join-Path $output 'native-texture') -Software:$Software -TextureFixture
     }
     $status = & git status --porcelain=v1 --untracked-files=all
     $revision = & git rev-parse --verify HEAD 2>$null
     if ($LASTEXITCODE -ne 0) { $revision = $null }
     $sourceFiles = @('Cargo.toml', 'Cargo.lock') + @(Get-ChildItem src, examples, tests, scripts -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($root, $_.FullName) })
     $sourceHashes = @($sourceFiles | Sort-Object | ForEach-Object { [ordered]@{path=$_; sha256=(Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash} })
-    $binaries = @('headless.exe', 'native-viewer.exe', 'motion-checks.exe', 'scene-inspect.exe') | ForEach-Object {
+    $binaries = @('headless.exe', 'native-viewer.exe', 'motion-checks.exe', 'scene-inspect.exe', 'texture-checks.exe') | ForEach-Object {
         $path = Join-Path $target $_
         [ordered]@{path=$path; sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}
     }
@@ -58,8 +64,9 @@ try {
         working_tree=@($status); sources=$sourceHashes; binaries=@($binaries); rustc=(& rustc --version); os=$os; gpu=$video; cpu=$cpu;
         native_status=$(if ($SkipNative) {'skipped'} else {'passed'}); software=[bool]$Software;
         motion_status='passed';
+        texture_status='passed';
         scene_inspection_status=$inspectionStatus;
-        limits=@('Blank and diagnostic motion rendering only.', 'Scene inspection does not render or decode image payloads.', 'Captures use diagnostic readback.', 'No scene fidelity, GPU timing or host latency claims.');
+        limits=@('Blank, diagnostic motion and full TEX page rendering only.', 'Scene inspection does not render authored layers/effects/animation.', 'Captures use diagnostic readback.', 'No scene fidelity, GPU timing or host latency claims.');
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $output 'manifest.json') -Encoding utf8
     Write-Output "Evidence: $output"
 } catch {

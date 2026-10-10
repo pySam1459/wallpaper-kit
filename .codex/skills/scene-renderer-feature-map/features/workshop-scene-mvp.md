@@ -2,7 +2,7 @@
 
 ## Status
 
-Read-only package/dependency inspection is verified on the recorded Windows build in [the inspection guide](../../../../docs/scene-inspection.md). Scene rendering remains planned. The [initial package inventory](../../../../docs/research/example-scene-inventory.md) supplies independent expected metadata. Target: [Workshop item 3780699842](https://steamcommunity.com/sharedfiles/filedetails/?id=3780699842).
+Read-only package/dependency inspection is verified on the recorded Windows build in [the inspection guide](../../../../docs/scene-inspection.md). [Selected TEX page decoding/drawing](../../../../docs/texture-pages.md) is also verified on real target assets. Authored scene rendering remains planned. The [initial package inventory](../../../../docs/research/example-scene-inventory.md) supplies independent expected metadata. Target: [Workshop item 3780699842](https://steamcommunity.com/sharedfiles/filedetails/?id=3780699842).
 
 ## Consumer outcome
 

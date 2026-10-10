@@ -34,7 +34,7 @@ fn wait_frame(renderer: &Renderer, events: &Receiver<()>, id: u64) -> Result<(Ar
 }
 
 fn main() -> Result<()> {
-    let (output, mode) = support::options()?;
+    let (output, mode) = support::options(std::env::args().skip(1))?;
     let size = Size::new(320, 180)?;
     let (renderer, events) = Renderer::new(size, mode)?;
     let (initial, _) = wait_frame(&renderer, &events, 1)?;
