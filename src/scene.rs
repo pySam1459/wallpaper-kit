@@ -2,11 +2,13 @@ use crate::assets::package::Package;
 use serde::{Deserialize, Serialize};
 use std::{fmt, path::PathBuf};
 
+mod cloud;
 mod inspect;
 mod layers;
 mod playback;
 mod precise;
 pub(crate) mod snapshot;
+pub use cloud::{CloudMotion, CloudMotionReport, CloudMotionSettings};
 pub use layers::{GaussianBlur, ImageComposition, ImageLayer, PreciseBlur};
 pub use playback::{ImagePlayback, ImagePlaybackReport, ImagePlaybackSample};
 pub use snapshot::ImageSnapshot;

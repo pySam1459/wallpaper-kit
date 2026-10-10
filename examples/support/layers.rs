@@ -2,10 +2,10 @@
 
 use crate::texture_checks;
 use scene_renderer::{
-    GaussianBlur, ImageComposition, ImageLayer, Pixels, PreciseBlur, Size, TextureDecoder,
-    TextureRegion,
+    CloudMotion, CloudMotionSettings, GaussianBlur, ImageComposition, ImageLayer, Pixels,
+    PreciseBlur, Size, TextureDecoder, TextureFormat, TextureRegion,
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -73,6 +73,16 @@ impl Fixture {
                 0.8,
                 1.1,
             ),
+            (
+                "rgba-raw",
+                [0, 0],
+                [2, 2],
+                [23.917, 17.137],
+                [8.517, 9.317],
+                0.,
+                0.7,
+                1.2,
+            ),
         ] {
             let case = cases
                 .iter()
@@ -102,6 +112,14 @@ impl Fixture {
                 0 => layer.with_blur(GaussianBlur::new([0.8, 1.4], Some(mask.clone()))?),
                 2 => layer.with_blur(GaussianBlur::new([0.4, 0.], None)?),
                 4 => layer.with_precise_blur(PreciseBlur::new([0.32, 2.])?),
+                5 => layer.with_cloud_motion(
+                    Arc::new(CloudMotion::new(
+                        CloudMotionSettings::new(0.08, 0.4, [2., 0.5], 0.02)?,
+                        Arc::new(TextureRegion::new(mask_page.clone(), [1, 0], [2, 1])?),
+                        Some(mask.clone()),
+                    )),
+                    Duration::from_millis(1337),
+                ),
                 _ => layer,
             });
             rgba.push(texture_checks::crop(
@@ -162,6 +180,38 @@ impl Fixture {
                         + (u * f64::from(extent[0])) as usize)
                         * 4;
                     let mut source = filtered[texel / 4];
+                    if let Some((motion, time)) = layer.cloud_motion() {
+                        let settings = motion.settings();
+                        let [grain, horizontal] = settings.granularity().map(f64::from);
+                        let noise_uv = [
+                            u * grain * horizontal
+                                + (time.as_secs_f64() * f64::from(settings.speed())) % 1.,
+                            v * grain,
+                        ];
+                        let noise = bilinear(
+                            &region_rgba(motion.noise()),
+                            motion.noise().extent(),
+                            noise_uv,
+                            true,
+                        )[0] / 255.
+                            * 2.
+                            - 1.;
+                        let mask = motion.mask().map_or(1., |mask| {
+                            bilinear(&region_rgba(mask), mask.extent(), [u, v], false)[0] / 255.
+                        });
+                        let amount = noise * mask.powi(2) * f64::from(settings.amount());
+                        let angle = f64::from(settings.direction_radians());
+                        source = bilinear(
+                            rgba,
+                            extent,
+                            [u - angle.sin() * amount, v + angle.cos() * amount],
+                            false,
+                        );
+                        source[3] /= 255.;
+                        for channel in 0..3 {
+                            source[channel] *= source[3];
+                        }
+                    }
                     if let Some(mask) = layer.blur().and_then(GaussianBlur::mask) {
                         let [width, height] = mask.extent();
                         let [left, top] = mask.origin();
@@ -208,6 +258,62 @@ impl Fixture {
         }
         Ok(())
     }
+}
+
+fn region_rgba(region: &TextureRegion) -> Vec<u8> {
+    let page = region.page();
+    let rgba = match page.format() {
+        TextureFormat::Rgba8 => page.data().to_vec(),
+        TextureFormat::R8 => page.data().iter().flat_map(|&v| [v, v, v, 255]).collect(),
+        TextureFormat::Bc3 => {
+            assert_eq!(page.data(), texture_checks::bc3());
+            texture_checks::cases()
+                .into_iter()
+                .find(|case| case.name == "bc3-raw")
+                .expect("BC3 fixture")
+                .rgba
+        }
+    };
+    texture_checks::crop(&rgba, page.extent(), region.origin(), region.extent())
+}
+
+fn bilinear(rgba: &[u8], extent: [u32; 2], uv: [f64; 2], repeat: bool) -> [f64; 4] {
+    let position = [
+        uv[0] * f64::from(extent[0]) - 0.5,
+        uv[1] * f64::from(extent[1]) - 0.5,
+    ];
+    let base = position.map(|p| p.floor() as i64);
+    let fraction = [
+        position[0] - position[0].floor(),
+        position[1] - position[1].floor(),
+    ];
+    let mut result = [0.; 4];
+    for dy in 0..2 {
+        for dx in 0..2 {
+            let coordinate = [base[0] + dx, base[1] + dy];
+            let point = std::array::from_fn::<_, 2, _>(|axis| {
+                if repeat {
+                    coordinate[axis].rem_euclid(i64::from(extent[axis]))
+                } else {
+                    coordinate[axis].clamp(0, i64::from(extent[axis]) - 1)
+                }
+            });
+            let weight = (if dx == 0 {
+                1. - fraction[0]
+            } else {
+                fraction[0]
+            }) * (if dy == 0 {
+                1. - fraction[1]
+            } else {
+                fraction[1]
+            });
+            let index = ((point[1] as u32 * extent[0] + point[0] as u32) * 4) as usize;
+            for channel in 0..4 {
+                result[channel] += f64::from(rgba[index + channel]) * weight;
+            }
+        }
+    }
+    result
 }
 
 fn precise_filter(rgba: &[u8], extent: [u32; 2], scale: [f32; 2]) -> Vec<[f64; 4]> {

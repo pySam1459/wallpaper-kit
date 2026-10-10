@@ -67,6 +67,47 @@ float4 layer_pixel(LayerVertex input) : SV_Target {
     return float4(color.rgb * layer_brightness, color.a * layer_opacity);
 }
 
+Texture2D<float4> cloud_noise : register(t3);
+Texture2D<float4> cloud_mask : register(t4);
+cbuffer Cloud : register(b3) {
+    float2 cloud_displacement;
+    float2 cloud_noise_scale;
+    float cloud_phase;
+    uint cloud_has_mask;
+    uint2 cloud_noise_origin;
+    uint2 cloud_noise_extent;
+    uint2 cloud_mask_origin;
+    uint2 cloud_mask_extent;
+    uint2 cloud_padding;
+};
+
+int2 cloud_texel(int2 coordinate, int2 extent, bool repeat) {
+    return repeat ? ((coordinate % extent) + extent) % extent : clamp(coordinate, 0, extent - 1);
+}
+
+// Bilinear crop-local sampling. Repeat never reaches adjacent atlas pixels.
+float4 cloud_sample(Texture2D<float4> source, float2 uv, uint2 origin, uint2 extent, bool repeat) {
+    float2 position = uv * extent - 0.5;
+    int2 base = int2(floor(position));
+    float2 weight = frac(position);
+    float4 a = source.Load(int3(int2(origin) + cloud_texel(base, int2(extent), repeat), 0));
+    float4 b = source.Load(int3(int2(origin) + cloud_texel(base + int2(1,0), int2(extent), repeat), 0));
+    float4 c = source.Load(int3(int2(origin) + cloud_texel(base + int2(0,1), int2(extent), repeat), 0));
+    float4 d = source.Load(int3(int2(origin) + cloud_texel(base + int2(1,1), int2(extent), repeat), 0));
+    return lerp(lerp(a,b,weight.x),lerp(c,d,weight.x),weight.y);
+}
+
+// Independently derived from generated reference gradients and timed probes.
+float4 cloud_pixel(LayerVertex input) : SV_Target {
+    float2 noise_uv = input.uv * cloud_noise_scale + float2(cloud_phase,0);
+    float noise = cloud_sample(cloud_noise, noise_uv, cloud_noise_origin, cloud_noise_extent, true).r * 2 - 1;
+    float mask = cloud_has_mask != 0 ? cloud_sample(cloud_mask, input.uv, cloud_mask_origin, cloud_mask_extent, false).r : 1;
+    float2 displaced = input.uv + cloud_displacement * noise * mask * mask;
+    float4 color = cloud_sample(image, displaced, layer_source_origin, layer_source_extent, false);
+    if (layer_grayscale != 0) { color = float4(color.rrr,1); }
+    return float4(color.rgb * layer_brightness, color.a * layer_opacity);
+}
+
 Texture2D<float4> horizontal_image : register(t1);
 Texture2D<float4> blur_mask : register(t2);
 cbuffer Blur : register(b2) {

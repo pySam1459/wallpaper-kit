@@ -1,10 +1,14 @@
-use super::{ImageComposition, ImageLayer, InspectionError, PreciseBlur, RawScene};
+use super::{
+    CloudMotion, CloudMotionReport, ImageComposition, ImageLayer, InspectionError, PreciseBlur,
+    RawScene,
+};
 use crate::assets::package::{Package, asset_key};
 use crate::{Size, TextureDecoder, TexturePage, TextureRegion};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
+    time::Duration,
 };
 
 /// Explicitly incomplete static image preparation, with visible omissions.
@@ -32,11 +36,21 @@ pub(crate) struct LayerDescription {
     angle: f32,
     opacity: f32,
     brightness: f32,
-    pub(super) blur: Option<PreciseBlur>,
+    pub(super) effect: Option<EffectDescription>,
+}
+
+pub(super) enum EffectDescription {
+    Precise(PreciseBlur),
+    Cloud(CloudMotionReport),
 }
 
 impl LayerDescription {
-    pub fn layer(&self, region: Arc<TextureRegion>) -> Result<ImageLayer, InspectionError> {
+    pub fn layer(
+        &self,
+        region: Arc<TextureRegion>,
+        cloud: Option<&Arc<CloudMotion>>,
+        time: Duration,
+    ) -> Result<ImageLayer, InspectionError> {
         let layer = ImageLayer::new(
             region,
             self.center,
@@ -46,10 +60,19 @@ impl LayerDescription {
             self.brightness,
         )
         .map_err(|error| InspectionError::invalid(&self.asset, error.to_string()))?;
-        Ok(match self.blur {
-            Some(blur) => layer.with_precise_blur(blur),
+        Ok(match &self.effect {
+            Some(EffectDescription::Precise(blur)) => layer.with_precise_blur(*blur),
+            Some(EffectDescription::Cloud(_)) => {
+                layer.with_cloud_motion(cloud.expect("cloud inputs prepared").clone(), time)
+            }
             None => layer,
         })
+    }
+    pub(super) fn cloud_profile(&self) -> Option<&CloudMotionReport> {
+        match &self.effect {
+            Some(EffectDescription::Cloud(profile)) => Some(profile),
+            _ => None,
+        }
     }
 }
 
@@ -254,7 +277,7 @@ pub(crate) fn plan(
                 "disablepropagation is unsupported",
             ));
         }
-        let mut blur = None;
+        let mut applied_effect = None;
         for effect in &object.effects {
             let visibility = effect.properties.get("visible");
             if visibility.is_some_and(|v| !v.is_boolean()) {
@@ -266,7 +289,10 @@ pub(crate) fn plan(
             if visibility == Some(&Value::Bool(false)) {
                 continue;
             }
-            if asset_key(&effect.file)?.eq_ignore_ascii_case("effects/blurprecise/effect.json") {
+            let key = asset_key(&effect.file)?;
+            if key.eq_ignore_ascii_case("effects/blurprecise/effect.json")
+                || key.eq_ignore_ascii_case("effects/cloudmotion/effect.json")
+            {
                 if raw
                     .general
                     .properties
@@ -275,16 +301,22 @@ pub(crate) fn plan(
                 {
                     return Err(InspectionError::invalid(
                         &context,
-                        "precise blur requires SDR scene settings",
+                        "supported image effects require SDR scene settings",
                     ));
                 }
-                if blur.is_some() {
+                if applied_effect.is_some() {
                     return Err(InspectionError::invalid(
                         &context,
-                        "multiple precise blurs are unsupported",
+                        "multiple supported image effects on one layer are unsupported",
                     ));
                 }
-                blur = Some(super::precise::load(&decoder.package, effect)?);
+                applied_effect = Some(
+                    if key.eq_ignore_ascii_case("effects/blurprecise/effect.json") {
+                        EffectDescription::Precise(super::precise::load(&decoder.package, effect)?)
+                    } else {
+                        EffectDescription::Cloud(super::cloud::load(decoder, effect)?)
+                    },
+                );
             } else {
                 omissions.push(format!(
                     "Object {}: effect {} is omitted.",
@@ -426,7 +458,7 @@ pub(crate) fn plan(
             angle: angles[2],
             opacity,
             brightness,
-            blur,
+            effect: applied_effect,
         });
         object_ids.push(object.id);
     }
@@ -470,17 +502,7 @@ pub(crate) fn prepare(
         } else {
             (0, [0, 0], None)
         };
-        let key = (asset.clone(), page_index);
-        if !pages.contains_key(&key) {
-            let page = Arc::new(decoder.decode_page_admitted(
-                asset,
-                page_index,
-                super::layers::MAX_SOURCE_BYTES - bytes,
-            )?);
-            bytes += page.data().len() as u64;
-            pages.insert(key.clone(), page);
-        }
-        let page = pages[&key].clone();
+        let page = page(decoder, asset, page_index, &mut pages, &mut bytes)?;
         let region = Arc::new(
             TextureRegion::new(
                 page.clone(),
@@ -489,7 +511,11 @@ pub(crate) fn prepare(
             )
             .map_err(|error| InspectionError::invalid(asset, error.to_string()))?,
         );
-        layers.push(description.layer(region)?);
+        let cloud = description
+            .cloud_profile()
+            .map(|profile| profile.prepare(decoder, &mut pages, &mut bytes))
+            .transpose()?;
+        layers.push(description.layer(region, cloud.as_ref(), Duration::ZERO)?);
     }
     let composition = Arc::new(
         ImageComposition::new(plan.canvas, layers)
@@ -500,4 +526,24 @@ pub(crate) fn prepare(
         object_ids: plan.object_ids,
         omissions: plan.omissions,
     })
+}
+
+pub(super) fn page(
+    decoder: &TextureDecoder,
+    asset: &str,
+    index: u32,
+    pages: &mut BTreeMap<(String, u32), Arc<TexturePage>>,
+    bytes: &mut u64,
+) -> Result<Arc<TexturePage>, InspectionError> {
+    let key = (asset.to_owned(), index);
+    if !pages.contains_key(&key) {
+        let page = Arc::new(decoder.decode_page_admitted(
+            asset,
+            index,
+            super::layers::MAX_SOURCE_BYTES - *bytes,
+        )?);
+        *bytes += page.data().len() as u64;
+        pages.insert(key.clone(), page);
+    }
+    Ok(pages[&key].clone())
 }

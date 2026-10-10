@@ -8,9 +8,9 @@ mod playback_checks;
 mod texture_checks;
 
 use scene_renderer::{
-    DeviceMode, Frame, GaussianBlur, ImageComposition, ImageLayer, ImagePlayback,
-    ImagePlaybackSample, OutputStats, PreciseBlur, Renderer, SceneSource, Size, TextureDecoder,
-    TextureRegion,
+    CloudMotion, CloudMotionSettings, DeviceMode, Frame, GaussianBlur, ImageComposition,
+    ImageLayer, ImagePlayback, ImagePlaybackSample, OutputStats, PreciseBlur, Renderer,
+    SceneSource, Size, TextureDecoder, TextureRegion,
 };
 use serde_json::{Value, json};
 use std::{
@@ -102,7 +102,7 @@ fn placed_layers_are_ordered_reused_and_retained_across_resize() {
     let id = renderer.render_images(fixture.composition.clone()).unwrap();
     let first = wait(&renderer, &events, id);
     fixture.check(&first.readback().unwrap()).unwrap();
-    assert_eq!(first.image_layer_count(), Some(5));
+    assert_eq!(first.image_layer_count(), Some(6));
     let initial_stats = stats(&renderer, first.sequence());
     assert_eq!(initial_stats.effect_texture_bytes, 6 * 6 * 8);
     assert_eq!(
@@ -241,6 +241,118 @@ fn gaussian_blur_parameters_masks_and_axis_bypass_match_pixels() {
                 if sigma == [0., 0.] { 0 } else { 6 * 6 * 8 }
             );
         }
+    }
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn cloud_motion_time_masks_crops_and_replacement_match_pixels() {
+    let cases = texture_checks::cases();
+    let entries: Vec<_> = cases
+        .iter()
+        .map(|case| (case.name, case.tex.as_slice()))
+        .collect();
+    let package = Package::new(&entries);
+    let decoder = package.decoder();
+    let mut fixture = layers_checks::Fixture::new(&decoder).unwrap();
+    let noise = Arc::new(
+        TextureRegion::new(
+            Arc::new(decoder.decode_page("r8-raw", 0).unwrap()),
+            [1, 0],
+            [2, 1],
+        )
+        .unwrap(),
+    );
+    let masks = [
+        None,
+        Some(noise.clone()),
+        Some(fixture.composition.layers()[0].region().clone()),
+    ];
+    let (renderer, events) =
+        Renderer::new(Size::new(64, 48).unwrap(), DeviceMode::Software).unwrap();
+    for (amount, direction, grain, speed) in [
+        (0.2, 0.7, [2., 0.5], 0.02),
+        (0.1, 0., [0.5, 0.1], 0.1),
+        (0.1, std::f32::consts::FRAC_PI_2, [4., 1.], 0.01),
+        (0., 0., [2., 0.5], 0.),
+    ] {
+        for mask in &masks {
+            let motion = Arc::new(CloudMotion::new(
+                CloudMotionSettings::new(amount, direction, grain, speed).unwrap(),
+                noise.clone(),
+                mask.clone(),
+            ));
+            let mut first_pixels = None;
+            for time in [0, 1250, 12000, 50000, 50001] {
+                let layers = fixture
+                    .composition
+                    .layers()
+                    .iter()
+                    .map(|layer| {
+                        let layer = ImageLayer::new(
+                            layer.region().clone(),
+                            layer.center(),
+                            layer.size(),
+                            layer.angle_degrees(),
+                            layer.opacity(),
+                            layer.brightness(),
+                        )
+                        .unwrap()
+                        .with_precise_blur(PreciseBlur::new([1., 1.]).unwrap())
+                        .with_cloud_motion(motion.clone(), Duration::from_millis(time));
+                        assert!(layer.precise_blur().is_none());
+                        assert!(layer.blur().is_none());
+                        assert_eq!(layer.cloud_motion().unwrap().1, Duration::from_millis(time));
+                        layer
+                    })
+                    .collect();
+                fixture.composition =
+                    Arc::new(ImageComposition::new(fixture.composition.canvas(), layers).unwrap());
+                let id = renderer.render_images(fixture.composition.clone()).unwrap();
+                let frame = wait(&renderer, &events, id);
+                let pixels = frame.readback().unwrap();
+                fixture.check(&pixels).unwrap();
+                assert_eq!(stats(&renderer, frame.sequence()).effect_texture_bytes, 0);
+                if time == 0 {
+                    first_pixels = Some(pixels);
+                }
+                if time == 12000 && amount == 0.2 && mask.is_none() {
+                    assert!(
+                        fixture.check(first_pixels.as_ref().unwrap()).is_err(),
+                        "oracle must detect frozen cloud motion"
+                    );
+                }
+            }
+        }
+    }
+    let layer = ImageLayer::new(noise.clone(), [1., 1.], [2., 2.], 0., 1., 1.)
+        .unwrap()
+        .with_cloud_motion(
+            Arc::new(CloudMotion::new(
+                CloudMotionSettings::new(0.1, 0., [2., 0.5], 0.02).unwrap(),
+                noise,
+                None,
+            )),
+            Duration::ZERO,
+        )
+        .with_blur(GaussianBlur::new([0., 0.], None).unwrap());
+    assert!(layer.cloud_motion().is_none());
+    assert!(layer.blur().is_some());
+    for amount in [f32::NAN, f32::INFINITY, -0.01, 0.201] {
+        assert!(CloudMotionSettings::new(amount, 0., [2., 0.5], 0.02).is_err());
+    }
+    assert!(CloudMotionSettings::new(0.1, f32::NAN, [2., 0.5], 0.02).is_err());
+    for grain in [
+        [0.49, 0.5],
+        [4.01, 0.5],
+        [2., 0.09],
+        [2., 1.01],
+        [f32::INFINITY, 0.5],
+    ] {
+        assert!(CloudMotionSettings::new(0.1, 0., grain, 0.02).is_err());
+    }
+    for speed in [f32::NAN, -0.01, 0.101] {
+        assert!(CloudMotionSettings::new(0.1, 0., [2., 0.5], speed).is_err());
     }
     renderer.shutdown().unwrap();
 }
@@ -417,6 +529,83 @@ fn unsupported_precise_overrides_fail_before_decode_and_disabled_effects_skip() 
             .omissions
             .iter()
             .any(|line| line.contains("blurprecise"))
+    );
+}
+
+#[test]
+fn unsupported_cloud_profiles_fail_before_decode_and_disabled_effects_skip() {
+    let corrupt = texture_checks::tex(0, [2, 2], b"not a PNG", false, true);
+    for overrides in [
+        json!({"combos":{"OTHER":1}}),
+        json!({"textures":["replacement"]}),
+        json!({"constantshadervalues":{"ui_editor_properties_amount":0.3}}),
+    ] {
+        let mut image = object(991);
+        image["effects"] = json!([{"file":"effects/cloudmotion/effect.json","passes":[overrides]}]);
+        let package = snapshot_package(json!([image]), model(), material(false), &corrupt);
+        let error = package
+            .decoder()
+            .image_snapshot(&[991], 0)
+            .err()
+            .expect("unsupported cloud was accepted");
+        assert!(
+            error
+                .to_string()
+                .contains("effects/cloudmotion/effect.json")
+        );
+        assert!(!error.to_string().contains("PNG"));
+    }
+    let mut image = object(991);
+    image["effects"] = json!([{"file":"effects/cloudmotion/effect.json"}]);
+    let scene = serde_json::to_vec(&json!({"version":5,"general":{"orthogonalprojection":{"width":16,"height":12}},"objects":[image]})).unwrap();
+    let image_model = serde_json::to_vec(&model()).unwrap();
+    let image_material = serde_json::to_vec(&material(false)).unwrap();
+    let cloud_material = serde_json::to_vec(&json!({"passes":[{"shader":"effects/cloudmotion","blending":"normal","depthtest":"disabled","depthwrite":"disabled","cullmode":"nocull"}]})).unwrap();
+    for (pass, expected) in [
+        (
+            json!({"material":"materials/cloud.json","bind":[{"index":0,"name":"other"}]}),
+            "effects/cloudmotion/effect.json",
+        ),
+        (
+            json!({"material":"materials/cloud.json"}),
+            "shaders/effects/cloudmotion.vert",
+        ),
+    ] {
+        let definition = serde_json::to_vec(
+            &json!({"version":2,"replacementkey":"cloudmotion","passes":[pass]}),
+        )
+        .unwrap();
+        let package = Package::new(&[
+            ("scene.json", &scene),
+            ("models/image.json", &image_model),
+            ("materials/image.json", &image_material),
+            ("materials/image.tex", &corrupt),
+            ("effects/cloudmotion/effect.json", &definition),
+            ("materials/cloud.json", &cloud_material),
+            (
+                "shaders/effects/cloudmotion.vert",
+                b"unverified shader identity",
+            ),
+        ]);
+        let error = package
+            .decoder()
+            .image_snapshot(&[991], 0)
+            .err()
+            .expect("unsupported cloud was accepted");
+        assert!(error.to_string().contains(expected));
+        assert!(!error.to_string().contains("PNG"));
+    }
+    let mut image = object(991);
+    image["effects"] = json!([{"file":"effects/cloudmotion/effect.json","visible":false,"passes":[{"combos":{"OTHER":1}}]}]);
+    let texture = texture_checks::tex(0, [2, 2], &texture_checks::rgba(), false, false);
+    let package = snapshot_package(json!([image]), model(), material(false), &texture);
+    let snapshot = package.decoder().image_snapshot(&[991], 0).unwrap();
+    assert!(snapshot.composition.layers()[0].cloud_motion().is_none());
+    assert!(
+        !snapshot
+            .omissions
+            .iter()
+            .any(|line| line.contains("cloudmotion"))
     );
 }
 

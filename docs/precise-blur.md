@@ -14,7 +14,7 @@ Scale controls the distance between samples, not Gaussian standard deviation. Ea
 
 The coefficients and paired sampling come from the MIT-licensed [glsl-fast-gaussian-blur](https://github.com/Experience-Monks/glsl-fast-gaussian-blur/blob/master/13.glsl). [Third-party notices](../THIRD-PARTY-NOTICES.md) preserve its license. Our HLSL implements D3D11 loads, crop boundaries and pass bindings. Proprietary shader code is not part of the renderer.
 
-`GaussianBlur` remains a separate premultiplied operation with variable sigma. Applying either operation replaces the previous blur. `ImageLayer::blur` returns the Gaussian descriptor; `precise_blur` returns the fixed-kernel descriptor. Both reuse the existing scratch allocation and resource admission. See [Gaussian bounds](gaussian-blur.md#bounds-and-ownership).
+`GaussianBlur` remains a separate premultiplied operation with variable sigma. Applying either operation replaces the previous layer effect, including [cloud motion](cloud-motion.md). `ImageLayer::blur` returns the Gaussian descriptor; `precise_blur` returns the fixed-kernel descriptor. Both reuse the existing scratch allocation and resource admission. See [Gaussian bounds](gaussian-blur.md#bounds-and-ownership).
 
 The scene loader accepts the canonical `effects/blurprecise/effect.json` profile with version `1`, replacement key `blur_precise`, two normal material passes and one `rgba_backbuffer` target. The vertical pass binds the horizontal result at slot zero and the original input at slot one. Material and instance combinations must preserve `VERTICAL` and `ENABLEMASK`, default `KERNEL=0`, `BLURALPHA=1`, and no active `MASK`. Optional null texture slots carry no mask. The horizontal scale comes from the first pass and the vertical scale from the second; omitted values default to one.
 
@@ -42,7 +42,7 @@ The [opaque reference](../artifacts/blur-reference-91a63598/comparison.json) and
 
 ## Renderer verification
 
-Run `pwsh -File ./scripts/verify.ps1`, supplying both target roots to exercise real package loading. Public WARP contracts vary equal and unequal scales, axis bypasses, maximum scale, transparent colors, R8, RGBA, BC3 crops and operation replacement. Invalid overrides fail before corrupt texture decoding. The generated five-layer composition combines Gaussian and precise blur through the native consumer, with resize, retained frames and scratch release. Its precise oracle expands paired samples into integer CPU convolution taps and quantizes its horizontal byte array, independently of the HLSL loads.
+Run `pwsh -File ./scripts/verify.ps1`, supplying both target roots to exercise real package loading. Public WARP contracts vary equal and unequal scales, axis bypasses, maximum scale, transparent colors, R8, RGBA, BC3 crops and operation replacement. Invalid overrides fail before corrupt texture decoding. The generated six-layer composition combines Gaussian blur, precise blur and cloud motion through the native consumer, with resize, retained frames and scratch release. Its precise oracle expands paired samples into integer CPU convolution taps and quantizes its horizontal byte array, independently of the HLSL loads.
 
 The target native controller asserts both applied IDs and authored scales, exact sprite selections, paused idle, resize, clock advancement and owned exit. Complete target appearance still needs comparison against Wallpaper Engine, including the remaining effects. Controlled pixels and approximate reference probes do not establish display cadence, GPU duration or host responsiveness.
 

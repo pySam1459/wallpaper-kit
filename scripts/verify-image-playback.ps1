@@ -64,6 +64,22 @@ function Capture([string]$Name) {
     if (-not $ScenePath -and $reply.layers_check -ne $true) { throw 'Combined image fixture pixels differ' }
     return $reply
 }
+function Changed-Pixels([string]$First, [string]$Later) {
+    Add-Type -AssemblyName System.Drawing
+    $a = [Drawing.Bitmap]::new((Join-Path $outputPath $First))
+    $b = [Drawing.Bitmap]::new((Join-Path $outputPath $Later))
+    try {
+        if ($a.Width -ne $b.Width -or $a.Height -ne $b.Height) { throw 'Cloud comparison dimensions differ' }
+        $changed = 0
+        for ($y = 0; $y -lt $a.Height; $y++) {
+            for ($x = 0; $x -lt $a.Width; $x++) {
+                $firstColor = $a.GetPixel($x,$y); $laterColor = $b.GetPixel($x,$y)
+                if ($firstColor.ToArgb() -ne $laterColor.ToArgb()) { $changed += 1 }
+            }
+        }
+        return $changed
+    } finally { $a.Dispose(); $b.Dispose() }
+}
 
 try {
     if (-not $process.Start()) { throw 'Image viewer launch failed' }
@@ -86,12 +102,35 @@ try {
             if ([Math]::Abs($blurs.'22'[$axis] - 0.32) -gt 0.0000001 -or $blurs.'72'[$axis] -ne 2) { throw 'Target authored precise-blur scales differ' }
         }
         if (@($ready.state.image_playback.report.omissions | Where-Object { $_ -like '*blurprecise*' }).Count) { throw 'Target precise blur was omitted' }
+        $clouds = $ready.state.image_playback.report.cloud_motions
+        if (@($clouds.PSObject.Properties).Count -ne 2 -or $null -eq $clouds.'28' -or $null -eq $clouds.'32') { throw 'Target cloud-motion dispatch differs' }
+        foreach ($entry in @(@('28',0.01,0.6,0.013),@('32',0.02,0.5,0.025))) {
+            $cloud = $clouds.($entry[0])
+            $settings = $cloud.settings
+            if ([Math]::Abs($settings.amount - $entry[1]) -gt 0.0000001 -or [Math]::Abs($settings.direction_radians - 1.5707964) -gt 0.0000001 -or @($settings.granularity).Count -ne 2 -or [Math]::Abs($settings.granularity[0] - $entry[2]) -gt 0.0000001 -or [Math]::Abs($settings.granularity[1] - 0.1) -gt 0.0000001 -or [Math]::Abs($settings.speed - $entry[3]) -gt 0.0000001 -or $cloud.noise_asset -ne 'materials/util/perlin_256.tex') { throw 'Target authored cloud settings or noise differ' }
+        }
+        if ($null -ne $clouds.'28'.mask_asset -or $clouds.'32'.mask_asset -ne 'materials/masks/cloudmotion_mask_ce1abe94.tex') { throw 'Target cloud masks differ' }
+        if (@($ready.state.image_playback.report.omissions | Where-Object { $_ -like '*cloudmotion*' }).Count) { throw 'Target cloud motion was omitted' }
     }
     $times = if ($ScenePath) { @(0, 125, 960, 1080, 1500, 28799, 28800, 29000) } else { @(0, 124, 125, 249, 250, 374, 375, 500, 1500) }
     foreach ($time in $times) {
         $selected = Send-Command @{command='image_at'; time_ms=$time}
         Check-Selection $selected $time
         $null = Capture ('image-{0:D5}.png' -f $time)
+    }
+    $cloudChangedPixels = $null
+    if ($ScenePath) {
+        # Both sprites select frame zero at 0 and 28800 ms. With the other
+        # current layers static, only the two cloud effects can change pixels.
+        $cloudChangedPixels = Changed-Pixels 'image-00000.png' 'image-28800.png'
+        if ($cloudChangedPixels -lt 64) { throw 'Target cloud motion remained frozen across a sprite loop' }
+        if ((Changed-Pixels 'image-00000.png' 'image-00000.png') -ne 0) { throw 'Cloud difference check accepts identical pixels' }
+        $rewound = Send-Command @{command='image_at'; time_ms=0}
+        Check-Selection $rewound 0
+        $null = Capture 'cloud-rewind.png'
+        if ((Changed-Pixels 'image-00000.png' 'cloud-rewind.png') -ne 0) { throw 'Cloud seek did not restore time-zero pixels' }
+        $restored = Send-Command @{command='image_at'; time_ms=$times[-1]}
+        Check-Selection $restored $times[-1]
     }
     $before = Send-Command @{command='inspect'}
     # Defined paused interval after an acknowledged completed seek.
@@ -119,7 +158,7 @@ try {
     $live = @($timeline.observations | Where-Object { $_.frame_id -gt $playing.state.frame.frame_id -and $_.frame_id -le $paused.state.frame.frame_id })
     if ($live.Count -lt 2) { throw 'Missing live image presentation observations' }
     [ordered]@{status='passed'; pid=$process.Id; scene=[bool]$ScenePath; image_layers=$expectedLayers;
-        controlled_indices='passed'; pixel_oracle=$(if ($ScenePath) {'not available'} else {'passed'});
+        controlled_indices='passed'; pixel_oracle=$(if ($ScenePath) {'not available'} else {'passed'}); cloud_changed_pixels=$cloudChangedPixels;
         paused_idle='passed'; resize='passed'; live_interval_ms=4200; live_samples=$live.Count; latest_live_time_ns=$clockNs.ToString();
         actions=$transcript; cleanup='Owned process exited';
         limits=@('Selected images only. Omissions are recorded in image-playback.json.', 'Presentation-call return times do not establish display cadence or GPU duration.', 'Target captures need comparison against Wallpaper Engine. Host impact is unmeasured.');

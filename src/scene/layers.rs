@@ -1,5 +1,5 @@
-use crate::{Error, Size, TexturePage, TextureRegion};
-use std::sync::Arc;
+use crate::{CloudMotion, Error, Size, TexturePage, TextureRegion};
+use std::{sync::Arc, time::Duration};
 
 pub(crate) const MAX_SOURCE_BYTES: u64 = 256 * 1024 * 1024;
 
@@ -91,6 +91,15 @@ impl LayerBlur {
     }
 }
 
+#[derive(Debug)]
+enum LayerEffect {
+    Blur(LayerBlur),
+    Cloud {
+        motion: Arc<CloudMotion>,
+        time: Duration,
+    },
+}
+
 /// A cropped image placed on a two-dimensional orthographic canvas.
 ///
 /// The region retains its shared source page. All values are checked at
@@ -103,7 +112,7 @@ pub struct ImageLayer {
     angle: f32,
     opacity: f32,
     brightness: f32,
-    blur: Option<LayerBlur>,
+    effect: Option<LayerEffect>,
 }
 
 impl ImageLayer {
@@ -128,7 +137,7 @@ impl ImageLayer {
             angle: angle.rem_euclid(360.),
             opacity,
             brightness,
-            blur: None,
+            effect: None,
         })
     }
 
@@ -178,33 +187,50 @@ impl ImageLayer {
         self.brightness
     }
 
-    /// Apply one checked blur before placing and blending this image. The
+    /// Replace any prior effect with checked Gaussian blur before blending. The
     /// source and mask join the composition's existing unique-page budget.
     pub fn with_blur(mut self, blur: GaussianBlur) -> Self {
-        self.blur = Some(LayerBlur::Gaussian(blur));
+        self.effect = Some(LayerEffect::Blur(LayerBlur::Gaussian(blur)));
         self
     }
     /// Optional premultiplied Gaussian blur. Precise blur uses a separate accessor.
     pub fn blur(&self) -> Option<&GaussianBlur> {
-        match self.blur.as_ref() {
+        match self.filter() {
             Some(LayerBlur::Gaussian(blur)) => Some(blur),
             _ => None,
         }
     }
-    /// Replace any existing blur with the checked unmasked precise operation.
+    /// Replace any prior effect with the checked unmasked precise operation.
     pub fn with_precise_blur(mut self, blur: PreciseBlur) -> Self {
-        self.blur = Some(LayerBlur::Precise(blur));
+        self.effect = Some(LayerEffect::Blur(LayerBlur::Precise(blur)));
         self
     }
     /// Optional fixed-kernel straight-RGBA blur, before placement and appearance.
     pub fn precise_blur(&self) -> Option<&PreciseBlur> {
-        match self.blur.as_ref() {
+        match self.filter() {
             Some(LayerBlur::Precise(blur)) => Some(blur),
             _ => None,
         }
     }
     pub(crate) fn filter(&self) -> Option<&LayerBlur> {
-        self.blur.as_ref()
+        match self.effect.as_ref() {
+            Some(LayerEffect::Blur(blur)) => Some(blur),
+            _ => None,
+        }
+    }
+    /// Apply cloud motion at an explicit clock time, replacing any prior effect.
+    /// Noise and mask crops join the existing unique-page budget. No I/O,
+    /// decoding, timer or scratch target is created by this operation.
+    pub fn with_cloud_motion(mut self, motion: Arc<CloudMotion>, time: Duration) -> Self {
+        self.effect = Some(LayerEffect::Cloud { motion, time });
+        self
+    }
+    /// Prepared cloud inputs and the immutable time used for this draw.
+    pub fn cloud_motion(&self) -> Option<(&Arc<CloudMotion>, Duration)> {
+        match self.effect.as_ref() {
+            Some(LayerEffect::Cloud { motion, time }) => Some((motion, *time)),
+            _ => None,
+        }
     }
 
     pub(crate) fn axes(&self) -> [[f32; 2]; 2] {
@@ -249,12 +275,18 @@ impl ImageComposition {
         let mut pages = Vec::new();
         let mut bytes = 0;
         for page in layers.iter().flat_map(|layer| {
-            std::iter::once(layer.region.page()).chain(
+            let cloud = layer.cloud_motion().map(|(motion, _)| motion);
+            [
+                Some(layer.region.page()),
                 layer
                     .filter()
                     .and_then(LayerBlur::mask)
+                    .or_else(|| cloud.and_then(|motion| motion.mask()))
                     .map(|mask| mask.page()),
-            )
+                cloud.map(|motion| motion.noise().page()),
+            ]
+            .into_iter()
+            .flatten()
         }) {
             if !pages.iter().any(|existing| Arc::ptr_eq(existing, page)) {
                 bytes += page.data().len() as u64;

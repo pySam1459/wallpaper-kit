@@ -13,6 +13,8 @@ pub(super) struct ImageRenderer {
     blur_horizontal: ID3D11PixelShader,
     blur_vertical: ID3D11PixelShader,
     blur_constants: ID3D11Buffer,
+    cloud_pixel: ID3D11PixelShader,
+    cloud_constants: ID3D11Buffer,
     blur: Option<BlurTarget>,
     blend: ID3D11BlendState,
     textures: Vec<Uploaded>,
@@ -76,10 +78,12 @@ impl ImageRenderer {
         let layer_pixel_code = compile(s!("layer_pixel"), s!("ps_5_0"))?;
         let blur_horizontal_code = compile(s!("blur_horizontal"), s!("ps_5_0"))?;
         let blur_vertical_code = compile(s!("blur_vertical"), s!("ps_5_0"))?;
+        let cloud_pixel_code = compile(s!("cloud_pixel"), s!("ps_5_0"))?;
         let (mut vertex, mut rgba, mut r8, mut dimensions) = (None, None, None, None);
         let (mut layer_vertex, mut layer_pixel, mut layer_constants, mut blend) =
             (None, None, None, None);
         let (mut blur_horizontal, mut blur_vertical, mut blur_constants) = (None, None, None);
+        let (mut cloud_pixel, mut cloud_constants) = (None, None);
         // SAFETY: live device and bytecode buffers; outputs are owned COM refs.
         unsafe {
             device.CreateVertexShader(&vertex_code, None, Some(&mut vertex))?;
@@ -99,6 +103,17 @@ impl ImageRenderer {
             device.CreatePixelShader(&layer_pixel_code, None, Some(&mut layer_pixel))?;
             device.CreatePixelShader(&blur_horizontal_code, None, Some(&mut blur_horizontal))?;
             device.CreatePixelShader(&blur_vertical_code, None, Some(&mut blur_vertical))?;
+            device.CreatePixelShader(&cloud_pixel_code, None, Some(&mut cloud_pixel))?;
+            device.CreateBuffer(
+                &D3D11_BUFFER_DESC {
+                    ByteWidth: 64,
+                    Usage: D3D11_USAGE_DEFAULT,
+                    BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as u32,
+                    ..Default::default()
+                },
+                None,
+                Some(&mut cloud_constants),
+            )?;
             device.CreateBuffer(
                 &D3D11_BUFFER_DESC {
                     ByteWidth: 32,
@@ -143,6 +158,8 @@ impl ImageRenderer {
             blur_horizontal: blur_horizontal.expect("horizontal shader output"),
             blur_vertical: blur_vertical.expect("vertical shader output"),
             blur_constants: blur_constants.expect("blur buffer output"),
+            cloud_pixel: cloud_pixel.expect("cloud pixel output"),
+            cloud_constants: cloud_constants.expect("cloud constants output"),
             blur: None,
             blend: blend.expect("blend output"),
             textures: Vec::new(),
@@ -309,7 +326,7 @@ impl ImageRenderer {
     ) {
         // SAFETY: exclusive worker context and output GPU key. All constants,
         // shaders and source views are owned through submission. Initialized
-        // scalar arrays match the HLSL b1 (64 bytes) and b2 (32 bytes) layouts.
+        // scalar arrays match HLSL b1 (64 bytes), b2 (32) and b3 (64) layouts.
         unsafe {
             context.IASetInputLayout(None);
             context.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -351,8 +368,65 @@ impl ImageRenderer {
                     0,
                     0,
                 );
-                let mut sources = [Some(texture.view.clone()), None, None];
-                if let Some(blur) = layer.filter().filter(|blur| blur.active()) {
+                let mut sources = [Some(texture.view.clone()), None, None, None, None];
+                if let Some((motion, time)) = layer.cloud_motion() {
+                    let settings = motion.settings();
+                    let (sin, cos) = settings.direction_radians().sin_cos();
+                    let [grain, horizontal] = settings.granularity();
+                    let mask = motion.mask();
+                    let noise_origin = motion.noise().origin();
+                    let noise_extent = motion.noise().extent();
+                    let mask_origin = mask.map_or([0, 0], |mask| mask.origin());
+                    let mask_extent = mask.map_or([1, 1], |mask| mask.extent());
+                    let constants = [
+                        (-sin * settings.amount()).to_bits(),
+                        (cos * settings.amount()).to_bits(),
+                        (grain * horizontal).to_bits(),
+                        grain.to_bits(),
+                        settings.phase(time).to_bits(),
+                        u32::from(mask.is_some()),
+                        noise_origin[0],
+                        noise_origin[1],
+                        noise_extent[0],
+                        noise_extent[1],
+                        mask_origin[0],
+                        mask_origin[1],
+                        mask_extent[0],
+                        mask_extent[1],
+                        0,
+                        0,
+                    ];
+                    context.UpdateSubresource(
+                        &self.cloud_constants,
+                        0,
+                        None,
+                        constants.as_ptr().cast(),
+                        0,
+                        0,
+                    );
+                    context.PSSetConstantBuffers(3, Some(&[Some(self.cloud_constants.clone())]));
+                    sources[3] = Some(
+                        self.textures
+                            .iter()
+                            .find(|texture| {
+                                texture
+                                    .source
+                                    .ptr_eq(&Arc::downgrade(motion.noise().page()))
+                            })
+                            .expect("cloud noise uploaded")
+                            .view
+                            .clone(),
+                    );
+                    sources[4] = mask.map(|mask| {
+                        self.textures
+                            .iter()
+                            .find(|texture| texture.source.ptr_eq(&Arc::downgrade(mask.page())))
+                            .expect("cloud mask uploaded")
+                            .view
+                            .clone()
+                    });
+                    context.PSSetShader(&self.cloud_pixel, None);
+                } else if let Some(blur) = layer.filter().filter(|blur| blur.active()) {
                     let scratch = self.blur.as_ref().expect("blur target admitted");
                     let mask = blur.mask();
                     let mask_origin = mask.map_or([0, 0], |mask| mask.origin());
@@ -418,7 +492,7 @@ impl ImageRenderer {
                 context.Draw(6, 0);
                 // Unbind all inputs before the next layer reuses scratch as an
                 // output, including when original and mask share a source.
-                context.PSSetShaderResources(0, Some(&[None, None, None]));
+                context.PSSetShaderResources(0, Some(&[None, None, None, None, None]));
             }
             context.OMSetRenderTargets(None, None);
             context.OMSetBlendState(None, None, u32::MAX);

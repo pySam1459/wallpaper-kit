@@ -408,7 +408,7 @@ fn main() -> Result<()> {
     let id = renderer.render_images(layers.composition.clone())?;
     let composed = wait_frame(&renderer, &events, id)?;
     layers.check(&composed.readback()?)?;
-    if composed.image_layer_count() != Some(5) {
+    if composed.image_layer_count() != Some(6) {
         return Err("composition metadata differs".into());
     }
     support::write_png(&output.join("composition.png"), &composed.readback()?)?;
