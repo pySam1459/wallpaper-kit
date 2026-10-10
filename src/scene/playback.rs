@@ -40,7 +40,7 @@ enum Source {
 /// Static sources decode once; duplicate animated references share one pager.
 /// The host schedules sampling/presentation from its event loop. Sampling never
 /// waits for codecs and returns `None` until every source for that time is ready.
-/// Effects, particles, parallax, camera/color settings and nonzero crop offsets
+/// Effects, particles, parallax, camera/color settings and animated crop offsets
 /// are unsupported, as reported or rejected by [`Self::open`]. Existing per-
 /// pager and composition bounds apply; aggregate scene memory is not budgeted.
 /// Opening and joined shutdown belong outside latency-critical UI updates.

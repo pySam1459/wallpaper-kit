@@ -40,7 +40,7 @@ pub fn package() -> Vec<u8> {
         entries.push((
             format!("models/{name}.json"),
             serde_json::to_vec(
-                &json!({"autosize":true,"material":format!("materials/{name}.json")}),
+                &json!({"autosize":true,"material":format!("materials/{name}.json"),"cropoffset":if sprite {"0 0"} else {"2 -3"}}),
             )
             .unwrap(),
         ));

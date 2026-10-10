@@ -70,12 +70,16 @@ try {
     $started = $true
     $errors = $process.StandardError.ReadToEndAsync()
     $ready = Read-Reply
-    $expectedLayers = if ($ScenePath) { 6 } else { 4 }
+    $expectedLayers = if ($ScenePath) { 7 } else { 4 }
     if ($ready.event -ne 'ready' -or $ready.state.pid -ne $process.Id -or $ready.state.frame.image_layer_count -ne $expectedLayers) {
         throw 'Image readiness must identify a completed composition in the owned process'
     }
     if (@($ready.state.image_playback.report.animated_assets).Count -ne 2 -or @($ready.state.image_playback.report.omissions).Count -eq 0) {
         throw 'Playback source identity or explicit omissions missing'
+    }
+    if ($ScenePath) {
+        if (($ready.state.image_playback.report.object_ids -join ',') -ne '28,32,22,72,89,77,86') { throw 'Target authored image order differs' }
+        if (@($ready.state.image_playback.report.omissions | Where-Object { $_ -like 'Object 22*not selected*' }).Count -ne 0) { throw 'Target wire layer was omitted' }
     }
     $times = if ($ScenePath) { @(0, 125, 960, 1080, 1500, 28799, 28800, 29000) } else { @(0, 124, 125, 249, 250, 374, 375, 500, 1500) }
     foreach ($time in $times) {

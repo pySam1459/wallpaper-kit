@@ -619,7 +619,7 @@ fn main() -> Result<()> {
                     package: scene_path.expect("paired source"),
                     engine_assets: engine_assets.expect("paired source"),
                 },
-                vec![28, 32, 72, 89, 77, 86],
+                vec![28, 32, 22, 72, 89, 77, 86],
             )
         };
         let playback = ImagePlayback::open(&source, &objects)?;

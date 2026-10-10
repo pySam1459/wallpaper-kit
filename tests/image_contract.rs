@@ -288,7 +288,7 @@ fn snapshot_rejects_unverified_selected_behavior() {
     }
     let mut cropped = model();
     cropped["cropoffset"] = json!("0 -2");
-    let package = snapshot_package(json!([object(1)]), cropped, material(false), &texture);
+    let package = snapshot_package(json!([object(1)]), cropped, material(true), &texture);
     assert!(
         package
             .decoder()
@@ -302,6 +302,54 @@ fn snapshot_rejects_unverified_selected_behavior() {
     pass["passes"][0]["blending"] = json!("additive");
     let package = snapshot_package(json!([object(1)]), model(), pass, &texture);
     assert!(package.decoder().image_snapshot(&[1], 0).is_err());
+}
+
+#[test]
+fn static_crop_metadata_preserves_import_adjusted_geometry() {
+    let texture = texture_checks::tex(0, [2, 2], &texture_checks::rgba(), false, false);
+    for offset in ["0 -2", "3.5 -2.5"] {
+        let mut cropped = model();
+        cropped["cropoffset"] = json!(offset);
+        let package = snapshot_package(json!([object(1)]), cropped, material(false), &texture);
+        let snapshot = package.decoder().image_snapshot(&[1], 0).unwrap();
+        let layer = &snapshot.composition.layers()[0];
+        assert_eq!(layer.center(), [4., 5.]);
+        assert_eq!(layer.size(), [4., 3.]);
+        assert_eq!(layer.angle_degrees(), 90.);
+        assert_eq!(layer.region().origin(), [0, 0]);
+        assert_eq!(layer.region().extent(), [2, 2]);
+        let playback = ImagePlayback::open(
+            &SceneSource {
+                package: package.root.join("scene.pkg"),
+                engine_assets: package.root.join("engine"),
+            },
+            &[1],
+        )
+        .unwrap();
+        let sample = playback.try_sample().unwrap().unwrap();
+        let layer = &sample.composition.layers()[0];
+        assert_eq!(layer.center(), [4., 5.]);
+        assert_eq!(layer.size(), [4., 3.]);
+        assert_eq!(layer.angle_degrees(), 90.);
+        playback.shutdown().unwrap();
+    }
+    let invalid_png = texture_checks::tex(0, [2, 2], b"invalid PNG", false, true);
+    for offset in [json!("0"), json!("0 NaN"), json!("0 inf"), json!([0, -2])] {
+        let mut cropped = model();
+        cropped["cropoffset"] = offset;
+        let package = snapshot_package(json!([object(1)]), cropped, material(false), &invalid_png);
+        let error = package
+            .decoder()
+            .image_snapshot(&[1], 0)
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(error.contains("models/image.json"), "{error}");
+        assert!(
+            !error.contains("PNG"),
+            "crop metadata must fail before pixels: {error}"
+        );
+    }
 }
 
 #[test]

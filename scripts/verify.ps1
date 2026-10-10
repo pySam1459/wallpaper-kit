@@ -82,7 +82,7 @@ try {
         sprite_worker_status='passed';
         sprite_prefetch_status='passed';
         scene_inspection_status=$inspectionStatus;
-        limits=@('Blank, diagnostic motion, TEX page/region, sprite extraction/background preparation/prefetch and selected image composition/playback only.', 'Paired scene roots also exercise two-loop headless sprite readiness and native playback of six selected target images when native checks run. Full scene rendering remains unsupported.', 'Controlled captures use diagnostic readback; live sprite timing does not.', 'No scene fidelity, GPU timing or host latency claims.');
+        limits=@('Blank, diagnostic motion, TEX page/region, sprite extraction/background preparation/prefetch and selected image composition/playback only.', 'Paired scene roots also exercise two-loop headless sprite readiness and native playback of seven selected target images when native checks run. Full scene rendering remains unsupported.', 'Controlled captures use diagnostic readback; live sprite timing does not.', 'No scene fidelity, GPU timing or host latency claims.');
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $output 'manifest.json') -Encoding utf8
     Write-Output "Evidence: $output"
 } catch {

@@ -172,6 +172,8 @@ impl TextureDecoder {
     /// Prepare explicitly selected images as a diagnostic static snapshot.
     /// Performs blocking JSON I/O and serial page decoding on the caller's thread.
     /// Retains authored order, 2D transforms and selected sprite rectangles.
+    /// Static model crop metadata does not alter the import-adjusted transforms;
+    /// nonzero animated model crop offsets remain unsupported.
     /// Effects, camera behavior and unselected objects are named in the returned
     /// omissions. Unsupported selected models/materials/transforms fail. This is
     /// not full scene loading, playback or fidelity verification. New unique

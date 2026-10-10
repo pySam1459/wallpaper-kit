@@ -699,6 +699,7 @@ fn main() -> Result<()> {
         for (name, objects, frame_index) in [
             ("images", vec![28, 32, 77, 86], 0),
             ("birds", vec![72, 89], 239),
+            ("wires", vec![22], 0),
         ] {
             let started = Instant::now();
             let snapshot = decoder.image_snapshot(&objects, frame_index)?;
@@ -720,13 +721,6 @@ fn main() -> Result<()> {
             .to_string()
             .contains("remaining composition source budget before decode")
         {
-            return Err(error.into());
-        }
-        let error = decoder
-            .image_snapshot(&[22], 0)
-            .err()
-            .ok_or("expected cropoffset rejection")?;
-        if !error.to_string().contains("cropoffset") {
             return Err(error.into());
         }
     }

@@ -245,13 +245,9 @@ pub(crate) fn plan(
                 "only autosized image models are supported",
             ));
         }
+        // Static import cropping already adjusts the authored object origin
+        // and size. cropoffset describes removed space, not another transform.
         let offset = vector(model_json.get("cropoffset"), [0.; 2], &model)?;
-        if offset != [0.; 2] {
-            return Err(InspectionError::invalid(
-                &model,
-                "nonzero model cropoffset semantics are not yet verified",
-            ));
-        }
         let material = asset_key(
             model_json["material"]
                 .as_str()
@@ -310,6 +306,12 @@ pub(crate) fn plan(
             ));
         }
         let sprite = combos.contains_key("SPRITESHEET");
+        if sprite && offset != [0.; 2] {
+            return Err(InspectionError::invalid(
+                &model,
+                "animated model cropoffset semantics are not yet verified",
+            ));
+        }
         let textures = pass["textures"]
             .as_array()
             .filter(|values| values.len() == 1)

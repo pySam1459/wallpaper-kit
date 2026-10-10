@@ -37,7 +37,7 @@ Use `-Software -SkipNative` without an interactive desktop. Report the native pa
 
 1. Read [the feature map](../scene-renderer-feature-map/SKILL.md) and the relevant feature entry. Establish what the caller must observe before changing code.
 2. Run doctor in the checkout containing the change. Missing or stale evidence is a reason to run verification; missing platform prerequisites are a blocker to report. Do not substitute build success for runtime proof.
-3. Run the mapped scenario from that checkout. `scripts/verify.ps1` checks blank, motion and texture pixels, verifier fault cases and live readiness timing, then drives resize/capture/play/pause in separate blank, page, crop, extracted-frame, prefetched-frame and composition native instances and stops them. The gate also drives generated combined image playback; paired scene/engine roots drive six supported target images. Full scene and adapter scenarios remain planned.
+3. Run the mapped scenario from that checkout. `scripts/verify.ps1` checks blank, motion and texture pixels, verifier fault cases and live readiness timing, then drives resize/capture/play/pause in separate blank, page, crop, extracted-frame, prefetched-frame and composition native instances and stops them. The gate also drives generated combined image playback; paired scene/engine roots drive all seven target image layers. Full scene and adapter scenarios remain planned.
 4. Capture the mapped output and measurements. For a bug, establish the failure before the fix where practical. For performance, compare the same workload and hardware before and after.
 5. Stop only the instance created for this run and retain evidence. Report what passed, failed, or remains unverified, with artifact paths and measurement limits.
 
