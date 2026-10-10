@@ -1,8 +1,9 @@
 //! Diagnostic Direct3D 11 rendering and read-only scene inspection.
 //!
 //! A worker renders on demand. Completed frames are immutable; resize creates a
-//! replacement and does not invalidate a frame held by a consumer. This initial
-//! API is experimental and does not implement scene playback or a frame pool.
+//! replacement and does not invalidate a frame held by a consumer. A bounded
+//! output pool reuses textures after leases and GPU access have finished. This
+//! experimental API does not implement scene playback.
 
 #[cfg(not(windows))]
 compile_error!("The initial scene-renderer backend requires Windows.");
@@ -113,18 +114,58 @@ enum Content {
     MotionFixture(Duration),
 }
 
+#[derive(Clone, Copy)]
+struct Request {
+    id: u64,
+    size: Size,
+    content: Content,
+}
+
+/// Diagnostic snapshot of output resources owned by the render worker.
+///
+/// Counts cover the three-slot output pool, including retained old sizes. They
+/// exclude consumer textures, driver allocations, and diagnostic readback.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct OutputStats {
+    /// Currently owned output textures, at most three.
+    pub resident_textures: usize,
+    /// RGBA8 payload bytes of those textures, at most 192 MiB.
+    pub resident_bytes: u64,
+    /// Cumulative output texture creations, including resize replacements.
+    pub texture_allocations: u64,
+    /// Cumulative submitted renders, including superseded requests.
+    pub submitted_frames: u64,
+    /// Completed frames accepted for publication; also the latest sequence.
+    pub published_frames: u64,
+    /// A pending request is waiting because all output slots have frame leases.
+    pub waiting_for_frame_release: bool,
+}
+
 struct State {
-    requested: Option<(u64, Size, Content)>,
+    requested: Option<Request>,
     size: Size,
     content: Content,
     next_id: u64,
     latest: Option<Result<Arc<Frame>, Error>>,
     stopped: bool,
+    released_epoch: u64,
+    output_stats: OutputStats,
 }
 
 struct Shared {
     state: Mutex<State>,
     changed: Condvar,
+}
+
+impl Shared {
+    fn frame_released(&self) {
+        // Pair notification with the metadata lock so a release cannot be lost
+        // between the worker's resource check and its condition-variable wait.
+        if let Ok(mut state) = self.state.lock() {
+            state.released_epoch = state.released_epoch.wrapping_add(1);
+            self.changed.notify_one();
+        }
+    }
 }
 
 /// Owns the render worker and its latest completed output.
@@ -142,12 +183,18 @@ impl Renderer {
     pub fn new(size: Size, mode: DeviceMode) -> Result<(Self, mpsc::Receiver<()>), Error> {
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
-                requested: Some((1, size, Content::Blank)),
+                requested: Some(Request {
+                    id: 1,
+                    size,
+                    content: Content::Blank,
+                }),
                 size,
                 content: Content::Blank,
                 next_id: 1,
                 latest: None,
                 stopped: false,
+                released_epoch: 0,
+                output_stats: OutputStats::default(),
             }),
             changed: Condvar::new(),
         });
@@ -169,6 +216,8 @@ impl Renderer {
     /// Schedules a replacement, coalescing requests not yet started.
     /// Returns its identity so consumers can recognize completion. This locks
     /// only request metadata; rendering never takes place under that lock.
+    /// If all three output slots are leased, the request remains pending until
+    /// a frame is released. Retained old sizes count toward the same limit.
     pub fn resize(&self, size: Size) -> Result<u64, Error> {
         self.request(Some(size), None)
     }
@@ -198,7 +247,11 @@ impl Renderer {
         }
         state.next_id += 1;
         let id = state.next_id;
-        state.requested = Some((id, state.size, state.content));
+        state.requested = Some(Request {
+            id,
+            size: state.size,
+            content: state.content,
+        });
         self.shared.changed.notify_one();
         Ok(id)
     }
@@ -212,6 +265,17 @@ impl Renderer {
                 Some(Err(error)) => Err(error.clone()),
                 None => Ok(None),
             },
+            Err(TryLockError::WouldBlock) => Ok(None),
+            Err(TryLockError::Poisoned(error)) => Err(Error::Worker(error.to_string())),
+        }
+    }
+
+    /// Returns output-pool telemetry without waiting for metadata or the GPU.
+    /// Returns `None` when metadata is temporarily locked. This is a diagnostic
+    /// allocation snapshot, not total process or GPU memory usage.
+    pub fn try_output_stats(&self) -> Result<Option<OutputStats>, Error> {
+        match self.shared.state.try_lock() {
+            Ok(state) => Ok(Some(state.output_stats)),
             Err(TryLockError::WouldBlock) => Ok(None),
             Err(TryLockError::Poisoned(error)) => Err(Error::Worker(error.to_string())),
         }
@@ -246,48 +310,114 @@ impl Drop for Renderer {
 }
 
 fn run_worker(shared: Arc<Shared>, notify: mpsc::SyncSender<()>, mode: DeviceMode) {
-    let gpu = match gpu::Gpu::new(mode) {
-        Ok(gpu) => gpu,
-        Err(error) => {
-            if let Ok(mut state) = shared.state.lock() {
-                state.latest = Some(Err(error));
-                state.stopped = true;
-            }
-            let _ = notify.try_send(());
-            return;
-        }
-    };
+    let result = gpu::Gpu::new(mode).and_then(|mut gpu| worker_loop(&shared, &notify, &mut gpu));
+    if let Err(error) = result {
+        let previous = if let Ok(mut state) = shared.state.lock() {
+            let previous = state.latest.replace(Err(error));
+            state.stopped = true;
+            state.output_stats.resident_textures = 0;
+            state.output_stats.resident_bytes = 0;
+            previous
+        } else {
+            None
+        };
+        // Frame destruction wakes the worker through metadata; never drop the
+        // final frame reference while that metadata lock is held.
+        drop(previous);
+        let _ = notify.try_send(()); // Coalesced wakeup may already be queued.
+    }
+}
+
+fn worker_loop(
+    shared: &Arc<Shared>,
+    notify: &mpsc::SyncSender<()>,
+    gpu: &mut gpu::Gpu,
+) -> Result<(), Error> {
     loop {
-        let (id, size, content) = {
-            let Ok(mut state) = shared.state.lock() else {
-                return;
-            };
-            while state.requested.is_none() && !state.stopped {
-                let Ok(next) = shared.changed.wait(state) else {
-                    return;
-                };
-                state = next;
-            }
+        let (request, desired, sequence, released) = {
+            let state = shared
+                .state
+                .lock()
+                .map_err(|error| Error::Worker(error.to_string()))?;
             if state.stopped {
-                return;
+                return Ok(());
             }
-            state
-                .requested
-                .take()
-                .expect("a request exists after the wait")
+            (
+                state.requested,
+                state.next_id,
+                state.output_stats.published_frames + 1,
+                state.released_epoch,
+            )
         };
-        let result = gpu.render(id, size, content).map(Arc::new);
-        let Ok(mut state) = shared.state.lock() else {
-            return;
-        };
-        if state.stopped {
-            return;
+        if let Some(frame) = gpu.poll(desired, sequence, Arc::downgrade(shared))? {
+            let mut state = shared
+                .state
+                .lock()
+                .map_err(|error| Error::Worker(error.to_string()))?;
+            let previous = if !state.stopped && state.next_id == frame.id() {
+                state.output_stats.published_frames += 1;
+                state.latest.replace(Ok(frame))
+            } else {
+                drop(state);
+                drop(frame);
+                continue;
+            };
+            drop(state);
+            drop(previous);
+            let _ = notify.try_send(()); // Notification is a capacity-one hint.
         }
-        if state.requested.is_some() {
+        let mut waiting_for_release = false;
+        let mut submitted_now = false;
+        let mut poll_again = gpu.has_pending();
+        if !poll_again && let Some(request) = request {
+            match gpu.try_submit(request)? {
+                gpu::Submission::Submitted => {
+                    poll_again = true;
+                    submitted_now = true;
+                    let mut state = shared
+                        .state
+                        .lock()
+                        .map_err(|error| Error::Worker(error.to_string()))?;
+                    if state
+                        .requested
+                        .is_some_and(|current| current.id == request.id)
+                    {
+                        state.requested = None;
+                    }
+                }
+                gpu::Submission::Leased => waiting_for_release = true,
+                gpu::Submission::Busy => poll_again = true,
+            }
+        }
+        let mut state = shared
+            .state
+            .lock()
+            .map_err(|error| Error::Worker(error.to_string()))?;
+        let published_frames = state.output_stats.published_frames;
+        state.output_stats = gpu.stats();
+        state.output_stats.published_frames = published_frames;
+        state.output_stats.waiting_for_frame_release = waiting_for_release;
+        if state.stopped {
+            return Ok(());
+        }
+        if submitted_now || state.next_id != desired || state.released_epoch != released {
             continue;
         }
-        state.latest = Some(result);
-        drop(state);
-        let _ = notify.try_send(());
+        // Only submitted queries or consumer GPU access need periodic polling.
+        // Idle and lease-saturated workers sleep until a request/release/stop.
+        if poll_again {
+            drop(state);
+            // On the tested Windows runtime, a 1 ms Condvar timeout rounded to
+            // roughly 16 ms. Sleep polls pending GPU work without that delay;
+            // the next iteration still handles requests and shutdown first.
+            thread::sleep(Duration::from_millis(1));
+        } else {
+            drop(
+                shared
+                    .changed
+                    .wait(state)
+                    .map_err(|error| Error::Worker(error.to_string()))?,
+            );
+        }
     }
 }

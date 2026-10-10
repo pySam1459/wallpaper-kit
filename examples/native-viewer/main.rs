@@ -111,8 +111,14 @@ impl App {
     }
 
     fn inspect(&self) -> Value {
+        let output_pool = match self.renderer.as_ref().map(Renderer::try_output_stats) {
+            Some(Ok(Some(stats))) => support::pool_info(stats),
+            Some(Err(error)) => json!({"error":error.to_string()}),
+            Some(Ok(None)) | None => Value::Null,
+        };
         json!({"pid": std::process::id(), "consumer": "native-viewer", "ready": self.ready,
             "frame": self.frame.as_ref().map(|frame| support::frame_info(frame)), "presented": self.presented,
+            "output_pool":output_pool,
             "continuous_rendering": self.fixture.running(), "output": self.output, "scene_support": false})
     }
 

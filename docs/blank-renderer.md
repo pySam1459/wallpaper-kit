@@ -4,7 +4,7 @@ This milestone provides a Rust library, real consumers, and repeatable blank-out
 
 ## Ownership and dependencies
 
-The library owns a worker, its Direct3D 11 immediate context, one pending request, and the latest immutable GPU frame. Rendering happens on demand. Resize requests coalesce before execution; obsolete results are discarded. Completed frames retain their own texture, shared NT handle, and adapter reference, so consumers can keep them across renderer resize and shutdown.
+The library owns a worker, its Direct3D 11 immediate context, one pending request, and the latest immutable GPU frame. Rendering happens on demand. Resize requests coalesce before execution; obsolete results are discarded. Completed frames lease resources from a [bounded output pool](frame-pool.md), retaining their texture, shared NT handle and adapter reference across renderer resize and shutdown.
 
 `Renderer::new(Size, DeviceMode)` returns the renderer and a capacity-one wakeup receiver. `resize` returns a request identity. `try_frame` retrieves the latest completed `Arc<Frame>` without blocking on rendering or a GPU wait. Notifications are hints to inspect that latest state, not a queue of frames. `shutdown` joins the worker and belongs outside a latency-critical UI operation.
 
@@ -14,9 +14,9 @@ The library owns a worker, its Direct3D 11 immediate context, one pending reques
 
 `Frame::readback` is an explicit blocking diagnostic operation. It is absent from ordinary native presentation. No raw shared handle is exposed as a public API.
 
-The core has only the Windows bindings dependency. Winit, PNG encoding, and JSON reporting are development dependencies used by the examples. `scripts/check-boundaries.ps1` traverses production/build dependency edges and rejects host packages entering the core. Its negative fixture changes the real Winit edge to a production edge and confirms rejection.
+The core uses Windows bindings, JSON parsing and hashing for scene inspection. Winit and PNG encoding are development dependencies used by the examples. `scripts/check-boundaries.ps1` traverses production/build dependency edges and rejects host packages entering the core. Its negative fixture changes the real Winit edge to a production edge and confirms rejection.
 
-This is an experimental API. It allocates a new immutable texture per completed request, not a reusable animation frame pool. Consumers can increase memory use by retaining old frames. Global residency budgets, production animation, device-loss recovery, and production host adapters remain future work.
+This is an experimental API. It reuses at most three output textures, pauses when retained frames exhaust the pool and resumes after release. `Frame::sequence()` identifies each accepted publication; `Renderer::try_output_stats()` exposes nonblocking output counters. Scene residency budgets, production animation, device-loss recovery and production host adapters remain future work.
 
 ## Example consumers
 
@@ -29,7 +29,7 @@ cargo run --locked --example headless
 
 The native viewer owns a Winit window, a consumer device, and a swap chain. It imports the library frame through the public API, copies on the GPU, and presents without routine CPU readback. Blank output uses a waiting event loop after becoming ready. It retries pending startup/resize work with a short timer. Explicit fixture playback adds a consumer-owned timer; pause stops scheduling. Window redraw events can legitimately present an existing frame.
 
-The headless runner waits for actual output, checks every pixel through diagnostic readback, captures initial and resized images, checks idle behavior and invalid dimensions, retains an old frame across resize, shuts down, and checks retained frames again. Its nonaligned 317 × 193 capture exercises row-pitch handling. The public-contract test additionally exercises request bursts, undrained notifications, and concurrent readers after shutdown.
+The headless runner waits for actual output, checks every pixel through diagnostic readback, captures initial and resized images, checks idle behavior and invalid dimensions, retains old frames across resize, shuts down, and checks retained frames again. It verifies allocation reuse across 32 same-size requests, saturation at three outputs and progress after release. Its nonaligned 317 × 193 capture exercises row-pitch handling. Public-contract tests additionally exercise request bursts, undrained notifications, repeated motion/resize and concurrent readers after shutdown.
 
 Both examples accept `--output <empty-directory>` and `--software`. Without an output argument, they create a unique directory beneath `artifacts/`. Existing nonempty output directories are rejected.
 
@@ -74,10 +74,10 @@ Resize replies after a frame matching the actual window size has been presented.
 pwsh -File ./.codex/skills/control-scene-renderer/scripts/doctor.ps1
 ```
 
-Doctor remains read-only. It reports diagnostic readiness only when a successful blank/motion/native receipt from this checkout matches the current runtime source set, source hashes and three executable hashes. A build without a matching receipt is unverified. Exit codes are 0 for ready, 2 for blocked/unverified, and 1 for a doctor failure.
+Doctor remains read-only. It reports diagnostic readiness only when a successful blank/motion/native receipt from this checkout matches the current runtime source set, source hashes and four executable hashes. A build without a matching receipt is unverified. Exit codes are 0 for ready, 2 for blocked/unverified, and 1 for a doctor failure.
 
 Supplying `-ScenePath` checks file existence and reports scene verification as blocked even when the blank runtime has been verified. It does not open or modify the package. A prior receipt describes its recorded build/configuration; it is not proof of general hardware support.
 
 ## Current limitations
 
-Only Windows x64 has been exercised. The prototype requires Direct3D feature level 11.0. Blank pixels and one resize do not establish scene animation, alpha composition, visual effects, host scrolling/input latency, minimized lifecycle, GPUI/Electron/WebView2/CEF compatibility, or production frame-pool behavior. Those need their own fixtures and real consumers.
+Only Windows x64 has been exercised. The prototype requires Direct3D feature level 11.0. The bounded diagnostic output pool does not establish scene animation, alpha composition, visual effects, host scrolling/input latency, minimized lifecycle or GPUI/Electron/WebView2/CEF compatibility. Those need their own fixtures and real consumers.

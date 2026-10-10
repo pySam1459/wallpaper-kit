@@ -1,6 +1,6 @@
 # Scene rendering implementation plan
 
-Status: implementation started, 10 October 2026. The [read-only inspection stage](scene-inspection.md) is implemented; runtime scene compilation and subsequent rendering stages remain proposed. This plan extends the [specification](spec/scene-renderer.md). It does not establish scene support or measured playback performance. The diagnostic motion fixture supplies the verified baseline.
+Status: implementation started, 10 October 2026. [Read-only inspection](scene-inspection.md) and [bounded frame exchange](frame-pool.md) are implemented. Runtime scene compilation and textured rendering remain proposed. This plan extends the [specification](spec/scene-renderer.md). It does not establish scene support or measured scene playback performance. The diagnostic motion fixture supplies the verified baseline.
 
 ## Target and assumptions
 
@@ -101,7 +101,7 @@ Reuse scratch render targets across compatible passes. Account for every simulta
 
 ## Frame reuse and nonblocking completion
 
-Current rendering creates a new shared texture for each request and waits for a GPU completion query before returning. That is adequate for blank diagnostics but needs replacement before continuous playback.
+The diagnostic renderer now implements bounded output reuse, lease tracking, completion polling and publication sequences. See [the frame exchange guide](frame-pool.md) for the implemented contract and evidence. The requirements below also cover later scene and device-recovery behavior.
 
 Use at most three output resources across current and retired size generations. The pool owns each resource; an immutable published `Frame` owns a lease plus its identity, size and timestamp. Creating a small frame wrapper is acceptable. Allocating a new output GPU texture every animation tick is not.
 

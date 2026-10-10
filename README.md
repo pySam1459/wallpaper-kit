@@ -6,7 +6,7 @@ The project starts on Windows. The consuming application's responsiveness takes 
 
 ## Status
 
-The Rust library renders blank Direct3D 11 textures and a controlled-time diagnostic animation. It also inspects local scene packages and their asset dependencies through a read-only public API. A native Windows viewer and headless verification runners consume its public API. Scene rendering, production animation, photo/video playback, and framework adapters remain unimplemented.
+The Rust library renders blank Direct3D 11 textures and a controlled-time diagnostic animation through a bounded reusable output pool. It also inspects local scene packages and their asset dependencies through a read-only public API. A native Windows viewer and headless verification runners consume its public API. Scene rendering, production animation, photo/video playback, and framework adapters remain unimplemented.
 
 The [renderer specification](docs/spec/scene-renderer.md) defines the architecture, dependency choices, delivery gates, and measurable MVP acceptance criteria.
 
@@ -37,6 +37,8 @@ pwsh -File ./scripts/verify.ps1 -Software -SkipNative
 Evidence is retained under `artifacts/`, which Git ignores. The [blank renderer verification guide](docs/blank-renderer.md) explains the API, control protocol, evidence, and limits. The Windows CI workflow runs the software/headless route; the workflow itself has not yet run on GitHub.
 
 The [motion verification guide](docs/motion-verification.md) describes fixed-time GPU captures, independent pixel checks, verifier fault cases, and separate live timing. These give agents evidence about motion without relying on a model to judge a video. Display timing, production scene fidelity, and host responsiveness still need additional measurements.
+
+The [frame exchange guide](docs/frame-pool.md) describes the three-output limit, retained-frame backpressure, nonblocking completion and verified GPU reuse.
 
 ## Project requirements
 

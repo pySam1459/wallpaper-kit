@@ -9,7 +9,7 @@ Give agents a repeatable way to observe the rendering library through a real con
 
 ## Current capability
 
-Blank rendering, a controlled-time motion fixture, native/headless consumers, and repeatable launch/control/capture/cleanup are implemented. Runtime scene loading and production playback remain unavailable. For read-only package/dependency inspection, use [the inspection guide](../../../docs/scene-inspection.md). Doctor with `-ScenePath` still rejects scene rendering readiness; inspection evidence is separate. Read [the blank renderer guide](../../../docs/blank-renderer.md) for ownership and [motion verification](../../../docs/motion-verification.md) for temporal checks and metric definitions.
+Blank rendering, a controlled-time motion fixture, bounded output reuse, native/headless consumers, and repeatable launch/control/capture/cleanup are implemented. Runtime scene loading and production playback remain unavailable. For read-only package/dependency inspection, use [the inspection guide](../../../docs/scene-inspection.md). Doctor with `-ScenePath` still rejects scene rendering readiness; inspection evidence is separate. Read [the blank renderer guide](../../../docs/blank-renderer.md) for ownership and [motion verification](../../../docs/motion-verification.md) for temporal checks and metric definitions. The [frame exchange guide](../../../docs/frame-pool.md) defines retained-frame saturation and output counters; viewer `inspect` replies include `output_pool`.
 
 From the repository root, run:
 

@@ -27,6 +27,7 @@ winit = { version = "=0.30.13", default-features = false, features = ["rwh_06"] 
 [[example]]
 name = "native-viewer"
 path = "examples/native-viewer/main.rs"
+test = true
 
 [[example]]
 name = "headless"

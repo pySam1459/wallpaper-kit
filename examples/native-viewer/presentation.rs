@@ -130,3 +130,120 @@ impl Presentation {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use scene_renderer::{DeviceMode, Renderer};
+    use std::{
+        sync::Arc,
+        time::{Duration, Instant},
+    };
+
+    fn wait_frame(renderer: &Renderer, id: u64) -> Arc<Frame> {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some(frame) = renderer.try_frame().unwrap()
+                && frame.id() == id
+            {
+                return frame;
+            }
+            assert!(Instant::now() < deadline, "queued-copy fixture timed out");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    fn target(device: &ID3D11Device, size: Size) -> ID3D11Texture2D {
+        let mut target = None;
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: size.width(),
+            Height: size.height(),
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Usage: D3D11_USAGE_DEFAULT,
+            ..Default::default()
+        };
+        // SAFETY: live device, matching validated dimensions and owned output.
+        unsafe {
+            device
+                .CreateTexture2D(&desc, None, Some(&mut target))
+                .unwrap();
+        }
+        target.unwrap()
+    }
+
+    fn read_target(
+        device: &ID3D11Device,
+        context: &ID3D11DeviceContext,
+        source: &ID3D11Texture2D,
+        size: Size,
+    ) -> Pixels {
+        let mut desc = D3D11_TEXTURE2D_DESC::default();
+        let mut staging = None;
+        // SAFETY: test thread exclusively owns this context. Source belongs to
+        // the same device. Map waits for queued copies and remains live until
+        // all pitched rows have been read and Unmap is called.
+        unsafe {
+            source.GetDesc(&mut desc);
+            desc.Usage = D3D11_USAGE_STAGING;
+            desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
+            device
+                .CreateTexture2D(&desc, None, Some(&mut staging))
+                .unwrap();
+            let staging = staging.unwrap();
+            context.CopyResource(&staging, source);
+            let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+            context
+                .Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
+                .unwrap();
+            let row_bytes = size.width() as usize * 4;
+            let mut rgba = vec![0; row_bytes * size.height() as usize];
+            for (row, bytes) in rgba.chunks_exact_mut(row_bytes).enumerate() {
+                bytes.copy_from_slice(std::slice::from_raw_parts(
+                    (mapped.pData as *const u8).add(row * mapped.RowPitch as usize),
+                    row_bytes,
+                ));
+            }
+            context.Unmap(&staging, 0);
+            Pixels { size, rgba }
+        }
+    }
+
+    #[test]
+    fn queued_consumer_copies_survive_source_release_and_reuse() {
+        let size = Size::new(320, 180).unwrap();
+        let (renderer, _events) = Renderer::new(size, DeviceMode::Software).unwrap();
+        let first = wait_frame(&renderer, 1);
+        let (device, context) = first.create_consumer_device().unwrap();
+        drop(first);
+        let targets: Vec<_> = (0..3).map(|_| target(&device, size)).collect();
+        for batch in 0..30 {
+            for (index, target) in targets.iter().enumerate() {
+                let time = (batch * 3 + index) as u64 * 50;
+                let id = renderer
+                    .render_fixture_at(Duration::from_millis(time))
+                    .unwrap();
+                let frame = wait_frame(&renderer, id);
+                // SAFETY: exclusive context and same-device matching target.
+                // Release the source lease immediately after submission, with
+                // no readback wait before scheduling subsequent producer work.
+                assert!(unsafe { frame.copy_to(&device, &context, target).unwrap() });
+                drop(frame);
+            }
+            for (index, target) in targets.iter().enumerate() {
+                let time = (batch * 3 + index) as u64 * 50;
+                super::super::motion_checks::check_pixels(
+                    &read_target(&device, &context, target, size),
+                    time,
+                )
+                .unwrap();
+            }
+        }
+        renderer.shutdown().unwrap();
+    }
+}

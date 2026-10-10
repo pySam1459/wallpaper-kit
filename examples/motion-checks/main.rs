@@ -136,6 +136,9 @@ fn main() -> Result<()> {
     let resized_pixels = resized.readback()?;
     support::write_png(&output.join("resized.png"), &resized_pixels)?;
     motion_checks::check_pixels(&resized_pixels, 4_000)?;
+    // Retained old sizes count toward the output cap. The resize capture is
+    // finished, so release its lease before continuing the live workload.
+    drop(resized);
     let restored_id = renderer.resize(size)?;
     let _ = wait_frame(&renderer, &events, restored_id)?;
 
@@ -174,15 +177,16 @@ fn main() -> Result<()> {
         &output.join("timeline.json"),
         &json!(samples.iter().map(timing::Sample::json).collect::<Vec<_>>()),
     )?;
+    let output_pool = renderer.try_output_stats()?.map(support::pool_info);
     renderer.shutdown()?;
     let report = json!({"schema_version":1,"status":"passed","consumer":"motion-checks",
         "adapter":support::frame_info(&initial)["adapter"],"deterministic_checkpoints":checkpoints.len(),
-        "resized_fixture_pixels":"passed", "correctness":"passed",
+        "resized_fixture_pixels":"passed", "correctness":"passed", "output_pool":output_pool,
         "verifier_self_tests":verifier_failures,"live_timing":metrics,"capture_during_live_timing":false,
         "limits":["Diagnostic fixture; no Workshop or video support.",
             "Ready times are consumer observations, not GPU durations or display times.",
             "Timing is diagnostic, not a production performance acceptance score.",
-            "Immutable texture allocation per request; no bounded animation frame pool.",
+            "Output pool bounds exclude asset, consumer and driver memory.",
             "No host input latency or memory plateau measurement."]});
     support::write_json(&output.join("report.json"), &report)?;
     println!("{report}");

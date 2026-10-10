@@ -23,7 +23,7 @@ These standalone commands retain evidence but do not create the full gate's buil
 
 ## Fixture contract
 
-`Renderer::render_fixture_at(Duration)` schedules an immutable frame through the public worker API and returns its request ID. It installs no playback timer. `Frame::fixture_time()` records the requested time. Resize preserves content and time. The consumer owns the live clock and consumes the latest completed frame.
+`Renderer::render_fixture_at(Duration)` schedules an immutable frame through the public worker API and returns its request ID. It installs no playback timer. `Frame::fixture_time()` records the requested time; `Frame::sequence()` counts accepted publications. Resize preserves content and time. The consumer owns the live clock and consumes the latest completed frame. The [bounded output pool](frame-pool.md) defines reuse, frame leases and saturation behavior.
 
 The output uses opaque SDR RGBA8 pixels. The background is `[16,24,32,255]`; the bar is `[224,160,64,255]`. For physical width `w` and height `h`:
 
@@ -74,8 +74,8 @@ After the viewer's `ready` event, send line-delimited JSON over stdin and wait f
 
 Ready time is when a consumer observes the completed frame. It includes scheduling and synchronization, so it is not GPU duration. Presentation-call return time is not display time. Captures check GPU content and the native copy path, not final desktop composition or tearing.
 
-The first hardware run exposed approximately 390 ms completion waits and failed the native two-loop check. Allowing `GetData` to submit work while polling reduced measured request-to-ready latency to around 2 ms on that adapter. Keep the failing evidence when comparing runs. Microsoft's [GetData flags documentation](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_async_getdata_flag) describes the submission risk with `DONOTFLUSH`; the explicit completion wait remains outside UI acquisition.
+The first hardware run exposed approximately 390 ms completion waits and failed the native two-loop check. Allowing `GetData` to submit work while polling reduced measured request-to-ready latency to around 2 ms on that adapter. Keep the failing evidence when comparing runs. Microsoft's [GetData flags documentation](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_async_getdata_flag) describes the submission risk with `DONOTFLUSH`. The worker now polls completion between control checks; UI acquisition does not wait for completion, while diagnostic readback remains blocking.
 
 The next measurement layers are D3D11 timestamp/disjoint queries for GPU duration, a Windows presentation trace for displayed cadence, and a real host with input/scroll latency compared with rendering disabled. Video needs known frame timestamps, seek/loop fixtures and audio/video synchronization tests once decoding exists. Scene verification needs reference output from Wallpaper Engine, with fixed time/seed where supported and tolerances for nondeterminism.
 
-These layers are planned. Current checks do not measure sustained memory growth, integrated-GPU contention, minimized lifecycle, production frame pooling, host input latency, scene fidelity or video playback. Immutable allocation per frame remains experimental. Compare matching workloads and configurations over repeated runs before claiming an improvement; keep correctness gates separate from performance scores.
+These layers are planned. Current checks verify bounded output ownership and steady allocation reuse, but do not measure sustained total-memory growth, integrated-GPU contention, minimized lifecycle, host input latency, scene fidelity or video playback. Compare matching workloads and configurations over repeated runs before claiming an improvement; keep correctness gates separate from performance scores.

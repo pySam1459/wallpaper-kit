@@ -1,4 +1,4 @@
-use scene_renderer::{DeviceMode, Frame, Pixels};
+use scene_renderer::{DeviceMode, Frame, OutputStats, Pixels};
 use serde_json::{Value, json};
 use std::{
     error::Error,
@@ -49,13 +49,20 @@ pub fn timestamp() -> u128 {
 pub fn frame_info(frame: &Frame) -> Value {
     let adapter = frame.adapter_info();
     json!({
-        "frame_id": frame.id(), "width": frame.size().width(), "height": frame.size().height(),
+        "frame_id": frame.id(), "sequence": frame.sequence(),
+        "width": frame.size().width(), "height": frame.size().height(),
         "backend": "direct3d11", "format": "rgba8-unorm", "alpha": "opaque",
         "content": if frame.fixture_time().is_some() { "motion-fixture" } else { "blank" },
         "fixture_time_ms": frame.fixture_time().map(|time| time.as_millis()),
         "adapter": {"name": adapter.name, "vendor_id": adapter.vendor_id, "device_id": adapter.device_id,
             "luid": adapter.luid, "software": adapter.software},
     })
+}
+
+pub fn pool_info(stats: OutputStats) -> Value {
+    json!({"resident_textures":stats.resident_textures,"resident_bytes":stats.resident_bytes,
+        "texture_allocations":stats.texture_allocations,"submitted_frames":stats.submitted_frames,
+        "published_frames":stats.published_frames,"waiting_for_frame_release":stats.waiting_for_frame_release})
 }
 
 pub fn write_png(path: &Path, pixels: &Pixels) -> Result<()> {

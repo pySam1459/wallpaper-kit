@@ -2,7 +2,7 @@
 
 ## Status
 
-Blank resize, retained-frame lifetime and shutdown are implemented through the [blank infrastructure](blank-renderer.md). [Diagnostic motion](diagnostic-motion.md) adds consumer-owned play/pause and controlled stepping. Animated frame-pool backpressure, device-loss recovery and scene playback remain planned.
+Blank resize, retained-frame lifetime and shutdown are implemented through the [blank infrastructure](blank-renderer.md). [Diagnostic motion](diagnostic-motion.md) adds consumer-owned play/pause and controlled stepping. [Bounded frame-pool backpressure](../../../../docs/frame-pool.md) is implemented and verified. Device-loss recovery and scene playback remain planned.
 
 ## Consumer outcome
 
@@ -10,7 +10,7 @@ The host can control playback and output size, consume completed frames with def
 
 ## How to reach it
 
-Use the example viewer's public library path. Fixture controls and pause semantics are in [motion verification](../../../../docs/motion-verification.md#native-controls). Production playback controls remain planned.
+Use the example viewer's public library path. Fixture controls and pause semantics are in [motion verification](../../../../docs/motion-verification.md#native-controls). Use `Frame::sequence()` for publication identity and `Renderer::try_output_stats()` for output ownership and saturation. The required gate tests release-triggered progress and shutdown while saturated. Production playback controls remain planned.
 
 ## Drive and observe
 
@@ -19,3 +19,5 @@ Observe animation, pause it, then resume it. Check rendered behavior as well as 
 ## Evidence and limits
 
 Retain actions, timestamps, captures, state observations, and lifecycle diagnostics. Check GPU allocations over repeated load/close cycles once measurement exists. Define pause semantics and allowed in-flight work before setting expectations. Process exit alone does not prove resource behavior in a long-lived host.
+
+Bounded frame exchange was verified on 2026-10-10 by the [hardware/native gate](../../../../artifacts/20261010-010846-85f196dd/manifest.json) and [WARP/headless gate](../../../../artifacts/20261010-011028-f819e26f/manifest.json). Native presentation passed in the hardware run and was explicitly skipped in the WARP run. See [frame exchange verification](../../../../docs/frame-pool.md#verification) for allocation, saturation, queued-copy and timing evidence. These receipts establish diagnostic output behavior, not scene compatibility.
