@@ -1,4 +1,4 @@
-# scene-renderer
+# wallpaper-kit
 
 An open source renderer for high-quality photos, videos, and animated Wallpaper Engine scenes, designed for application backgrounds and other embedded content.
 
@@ -8,7 +8,7 @@ The project starts on Windows. The consuming application's responsiveness takes 
 
 The Rust library renders blank Direct3D 11 textures, controlled-time diagnostic motion and decoded TEX pages through a bounded reusable output pool. It also inspects local scene packages and their asset dependencies through a read-only public API. A native Windows viewer and headless verification runners consume its public API. [TEX page verification](docs/texture-pages.md) covers PNG/LZ4 decoding and RGBA8/R8/BC3 drawing. Authored scene rendering, production animation, photo/video playback, and framework adapters remain unimplemented.
 
-The [renderer specification](docs/spec/scene-renderer.md) defines the architecture, dependency choices, delivery gates, and measurable MVP acceptance criteria.
+The [renderer specification](docs/spec/wallpaper-kit.md) defines the architecture, dependency choices, delivery gates, and measurable MVP acceptance criteria.
 
 ## Build and run
 

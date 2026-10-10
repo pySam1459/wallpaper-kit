@@ -1,6 +1,5 @@
 //! Read-only scene inspection through the library's public API.
 
-use scene_renderer::{SceneSource, inspect_scene};
 use serde_json::json;
 use std::{
     error::Error,
@@ -9,6 +8,7 @@ use std::{
     process::ExitCode,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
+use wallpaper_kit::{SceneSource, inspect_scene};
 
 fn main() -> ExitCode {
     match run() {

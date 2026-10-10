@@ -187,7 +187,7 @@ pub fn cases() -> Vec<Case> {
         .collect()
 }
 
-pub fn check(pixels: &scene_renderer::Pixels, extent: [u32; 2], rgba: &[u8]) -> Result<(), String> {
+pub fn check(pixels: &wallpaper_kit::Pixels, extent: [u32; 2], rgba: &[u8]) -> Result<(), String> {
     let width = pixels.size.width();
     let height = pixels.size.height();
     for y in 0..height {

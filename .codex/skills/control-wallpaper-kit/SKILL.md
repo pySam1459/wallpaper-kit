@@ -1,9 +1,9 @@
 ---
-name: control-scene-renderer
-description: Inspect readiness and verify scene-renderer through its minimal Windows example viewer. Use when testing rendered output, playback, lifecycle behavior, or performance after a renderer change.
+name: control-wallpaper-kit
+description: Inspect readiness and verify wallpaper-kit through its minimal Windows example viewer. Use when testing rendered output, playback, lifecycle behavior, or performance after a renderer change.
 ---
 
-# Control scene-renderer
+# Control wallpaper-kit
 
 Give agents a repeatable way to observe the rendering library through a real consumer. The example viewer uses the public library API. Keep scene behavior in the library and control mechanics in a reusable tool.
 
@@ -14,13 +14,13 @@ Blank rendering, controlled motion, bounded output reuse, TEX page/region decodi
 From the repository root, run:
 
 ```powershell
-pwsh -File ./.codex/skills/control-scene-renderer/scripts/doctor.ps1
+pwsh -File ./.codex/skills/control-wallpaper-kit/scripts/doctor.ps1
 ```
 
 To check a locally available scene path, supply it explicitly:
 
 ```powershell
-pwsh -File ./.codex/skills/control-scene-renderer/scripts/doctor.ps1 -ScenePath 'C:/Program Files (x86)/Steam/steamapps/workshop/content/431960/3780699842/scene.pkg'
+pwsh -File ./.codex/skills/control-wallpaper-kit/scripts/doctor.ps1 -ScenePath 'C:/Program Files (x86)/Steam/steamapps/workshop/content/431960/3780699842/scene.pkg'
 ```
 
 The example package was inspected at that path during planning. Doctor only checks its current existence; scene verification still exits with code `2`. Without a scene argument, doctor reports readiness only when a successful blank/motion/page/crop/extraction/asset-worker/prefetch/composition/image-playback/native verification receipt matches current source and executable hashes. Exit code `1` means doctor failed. Read [the control contract](references/control-contract.md) when interpreting evidence or extending control operations.
@@ -35,7 +35,7 @@ Use `-Software -SkipNative` without an interactive desktop. Report the native pa
 
 ## Verify a change
 
-1. Read [the feature map](../scene-renderer-feature-map/SKILL.md) and the relevant feature entry. Establish what the caller must observe before changing code.
+1. Read [the feature map](../wallpaper-kit-feature-map/SKILL.md) and the relevant feature entry. Establish what the caller must observe before changing code.
 2. Run doctor in the checkout containing the change. Missing or stale evidence is a reason to run verification; missing platform prerequisites are a blocker to report. Do not substitute build success for runtime proof.
 3. Run the mapped scenario from that checkout. `scripts/verify.ps1` checks blank, motion and texture pixels, verifier fault cases and live readiness timing, then drives resize/capture/play/pause in separate blank, page, crop, extracted-frame, prefetched-frame and composition native instances and stops them. The gate also drives generated combined image playback; paired scene/engine roots drive all seven target image layers. Full scene and adapter scenarios remain planned.
 4. Capture the mapped output and measurements. For a bug, establish the failure before the fix where practical. For performance, compare the same workload and hardware before and after.

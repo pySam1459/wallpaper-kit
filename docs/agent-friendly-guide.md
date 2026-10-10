@@ -1,6 +1,6 @@
 # Agent-friendly engineering guide
 
-This guide compiles Lauren "Poteto" Tan's ideas about agent-friendly architecture, verification tools, skills, and evals from the supplied interviews, video, screenshots, and pstack references. It adapts those ideas to scene-renderer, an open source Rust rendering component with a small Windows example app.
+This guide compiles Lauren "Poteto" Tan's ideas about agent-friendly architecture, verification tools, skills, and evals from the supplied interviews, video, screenshots, and pstack references. It adapts those ideas to wallpaper-kit, an open source Rust rendering component with a small Windows example app.
 
 The central idea is to make good work the conventional path, give agents tools to observe the result, and improve the environment when failures repeat. Trust comes from evidence about specific behavior and engineering constraints.
 
@@ -45,7 +45,7 @@ The aim is fewer ambiguous decisions. It does not require a crate per feature, a
 
 Tan's verification skills let an agent run the application, exercise behavior, and inspect output through snapshots, traces, and metrics. Without direct observation, a human must relay results before the agent can iterate. [Interview 1, lines 63-67](/C:/Users/samba/Downloads/poteto/interview-1.txt:63)
 
-For scene-renderer, verification has to reach the rendered frames and the consuming application's behavior. Compilation establishes useful properties, but cannot establish correct pixels, animation, or host responsiveness.
+For wallpaper-kit, verification has to reach the rendered frames and the consuming application's behavior. Compilation establishes useful properties, but cannot establish correct pixels, animation, or host responsiveness.
 
 The small example app is a real consumer of the library. It displays output and provides the controls needed to exercise loading, playback, resize, and shutdown. Scene interpretation and rendering remain in the library. A special rendering path available only to the example app would weaken the evidence about downstream integration.
 
@@ -77,7 +77,7 @@ Entries have explicit statuses: planned, implemented but unverified, or verified
 
 Read the entries relevant to the task rather than loading every feature document into context. Keep unsupported paths and unavailable prerequisites visible. A skipped check must not appear as a pass.
 
-The existing [feature-map skill](../.codex/skills/scene-renderer-feature-map/SKILL.md) covers the Workshop MVP, playback and lifecycle, performance and host impact, and library and adapter integration. Additional entries should follow concrete implementations.
+The existing [feature-map skill](../.codex/skills/wallpaper-kit-feature-map/SKILL.md) covers the Workshop MVP, playback and lifecycle, performance and host impact, and library and adapter integration. Additional entries should follow concrete implementations.
 
 ## Evidence supports a repeatable improvement loop
 
@@ -147,9 +147,9 @@ The transferable principles are conventional ownership, enforced boundaries, reu
 
 ## Current foundations and source material
 
-The initial library now renders blank GPU frames, with native and headless consumers. The [control skill](../.codex/skills/control-scene-renderer/SKILL.md) provides a read-only doctor and repeatable blank runtime verification. The [blank renderer guide](blank-renderer.md) records real commands and limitations. Scene loading, animation, full performance collection and agent eval execution remain planned. Doctor checks evidence freshness and keeps scene verification blocked.
+The initial library now renders blank GPU frames, with native and headless consumers. The [control skill](../.codex/skills/control-wallpaper-kit/SKILL.md) provides a read-only doctor and repeatable blank runtime verification. The [blank renderer guide](blank-renderer.md) records real commands and limitations. Scene loading, animation, full performance collection and agent eval execution remain planned. Doctor checks evidence freshness and keeps scene verification blocked.
 
-Use the [control contract](../.codex/skills/control-scene-renderer/references/control-contract.md) for planned operations and evidence requirements. Use the [renderer specification](spec/scene-renderer.md) for implementation scope and delivery gates.
+Use the [control contract](../.codex/skills/control-wallpaper-kit/references/control-contract.md) for planned operations and evidence requirements. Use the [renderer specification](spec/wallpaper-kit.md) for implementation scope and delivery gates.
 
 The compilation draws on these materials:
 

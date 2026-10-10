@@ -1,4 +1,4 @@
-use scene_renderer::Pixels;
+use wallpaper_kit::Pixels;
 
 // Independent pixel oracle, expressed from the documented fixture contract.
 // It never calls the renderer's rectangle calculation or trusts frame metadata.
@@ -32,7 +32,7 @@ pub fn check_pixels(pixels: &Pixels, expected_ms: u64) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use scene_renderer::Size;
+    use wallpaper_kit::Size;
 
     #[test]
     fn literal_half_loop_reference_and_corruption() {

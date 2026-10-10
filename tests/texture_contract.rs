@@ -3,8 +3,6 @@
 #[path = "../examples/support/texture.rs"]
 mod fixture;
 
-use scene_renderer::{DeviceMode, Frame, Renderer, Size};
-use scene_renderer::{SceneSource, SpritePager, TextureDecoder, TextureFormat, TextureRegion};
 use std::{
     fs,
     path::PathBuf,
@@ -14,6 +12,8 @@ use std::{
     sync::{Arc, mpsc::Receiver},
     time::{Duration, Instant},
 };
+use wallpaper_kit::{DeviceMode, Frame, Renderer, Size};
+use wallpaper_kit::{SceneSource, SpritePager, TextureDecoder, TextureFormat, TextureRegion};
 
 static RUN: AtomicU64 = AtomicU64::new(0);
 
@@ -257,7 +257,7 @@ fn wait_frame(renderer: &Renderer, events: &Receiver<()>, id: u64) -> Arc<Frame>
     }
 }
 
-fn wait_stats(renderer: &Renderer, frame: &Frame) -> scene_renderer::OutputStats {
+fn wait_stats(renderer: &Renderer, frame: &Frame) -> wallpaper_kit::OutputStats {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         if let Some(stats) = renderer.try_output_stats().unwrap()
@@ -312,7 +312,7 @@ fn texture_oracle_detects_orientation_alpha_and_channel_faults() {
     // Direct expected composition for the 2x2 corner fixture.
     rgba[4..8].copy_from_slice(&[8, 140, 16, 255]);
     rgba[8..12].copy_from_slice(&[16, 24, 32, 255]);
-    let mut pixels = scene_renderer::Pixels {
+    let mut pixels = wallpaper_kit::Pixels {
         size: Size::new(2, 2).unwrap(),
         rgba,
     };
@@ -383,7 +383,7 @@ fn rejects_unsupported_sprite_rectangles_and_invalid_regions() {
     ] {
         assert!(matches!(
             TextureRegion::new(page.clone(), origin, extent),
-            Err(scene_renderer::Error::InvalidTextureRegion)
+            Err(wallpaper_kit::Error::InvalidTextureRegion)
         ));
     }
     for rectangle in [
@@ -509,7 +509,7 @@ fn sprite_stream_uses_variable_durations_and_reloads_only_page_transitions() {
     assert_eq!(stream.stats().cached_frame_bytes, 8);
 }
 
-fn package_decoder_stream(package: &Package) -> scene_renderer::SpriteStream {
+fn package_decoder_stream(package: &Package) -> wallpaper_kit::SpriteStream {
     // The stream must remain usable after its decoder is dropped.
     TextureDecoder::open(&package.source())
         .unwrap()
@@ -641,7 +641,7 @@ fn crop_oracle_uses_expected_rows_and_detects_wrong_region() {
     renderer.shutdown().unwrap();
 }
 
-fn paged_sample(pager: &SpritePager, time: Duration) -> scene_renderer::SpriteSample {
+fn paged_sample(pager: &SpritePager, time: Duration) -> wallpaper_kit::SpriteSample {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         if let Some(sample) = pager.try_sample_at(time).unwrap() {
@@ -655,7 +655,7 @@ fn settled_pager(
     pager: &SpritePager,
     count: usize,
     decodes: u64,
-) -> scene_renderer::SpritePagingStats {
+) -> wallpaper_kit::SpritePagingStats {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         if let Some(stats) = pager.try_stats().unwrap()

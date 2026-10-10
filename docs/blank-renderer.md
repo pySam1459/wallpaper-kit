@@ -1,6 +1,6 @@
 # Blank renderer infrastructure
 
-This milestone provides a Rust library, real consumers, and repeatable blank-output verification. [Diagnostic motion verification](motion-verification.md) extends those consumers with controlled-time animation and separate live telemetry. Neither loads the Workshop scene. The planned scene architecture remains in the [specification](spec/scene-renderer.md).
+This milestone provides a Rust library, real consumers, and repeatable blank-output verification. [Diagnostic motion verification](motion-verification.md) extends those consumers with controlled-time animation and separate live telemetry. Neither loads the Workshop scene. The planned scene architecture remains in the [specification](spec/wallpaper-kit.md).
 
 ## Ownership and dependencies
 
@@ -71,7 +71,7 @@ Resize replies after a frame matching the actual window size has been presented.
 ## Doctor
 
 ```powershell
-pwsh -File ./.codex/skills/control-scene-renderer/scripts/doctor.ps1
+pwsh -File ./.codex/skills/control-wallpaper-kit/scripts/doctor.ps1
 ```
 
 Doctor remains read-only. It reports diagnostic readiness only when a successful blank/motion/page/crop/native receipt from this checkout matches the current runtime source set, source hashes and five executable hashes. A build without a matching receipt is unverified. Exit codes are 0 for ready, 2 for blocked/unverified, and 1 for a doctor failure.

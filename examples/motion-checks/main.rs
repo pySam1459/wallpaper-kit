@@ -6,13 +6,13 @@ mod motion_checks;
 mod support;
 mod timing;
 
-use scene_renderer::{Frame, Pixels, Renderer, Size};
 use serde_json::json;
 use std::{
     sync::{Arc, mpsc::Receiver},
     time::{Duration, Instant},
 };
 use support::Result;
+use wallpaper_kit::{Frame, Pixels, Renderer, Size};
 
 fn wait_frame(renderer: &Renderer, events: &Receiver<()>, id: u64) -> Result<(Arc<Frame>, f64)> {
     let deadline = Instant::now() + Duration::from_secs(10);

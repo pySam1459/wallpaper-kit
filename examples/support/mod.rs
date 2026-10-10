@@ -1,4 +1,3 @@
-use scene_renderer::{DeviceMode, Frame, OutputStats, Pixels};
 use serde_json::{Value, json};
 use std::{
     error::Error,
@@ -7,6 +6,7 @@ use std::{
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
+use wallpaper_kit::{DeviceMode, Frame, OutputStats, Pixels};
 
 pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
 

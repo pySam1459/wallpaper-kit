@@ -7,7 +7,7 @@
 //! particles and camera behavior remain unsupported.
 
 #[cfg(not(windows))]
-compile_error!("The initial scene-renderer backend requires Windows.");
+compile_error!("The initial wallpaper-kit backend requires Windows.");
 
 mod assets;
 mod gpu;
@@ -246,7 +246,7 @@ impl Renderer {
         let (notify, events) = mpsc::sync_channel(1);
         let worker_shared = shared.clone();
         let worker = thread::Builder::new()
-            .name("scene-renderer".into())
+            .name("wallpaper-kit".into())
             .spawn(move || run_worker(worker_shared, notify, mode))
             .map_err(|error| Error::Worker(error.to_string()))?;
         Ok((

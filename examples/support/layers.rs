@@ -1,11 +1,11 @@
 //! Generated composition with an independent inverse-transform pixel oracle.
 
 use crate::texture_checks;
-use scene_renderer::{
+use std::{sync::Arc, time::Duration};
+use wallpaper_kit::{
     CloudMotion, CloudMotionSettings, GaussianBlur, ImageComposition, ImageLayer, Pixels,
     PreciseBlur, Size, TextureDecoder, TextureFormat, TextureRegion,
 };
-use std::{sync::Arc, time::Duration};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 

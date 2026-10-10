@@ -7,11 +7,6 @@ mod playback_checks;
 #[path = "../examples/support/texture.rs"]
 mod texture_checks;
 
-use scene_renderer::{
-    CloudMotion, CloudMotionSettings, DeviceMode, Frame, GaussianBlur, ImageComposition,
-    ImageLayer, ImagePlayback, ImagePlaybackSample, OutputStats, PreciseBlur, Renderer,
-    SceneSource, Size, TextureDecoder, TextureRegion,
-};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -22,6 +17,11 @@ use std::{
         mpsc::Receiver,
     },
     time::{Duration, Instant},
+};
+use wallpaper_kit::{
+    CloudMotion, CloudMotionSettings, DeviceMode, Frame, GaussianBlur, ImageComposition,
+    ImageLayer, ImagePlayback, ImagePlaybackSample, OutputStats, PreciseBlur, Renderer,
+    SceneSource, Size, TextureDecoder, TextureRegion,
 };
 
 static RUN: AtomicU64 = AtomicU64::new(0);
@@ -379,7 +379,7 @@ fn blur_bounds_reject_nonfinite_parameters_and_oversized_scratch() {
         .collect();
     assert!(matches!(
         ImageComposition::new(Size::new(8, 8).unwrap(), layers),
-        Err(scene_renderer::Error::InvalidBlur)
+        Err(wallpaper_kit::Error::InvalidBlur)
     ));
 }
 

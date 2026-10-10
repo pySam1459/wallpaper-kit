@@ -1,8 +1,8 @@
 //! Redistributable combined-playback fixture and independent pixel oracle.
 
 use super::texture_checks as texture;
-use scene_renderer::Pixels;
 use serde_json::json;
+use wallpaper_kit::Pixels;
 
 pub fn package() -> Vec<u8> {
     let scene = json!({"version":5,"general":{"orthogonalprojection":{"width":8,"height":4}},"objects":[

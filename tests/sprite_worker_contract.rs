@@ -3,12 +3,12 @@
 #[path = "../examples/support/texture.rs"]
 mod fixture;
 
-use scene_renderer::{DeviceMode, Renderer, SceneSource, Size, SpriteResult, SpriteWorker};
 use std::{
     fs,
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant},
 };
+use wallpaper_kit::{DeviceMode, Renderer, SceneSource, Size, SpriteResult, SpriteWorker};
 
 static RUN: AtomicU64 = AtomicU64::new(0);
 

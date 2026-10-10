@@ -1,4 +1,4 @@
-# Scene renderer specification
+# wallpaper-kit specification
 
 Status: proposed scene design, grounded in inspection of the local MVP package on 2026-10-09. Rust and an initial blank Direct3D 11 renderer with native/headless consumers are now implemented; see [blank infrastructure](../blank-renderer.md). Scene rendering and animation remain unimplemented. Production backend suitability remains subject to the gates below.
 

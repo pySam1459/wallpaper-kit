@@ -12,10 +12,6 @@ mod sprite_checks;
 #[path = "../support/mod.rs"]
 mod support;
 
-use scene_renderer::{
-    Frame, OutputStats, Renderer, SceneSource, Size, SpritePager, SpriteWorker, TextureDecoder,
-    TextureFormat, TextureRegion,
-};
 use serde_json::json;
 use std::{
     fs,
@@ -24,6 +20,10 @@ use std::{
     time::{Duration, Instant},
 };
 use support::Result;
+use wallpaper_kit::{
+    Frame, OutputStats, Renderer, SceneSource, Size, SpritePager, SpriteWorker, TextureDecoder,
+    TextureFormat, TextureRegion,
+};
 
 fn wait_frame(renderer: &Renderer, events: &Receiver<()>, id: u64) -> Result<Arc<Frame>> {
     let deadline = Instant::now() + Duration::from_secs(15);

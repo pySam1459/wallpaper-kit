@@ -1,11 +1,11 @@
 //! Public inspection contract using generated, redistributable packages.
 
-use scene_renderer::{SceneSource, inspect_scene};
 use std::{
     fs,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
+use wallpaper_kit::{SceneSource, inspect_scene};
 
 static RUN: AtomicU64 = AtomicU64::new(0);
 
@@ -234,7 +234,7 @@ fn reports_missing_assets_and_upgrades_conditional_requirements() {
     assert_eq!(missing.len(), 1);
     assert_eq!(
         missing[0].severity,
-        scene_renderer::DiagnosticSeverity::Error
+        wallpaper_kit::DiagnosticSeverity::Error
     );
     assert_eq!(missing[0].object_id, Some(7));
     assert_eq!(missing[0].asset, "materials/missing.tex");
@@ -337,7 +337,7 @@ fn validates_blur_bindings_and_composition_order() {
     assert!(!report.has_blocking_findings(), "{:?}", report.diagnostics);
     assert_eq!(
         report.scene.objects[1].kind,
-        scene_renderer::ObjectKind::Composition
+        wallpaper_kit::ObjectKind::Composition
     );
     assert_eq!(report.scene.objects[2].id, 3);
     let bindings = &report.effects[0].passes[1].bindings;
@@ -423,9 +423,9 @@ fn propagates_conditional_reachability_and_required_upgrades() {
         assert_eq!(
             missing[0].severity,
             if required {
-                scene_renderer::DiagnosticSeverity::Error
+                wallpaper_kit::DiagnosticSeverity::Error
             } else {
-                scene_renderer::DiagnosticSeverity::Warning
+                wallpaper_kit::DiagnosticSeverity::Warning
             }
         );
         let child = report
@@ -461,7 +461,7 @@ fn normalizes_paths_for_composition_and_effect_overrides() {
     let report = inspect_scene(&fixture.source()).unwrap();
     assert_eq!(
         report.scene.objects[0].kind,
-        scene_renderer::ObjectKind::Composition
+        wallpaper_kit::ObjectKind::Composition
     );
     assert!(
         report
@@ -508,7 +508,7 @@ fn diagnoses_unrecognized_general_and_asset_fields() {
     for field in ["customlighting", "mesh", "customblend"] {
         assert!(
             report.diagnostics.iter().any(|finding| finding.severity
-                == scene_renderer::DiagnosticSeverity::Unsupported
+                == wallpaper_kit::DiagnosticSeverity::Unsupported
                 && finding.message.contains(field)),
             "{field}: {:?}",
             report.diagnostics

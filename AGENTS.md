@@ -14,7 +14,7 @@ Before changing Rust code, public APIs, dependencies, or lint policies, read [th
 
 When designing agent tooling or verification, read [the source research](docs/research/agent-friendly-environment.md). Adapt its principles to this library's scope and verify commands against the real implementation before documenting them as working.
 
-Before verifying renderer behavior, read [control-scene-renderer](.codex/skills/control-scene-renderer/SKILL.md) and the relevant entry in [the feature map](.codex/skills/scene-renderer-feature-map/SKILL.md). Update affected entries when capabilities or verification routes change. Blank and diagnostic motion verification are implemented; scene verification remains planned.
+Before verifying renderer behavior, read [control-wallpaper-kit](.codex/skills/control-wallpaper-kit/SKILL.md) and the relevant entry in [the feature map](.codex/skills/wallpaper-kit-feature-map/SKILL.md). Update affected entries when capabilities or verification routes change. Blank and diagnostic motion verification are implemented; scene verification remains planned.
 
 ## Think before coding
 

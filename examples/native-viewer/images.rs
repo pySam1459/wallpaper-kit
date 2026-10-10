@@ -1,9 +1,9 @@
 //! Host scheduling and observations; time and composition belong to the library.
 
 use crate::support::Result;
-use scene_renderer::{Frame, ImagePlayback, ImagePlaybackSample};
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
+use wallpaper_kit::{Frame, ImagePlayback, ImagePlaybackSample};
 
 struct Selection {
     id: u64,

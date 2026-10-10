@@ -3,7 +3,6 @@
 #[path = "../support/mod.rs"]
 mod support;
 
-use scene_renderer::{Frame, OutputStats, Renderer, Size};
 use serde_json::json;
 use std::sync::{
     Arc,
@@ -11,6 +10,7 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 use support::Result;
+use wallpaper_kit::{Frame, OutputStats, Renderer, Size};
 
 fn wait_frame(renderer: &Renderer, events: &Receiver<()>, id: u64) -> Result<Arc<Frame>> {
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -32,7 +32,7 @@ fn wait_frame(renderer: &Renderer, events: &Receiver<()>, id: u64) -> Result<Arc
     }
 }
 
-fn check_pixels(frame: &Frame) -> Result<scene_renderer::Pixels> {
+fn check_pixels(frame: &Frame) -> Result<wallpaper_kit::Pixels> {
     let pixels = frame.readback()?;
     let expected = [16, 24, 32, 255];
     if pixels.rgba.len() != frame.size().width() as usize * frame.size().height() as usize * 4

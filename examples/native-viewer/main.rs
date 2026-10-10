@@ -19,10 +19,6 @@ mod support;
 mod texture_checks;
 
 use presentation::Presentation;
-use scene_renderer::{
-    DeviceMode, Frame, ImagePlayback, Renderer, SceneSource, Size, SpritePager, SpriteWorker,
-    TextureDecoder, TexturePage, TextureRegion,
-};
 use serde_json::{Value, json};
 use std::{
     io::{self, BufRead, Write},
@@ -31,6 +27,10 @@ use std::{
     time::{Duration, Instant},
 };
 use support::Result;
+use wallpaper_kit::{
+    DeviceMode, Frame, ImagePlayback, Renderer, SceneSource, Size, SpritePager, SpriteWorker,
+    TextureDecoder, TexturePage, TextureRegion,
+};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
@@ -353,9 +353,9 @@ impl ApplicationHandler<Event> for App {
             let window = event_loop.create_window(
                 Window::default_attributes()
                     .with_title(if self.images.is_some() {
-                        "Scene renderer | selected image playback | Esc to close"
+                        "wallpaper-kit | selected image playback | Esc to close"
                     } else {
-                        "Scene renderer | texture and motion diagnostics | Esc to close"
+                        "wallpaper-kit | texture and motion diagnostics | Esc to close"
                     })
                     .with_inner_size(PhysicalSize::new(640, 360)),
             )?;

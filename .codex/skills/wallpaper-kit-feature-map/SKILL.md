@@ -1,9 +1,9 @@
 ---
-name: scene-renderer-feature-map
-description: Find and maintain scene-renderer's consumer-facing feature verification map. Use before reproducing a renderer defect, checking a changed capability, or documenting a newly verified viewer or adapter workflow.
+name: wallpaper-kit-feature-map
+description: Find and maintain wallpaper-kit's consumer-facing feature verification map. Use before reproducing a renderer defect, checking a changed capability, or documenting a newly verified viewer or adapter workflow.
 ---
 
-# Scene-renderer feature map
+# wallpaper-kit feature map
 
 Map behavior from the library consumer's point of view: what the capability does, how to reach it, which actions exercise it, and which observations prove it. Keep implementation details in source and architecture documentation.
 
@@ -25,7 +25,7 @@ Photos, general video playback, and additional scene compatibility remain projec
 
 ## Use the map
 
-Read only the entries affected by the task. Use [control-scene-renderer](../control-scene-renderer/SKILL.md) for readiness, instance control, and evidence collection. Each entry's status is authoritative for that procedure; planned entries supply acceptance goals, not proof of support.
+Read only the entries affected by the task. Use [control-wallpaper-kit](../control-wallpaper-kit/SKILL.md) for readiness, instance control, and evidence collection. Each entry's status is authoritative for that procedure; planned entries supply acceptance goals, not proof of support.
 
 ## Maintain an entry
 

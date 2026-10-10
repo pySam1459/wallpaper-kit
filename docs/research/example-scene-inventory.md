@@ -1,6 +1,6 @@
 # Example scene inventory
 
-Inspected read-only on 2026-10-09. This note contains metadata, not extracted artwork or proprietary shader code. It grounds the [renderer specification](../spec/scene-renderer.md).
+Inspected read-only on 2026-10-09. This note contains metadata, not extracted artwork or proprietary shader code. It grounds the [renderer specification](../spec/wallpaper-kit.md).
 
 ## Input identity
 

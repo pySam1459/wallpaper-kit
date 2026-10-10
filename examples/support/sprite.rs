@@ -1,11 +1,11 @@
 //! Bounded diagnostic waiting; production hosts poll from their own event loop.
 
-use scene_renderer::{SpriteResult, SpriteWorker};
 use serde_json::{Value, json};
 use std::{
     sync::mpsc::Receiver,
     time::{Duration, Instant},
 };
+use wallpaper_kit::{SpriteResult, SpriteWorker};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 

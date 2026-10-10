@@ -1,10 +1,10 @@
 //! Public GPU contract under request bursts and a slow notification consumer.
 
-use scene_renderer::{DeviceMode, Renderer, Size};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use wallpaper_kit::{DeviceMode, Renderer, Size};
 
 #[test]
 fn pending_requests_and_slow_notifications_preserve_latest_output() {
@@ -51,7 +51,7 @@ fn pending_requests_and_slow_notifications_preserve_latest_output() {
     assert_eq!(first.readback().unwrap().size, Size::new(64, 33).unwrap());
 }
 
-fn wait_for(renderer: &Renderer, id: u64) -> Arc<scene_renderer::Frame> {
+fn wait_for(renderer: &Renderer, id: u64) -> Arc<wallpaper_kit::Frame> {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         if let Some(frame) = renderer.try_frame().unwrap()

@@ -2,7 +2,7 @@
 #![allow(unsafe_code)]
 
 use super::support::Result;
-use scene_renderer::{Frame, Pixels, Size};
+use wallpaper_kit::{Frame, Pixels, Size};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
@@ -134,11 +134,11 @@ impl Presentation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use scene_renderer::{DeviceMode, Renderer};
     use std::{
         sync::Arc,
         time::{Duration, Instant},
     };
+    use wallpaper_kit::{DeviceMode, Renderer};
 
     fn wait_frame(renderer: &Renderer, id: u64) -> Arc<Frame> {
         let deadline = Instant::now() + Duration::from_secs(10);

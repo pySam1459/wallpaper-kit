@@ -1,11 +1,11 @@
 //! Bounded diagnostic waits, never a host UI polling policy.
 
-use scene_renderer::{SpritePager, SpritePagingStats, SpriteSample};
 use serde_json::{Value, json};
 use std::{
     sync::mpsc::Receiver,
     time::{Duration, Instant},
 };
+use wallpaper_kit::{SpritePager, SpritePagingStats, SpriteSample};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 

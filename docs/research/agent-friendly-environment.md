@@ -1,6 +1,6 @@
 # Agent-friendly environment research
 
-Research reviewed on 9 October 2026. This note informs an open source Rust rendering component consumed by other applications. A small example app will exercise that component and collect evidence. The repository currently contains documentation only, so no renderer, verification command, or performance result is established yet. See the [project status](/C:/Users/samba/dev/scene-renderer/README.md:7).
+Research reviewed on 9 October 2026. This note informs an open source Rust rendering component consumed by other applications. A small example app will exercise that component and collect evidence. The repository currently contains documentation only, so no renderer, verification command, or performance result is established yet. See the [project status](/C:/Users/samba/dev/wallpaper-kit/README.md:7).
 
 ## Sources and limits
 
@@ -40,7 +40,7 @@ The first interview describes scrutinizing sampled work and changing the environ
 
 Interview 2 recommends starting verification locally where agent behavior is observable, before scaling. Automatic merging is a reported outcome of that team's process, not a prerequisite for ours. [Interview 2, lines 212-246](/C:/Users/samba/Downloads/poteto/interview-2.txt:212)
 
-## Recommendations for scene-renderer
+## Recommendations for wallpaper-kit
 
 These are applications of the sources to our requirements, not claims that pstack already provides these facilities.
 

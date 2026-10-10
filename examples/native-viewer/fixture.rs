@@ -1,6 +1,6 @@
-use scene_renderer::Frame;
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
+use wallpaper_kit::Frame;
 
 // Consumer-owned diagnostic clock. There is no timer or unbounded history in
 // the library; live playback requests explicit times through the public API.
