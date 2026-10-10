@@ -5,11 +5,14 @@ mod texture_checks;
 use texture_checks as fixture;
 #[path = "../support/layers.rs"]
 mod layers_checks;
+#[path = "../support/sprite.rs"]
+mod sprite_checks;
 #[path = "../support/mod.rs"]
 mod support;
 
 use scene_renderer::{
-    Frame, OutputStats, Renderer, SceneSource, Size, TextureDecoder, TextureFormat, TextureRegion,
+    Frame, OutputStats, Renderer, SceneSource, Size, SpriteWorker, TextureDecoder, TextureFormat,
+    TextureRegion,
 };
 use serde_json::json;
 use std::{
@@ -95,6 +98,7 @@ fn main() -> Result<()> {
     let mut results = Vec::new();
     let mut region_results = Vec::new();
     let mut extracted_results = Vec::new();
+    let mut worker_results = Vec::new();
     for case in &cases {
         let page = Arc::new(decoder.decode_page(case.name, 0)?);
         let id = renderer.render_texture_page(page.clone())?;
@@ -226,6 +230,43 @@ fn main() -> Result<()> {
             let cache = stream.stats();
             extracted_results.push(json!({"name":case.name,"checkpoint":checkpoint,"time_ns":time.as_nanos(),"frame_index":sample.frame_index(),"source_origin":authored.origin(),"source_extent":authored.extent(),"extracted_extent":sample.region().page().extent(),"residual_crop":sample.region().origin(),"page_decodes":cache.page_decodes,"frame_extracts":cache.frame_extracts,"cached_page_bytes":cache.cached_page_bytes,"cached_frame_bytes":cache.cached_frame_bytes,"resources":support::pool_info(stats),"checks":"passed"}));
         }
+        let (worker, worker_events) = SpriteWorker::new(source.clone(), case.name.into())?;
+        let request_id = sprite_checks::request(&worker, first_end)?;
+        // The independent GPU worker can produce a frame while assets prepare.
+        let progress = renderer.render_fixture_at(Duration::ZERO)?;
+        drop(wait_frame(&renderer, &events, progress)?);
+        let (result, metrics) = sprite_checks::wait(&worker, &worker_events, request_id)?;
+        let sample = result.into_sample()?;
+        if sample.frame_index() != 1 {
+            return Err("worker selected wrong sprite time".into());
+        }
+        let authored = sample.authored_frame();
+        let expected = fixture::crop(
+            &case.rgba,
+            case.extent,
+            authored.origin(),
+            authored.extent(),
+        );
+        let id = renderer.render_texture_region(sample.region().clone())?;
+        let frame = wait_frame(&renderer, &events, id)?;
+        let pixels = frame.readback()?;
+        fixture::check(&pixels, authored.extent(), &expected)?;
+        support::write_png(&output.join(format!("worker-{}.png", case.name)), &pixels)?;
+        let before = wait_stats(&renderer, frame.sequence())?;
+        let request_id = sprite_checks::request(&worker, first_end)?;
+        let (repeated, _) = sprite_checks::wait(&worker, &worker_events, request_id)?;
+        let repeated = repeated.into_sample()?;
+        if !Arc::ptr_eq(sample.region(), repeated.region()) {
+            return Err("worker copied repeated sample".into());
+        }
+        let id = renderer.render_texture_region(repeated.region().clone())?;
+        let repeated = wait_frame(&renderer, &events, id)?;
+        let stats = wait_stats(&renderer, repeated.sequence())?;
+        if stats.texture_uploads != before.texture_uploads {
+            return Err("worker sample uploaded again".into());
+        }
+        worker.shutdown()?;
+        worker_results.push(json!({"name":case.name,"preparation":metrics,"resources":support::pool_info(stats),"checks":"passed"}));
         let id = renderer.resize(Size::new(320, 180)?)?;
         drop(wait_frame(&renderer, &events, id)?);
     }
@@ -260,6 +301,7 @@ fn main() -> Result<()> {
     let mut target = Vec::new();
     let mut target_frames = Vec::new();
     let mut target_extracted = Vec::new();
+    let mut target_worker = Vec::new();
     let mut target_identity = None;
     if let (Some(package), Some(engine_assets)) = (package, engine) {
         let source = SceneSource {
@@ -424,6 +466,35 @@ fn main() -> Result<()> {
                 }
                 target_extracted.push(json!({"asset":asset,"time_ns":time.as_nanos(),"frame_index":index,"page_index":sample.authored_frame().page_index(),"sample_ms":sample_ms,"extracted_extent":sample.region().page().extent(),"residual_crop":sample.region().origin(),"page_decodes":cache.page_decodes,"frame_extracts":cache.frame_extracts,"cached_page_bytes":cache.cached_page_bytes,"cached_frame_bytes":cache.cached_frame_bytes,"resources":support::pool_info(stats),"comparison":"Exact GPU pixels against earlier whole-atlas crop; no Wallpaper Engine reference."}));
             }
+            let time = stream
+                .frames()
+                .iter()
+                .take(boundary)
+                .map(|frame| frame.duration())
+                .sum();
+            drop(stream);
+            let (worker, worker_events) = SpriteWorker::new(source.clone(), asset.into())?;
+            let request_id = sprite_checks::request(&worker, time)?;
+            let progress = renderer.render_fixture_at(Duration::ZERO)?;
+            drop(wait_frame(&renderer, &events, progress)?);
+            let (result, metrics) = sprite_checks::wait(&worker, &worker_events, request_id)?;
+            let sample = result.into_sample()?;
+            if sample.frame_index() != boundary {
+                return Err("target worker selected wrong page-boundary time".into());
+            }
+            let id = renderer.render_texture_region(sample.region().clone())?;
+            let frame = wait_frame(&renderer, &events, id)?;
+            let pixels = frame.readback()?;
+            if pixels.rgba != references[&(name, boundary)] {
+                return Err("target worker pixels differ from whole-atlas crop".into());
+            }
+            support::write_png(&output.join(format!("target-worker-{name}.png")), &pixels)?;
+            let stats = wait_stats(&renderer, frame.sequence())?;
+            if stats.source_texture_bytes != sample.region().page().data().len() as u64 {
+                return Err("target worker uploaded full atlas".into());
+            }
+            worker.shutdown()?;
+            target_worker.push(json!({"asset":asset,"frame_index":boundary,"preparation":metrics,"resources":support::pool_info(stats),"comparison":"Exact GPU pixels against whole-atlas crop; no Wallpaper Engine reference."}));
         }
         for (name, objects, frame_index) in [
             ("images", vec![28, 32, 77, 86], 0),
@@ -463,7 +534,7 @@ fn main() -> Result<()> {
     support::write_json(
         &output.join("report.json"),
         &json!({
-            "schema_version":4,"status":"passed","consumer":"texture-checks", "generated_cases":results, "generated_regions":region_results,"generated_extracted":extracted_results,"generated_composition":composition_result,"target_identity":target_identity,"target_pages":target,"target_frames":target_frames,"target_extracted":target_extracted,"target_compositions":target_compositions,
+            "schema_version":5,"status":"passed","consumer":"texture-checks", "generated_cases":results, "generated_regions":region_results,"generated_extracted":extracted_results,"generated_worker":worker_results,"generated_composition":composition_result,"target_identity":target_identity,"target_pages":target,"target_frames":target_frames,"target_extracted":target_extracted,"target_worker":target_worker,"target_compositions":target_compositions,
             "limits":["Diagnostic fixed-time sprite sampling, pages/crops and selected composition; no live scene playback/effects.","Point sampling and straight-alpha code-value composition; scene fidelity unverified.","Decode/upload/capture observations are not steady rendering or host latency measurements."]
         }),
     )?;

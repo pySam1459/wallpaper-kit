@@ -71,8 +71,9 @@ try {
         texture_region_status='passed';
         image_composition_status='passed';
         sprite_extraction_status='passed';
+        sprite_worker_status='passed';
         scene_inspection_status=$inspectionStatus;
-        limits=@('Blank, diagnostic motion, TEX page/region, fixed-time sprite extraction and selected image composition only.', 'No scene effects or live sprite playback.', 'Captures use diagnostic readback.', 'No scene fidelity, GPU timing or host latency claims.');
+        limits=@('Blank, diagnostic motion, TEX page/region, fixed-time sprite extraction/background preparation and selected image composition only.', 'No prefetch, scene effects or live sprite playback.', 'Captures use diagnostic readback.', 'No scene fidelity, GPU timing or host latency claims.');
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $output 'manifest.json') -Encoding utf8
     Write-Output "Evidence: $output"
 } catch {

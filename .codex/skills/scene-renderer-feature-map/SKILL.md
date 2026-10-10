@@ -15,7 +15,7 @@ Map behavior from the library consumer's point of view: what the capability does
 | [Diagnostic motion](features/diagnostic-motion.md) | Fixed-time GPU animation, independent pixel checks, live readiness and native play/pause | Verified on recorded Windows build |
 | [TEX page and crop drawing](features/texture-pages.md) | Selected raw/PNG/LZ4 pages, authored integer sprite crops, RGBA8/R8/BC3 sampling, reuse and native capture | Verified on recorded Windows build |
 | [Image composition](features/image-composition.md) | Ordered placed crops, translucent alpha/brightness, source reuse and diagnostic selected target snapshots | Verified on recorded Windows build |
-| [Sprite extraction](features/sprite-extraction.md) | Fixed-time selection, bounded per-stream cache, RGBA8/R8/BC3 extracted regions and native prepared-frame capture | Verified on recorded Windows build |
+| [Sprite extraction](features/sprite-extraction.md) | Fixed-time selection, bounded extraction/background preparation, stale-result rejection and native prepared-frame capture | Verified on recorded Windows build |
 | [Workshop scene MVP](features/workshop-scene-mvp.md) | Inspect and later render Workshop item `3780699842`, including animation | Inspection and diagnostic image composition verified; complete scene rendering planned |
 | [Playback and lifecycle](features/playback-and-lifecycle.md) | Pause/resume plus production lifecycle | Fixture play/pause, frame lifetime and pool backpressure verified; scene lifecycle planned |
 | [Performance and host impact](features/performance-and-host-impact.md) | Playback resource usage and consuming-app responsiveness | Idle and fixture readiness diagnostics implemented; scene/host performance planned |

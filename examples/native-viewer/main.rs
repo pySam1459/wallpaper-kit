@@ -6,6 +6,8 @@ mod layers_checks;
 #[path = "../support/motion.rs"]
 mod motion_checks;
 mod presentation;
+#[path = "../support/sprite.rs"]
+mod sprite_checks;
 #[path = "../support/mod.rs"]
 mod support;
 #[path = "../support/texture.rs"]
@@ -13,7 +15,8 @@ mod texture_checks;
 
 use presentation::Presentation;
 use scene_renderer::{
-    DeviceMode, Frame, Renderer, SceneSource, Size, TextureDecoder, TexturePage, TextureRegion,
+    DeviceMode, Frame, Renderer, SceneSource, Size, SpriteWorker, TextureDecoder, TexturePage,
+    TextureRegion,
 };
 use serde_json::{Value, json};
 use std::{
@@ -450,13 +453,17 @@ fn main() -> Result<()> {
             generated.join("scene.pkg"),
             texture_checks::package(&[(case.name, &case.tex)]),
         )?;
-        let decoder = TextureDecoder::open(&SceneSource {
+        let source = SceneSource {
             package: generated.join("scene.pkg"),
             engine_assets: generated.join("engine"),
-        })?;
+        };
         let (page, crop) = if extracted {
-            let mut stream = decoder.sprite_stream(case.name)?;
-            let sample = stream.sample(Duration::ZERO)?;
+            let (worker, events) = SpriteWorker::new(source, case.name.into())?;
+            let id = sprite_checks::request(&worker, Duration::ZERO)?;
+            let (result, metrics) = sprite_checks::wait(&worker, &events, id)?;
+            support::write_json(&output.join("sprite-preparation.json"), &metrics)?;
+            let sample = result.into_sample()?;
+            worker.shutdown()?;
             let authored = sample.authored_frame();
             case.rgba = texture_checks::crop(
                 &case.rgba,
@@ -470,6 +477,7 @@ fn main() -> Result<()> {
                 Some(sample.region().clone()),
             )
         } else {
+            let decoder = TextureDecoder::open(&source)?;
             let page = Arc::new(decoder.decode_page(case.name, 0)?);
             let crop = if region {
                 let metadata = decoder.sprite_frames(case.name)?[0];

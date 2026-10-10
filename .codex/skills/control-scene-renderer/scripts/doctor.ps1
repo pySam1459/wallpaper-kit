@@ -50,7 +50,7 @@ try {
             $candidate = Get-Content -LiteralPath $manifest.FullName -Raw | ConvertFrom-Json
             if ($candidate.status -ne 'passed' -or $candidate.project_root -ne $projectRoot) { continue }
             $currentSources = @('Cargo.toml', 'Cargo.lock') + @(Get-ChildItem (Join-Path $projectRoot 'src'), (Join-Path $projectRoot 'examples'), (Join-Path $projectRoot 'tests'), (Join-Path $projectRoot 'scripts') -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($projectRoot, $_.FullName) })
-            $matches = (($currentSources | Sort-Object) -join '|') -eq (($candidate.sources.path | Sort-Object) -join '|') -and @($candidate.binaries).Count -eq 5 -and $candidate.motion_status -eq 'passed' -and $candidate.texture_status -eq 'passed' -and $candidate.texture_region_status -eq 'passed' -and $candidate.image_composition_status -eq 'passed' -and $candidate.sprite_extraction_status -eq 'passed'
+            $matches = (($currentSources | Sort-Object) -join '|') -eq (($candidate.sources.path | Sort-Object) -join '|') -and @($candidate.binaries).Count -eq 5 -and $candidate.motion_status -eq 'passed' -and $candidate.texture_status -eq 'passed' -and $candidate.texture_region_status -eq 'passed' -and $candidate.image_composition_status -eq 'passed' -and $candidate.sprite_extraction_status -eq 'passed' -and $candidate.sprite_worker_status -eq 'passed'
             foreach ($source in $candidate.sources) {
                 $sourcePath = Join-Path $projectRoot $source.path
                 if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf) -or (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash -ne $source.sha256) { $matches = $false; break }

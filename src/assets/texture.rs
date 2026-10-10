@@ -5,6 +5,8 @@ use std::{sync::Arc, time::Duration};
 
 mod sprite;
 pub use sprite::{SpriteSample, SpriteStats, SpriteStream};
+mod worker;
+pub use worker::{SpriteResult, SpriteWorker};
 
 /// Storage delivered to the GPU after container decompression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

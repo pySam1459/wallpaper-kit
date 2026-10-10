@@ -1,6 +1,6 @@
 # Deterministic sprite extraction
 
-`SpriteStream` selects a TEX sprite frame at a caller-supplied time and extracts its payload for the existing Direct3D 11 region or image API. This is the first stage-4 component. Scene scheduling, async loading, prefetch and live sprite playback remain open.
+`SpriteStream` selects a TEX sprite frame at a caller-supplied time and extracts its payload for the existing Direct3D 11 region or image API. This is the first stage-4 component. [Background sprite preparation](sprite-worker.md) now runs this blocking work on an asset thread. Scene scheduling, prefetch and live sprite playback remain open.
 
 ## Consumer path
 
@@ -34,4 +34,4 @@ The [hardware/native receipt](../artifacts/20261010-145103-eaacbb0e/manifest.jso
 
 At 960x540, actual bird samples uploaded 13,824,000 payload bytes instead of a 248,832,000-byte whole atlas (18 times smaller). Character samples uploaded 3,462,912 bytes instead of 55,259,616 (about 16 times smaller). Debug blocking page-change samples took approximately 0.33–1.06 seconds for birds and 0.21–0.23 seconds for the character; resident-page frame copies took about 1.54 ms and 0.45 ms. These single-run preparation observations exclude upload/capture, use diagnostic readback and do not establish steady playback or host responsiveness. They motivate worker scheduling and prefetch before live acceptance.
 
-The selected-object snapshot loader still uses whole atlas pages and retains its existing source budget rejection. It does not automatically use this stream. Full two-loop sprite playback, background loading, aggregate residency, Wallpaper Engine reference comparison, effects and host-impact measurements remain stage-4 or later work.
+The selected-object snapshot loader still uses whole atlas pages and retains its existing source budget rejection. It does not automatically use this stream. Full two-loop sprite playback, async scene loading, aggregate residency, Wallpaper Engine reference comparison, effects and host-impact measurements remain stage-4 or later work.
