@@ -7,6 +7,8 @@ mod sprite;
 pub use sprite::{SpriteSample, SpriteStats, SpriteStream};
 mod worker;
 pub use worker::{SpriteResult, SpriteWorker};
+mod pager;
+pub use pager::{SpritePager, SpritePagingStats};
 
 /// Storage delivered to the GPU after container decompression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -381,27 +383,30 @@ fn decode_png(
     if length as u64 > layout_bytes(0, extent) {
         return Err(reader.invalid("PNG output exceeds page layout"));
     }
-    let mut pixels = vec![0; length];
-    let info = image.next_frame(&mut pixels).map_err(failure)?;
+    // One final-size buffer also covers RGB/grayscale expansion. Two full
+    // image buffers would exceed the pager's admitted preparation workspace.
+    let mut pixels = vec![0; layout_bytes(0, extent) as usize];
+    let info = image.next_frame(&mut pixels[..length]).map_err(failure)?;
     image.finish().map_err(failure)?;
-    pixels.truncate(info.buffer_size());
+    drop(image);
     if info.bit_depth != png::BitDepth::Eight {
         return Err(reader.invalid("unsupported PNG output depth"));
     }
     if info.color_type == png::ColorType::Rgba {
         return Ok(pixels);
     }
-    let mut rgba = Vec::with_capacity(layout_bytes(0, extent) as usize);
-    for pixel in pixels.chunks_exact(info.color_type.samples()) {
+    let channels = info.color_type.samples();
+    for index in (0..pixels.len() / 4).rev() {
+        let pixel = &pixels[index * channels..(index + 1) * channels];
         let value = match info.color_type {
             png::ColorType::Rgb => [pixel[0], pixel[1], pixel[2], 255],
             png::ColorType::Grayscale => [pixel[0], pixel[0], pixel[0], 255],
             png::ColorType::GrayscaleAlpha => [pixel[0], pixel[0], pixel[0], pixel[1]],
             _ => return Err(reader.invalid("unsupported PNG output color type")),
         };
-        rgba.extend_from_slice(&value);
+        pixels[index * 4..(index + 1) * 4].copy_from_slice(&value);
     }
-    Ok(rgba)
+    Ok(pixels)
 }
 
 pub(crate) fn inspect(reader: &mut AssetReader) -> Result<TextureSummary, InspectionError> {

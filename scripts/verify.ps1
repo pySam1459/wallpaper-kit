@@ -49,6 +49,7 @@ try {
         & "$PSScriptRoot/verify-native.ps1" -Executable (Join-Path $target 'native-viewer.exe') -Output (Join-Path $output 'native-region') -Software:$Software -RegionFixture
         & "$PSScriptRoot/verify-native.ps1" -Executable (Join-Path $target 'native-viewer.exe') -Output (Join-Path $output 'native-layers') -Software:$Software -LayersFixture
         & "$PSScriptRoot/verify-native.ps1" -Executable (Join-Path $target 'native-viewer.exe') -Output (Join-Path $output 'native-extracted') -Software:$Software -ExtractedFixture
+        & "$PSScriptRoot/verify-native.ps1" -Executable (Join-Path $target 'native-viewer.exe') -Output (Join-Path $output 'native-paged') -Software:$Software -PagedFixture
     }
     $status = & git status --porcelain=v1 --untracked-files=all
     $revision = & git rev-parse --verify HEAD 2>$null
@@ -72,8 +73,9 @@ try {
         image_composition_status='passed';
         sprite_extraction_status='passed';
         sprite_worker_status='passed';
+        sprite_prefetch_status='passed';
         scene_inspection_status=$inspectionStatus;
-        limits=@('Blank, diagnostic motion, TEX page/region, fixed-time sprite extraction/background preparation and selected image composition only.', 'No prefetch, scene effects or live sprite playback.', 'Captures use diagnostic readback.', 'No scene fidelity, GPU timing or host latency claims.');
+        limits=@('Blank, diagnostic motion, TEX page/region, sprite extraction/background preparation/prefetch and selected image composition only.', 'Paired scene roots also exercise two-loop headless sprite readiness. No full scene effects or native scene playback.', 'Controlled captures use diagnostic readback; live sprite timing does not.', 'No scene fidelity, GPU timing or host latency claims.');
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $output 'manifest.json') -Encoding utf8
     Write-Output "Evidence: $output"
 } catch {

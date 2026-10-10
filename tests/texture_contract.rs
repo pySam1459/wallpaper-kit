@@ -4,7 +4,7 @@
 mod fixture;
 
 use scene_renderer::{DeviceMode, Frame, Renderer, Size};
-use scene_renderer::{SceneSource, TextureDecoder, TextureFormat, TextureRegion};
+use scene_renderer::{SceneSource, SpritePager, TextureDecoder, TextureFormat, TextureRegion};
 use std::{
     fs,
     path::PathBuf,
@@ -94,7 +94,7 @@ fn decodes_raw_lz4_and_png_without_color_or_block_conversion() {
 }
 
 #[test]
-fn expands_png_rgb_and_gray_alpha_to_rgba() {
+fn expands_png_rgb_grayscale_and_gray_alpha_to_rgba() {
     for (color, bytes, expected) in [
         (
             png::ColorType::Rgb,
@@ -105,6 +105,11 @@ fn expands_png_rgb_and_gray_alpha_to_rgba() {
             png::ColorType::GrayscaleAlpha,
             vec![3, 7, 5, 9],
             vec![3, 3, 3, 7, 5, 5, 5, 9],
+        ),
+        (
+            png::ColorType::Grayscale,
+            vec![3, 5],
+            vec![3, 3, 3, 255, 5, 5, 5, 255],
         ),
     ] {
         let png = fixture::png([2, 1], color, &bytes);
@@ -634,4 +639,168 @@ fn crop_oracle_uses_expected_rows_and_detects_wrong_region() {
         .is_err()
     );
     renderer.shutdown().unwrap();
+}
+
+fn paged_sample(pager: &SpritePager, time: Duration) -> scene_renderer::SpriteSample {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(sample) = pager.try_sample_at(time).unwrap() {
+            return sample;
+        }
+        assert!(Instant::now() < deadline, "paged sample timed out");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+fn settled_pager(
+    pager: &SpritePager,
+    count: usize,
+    decodes: u64,
+) -> scene_renderer::SpritePagingStats {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(stats) = pager.try_stats().unwrap()
+            && !stats.preparing
+            && stats.page_decodes >= decodes
+            && stats.cached_batches == count
+        {
+            return stats;
+        }
+        assert!(Instant::now() < deadline, "prefetch did not settle");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn prepared_batches_preserve_all_storage_pixels_and_reuse_samples_through_loops() {
+    let (renderer, events) =
+        Renderer::new(Size::new(31, 23).unwrap(), DeviceMode::Software).unwrap();
+    for case in fixture::cases() {
+        let package = Package::new(&case.tex);
+        let (pager, _undrained) = SpritePager::new(package.source(), "image.tex".into()).unwrap();
+        let metadata = TextureDecoder::open(&package.source())
+            .unwrap()
+            .sprite_frames("image.tex")
+            .unwrap();
+        let first = paged_sample(&pager, Duration::ZERO);
+        let total: Duration = metadata.iter().map(|frame| frame.duration()).sum();
+        for (time, index) in [
+            (Duration::ZERO, 0),
+            (metadata[0].duration(), 1),
+            (total, 0),
+            (total * 2 + metadata[0].duration(), 1),
+        ] {
+            let sample = paged_sample(&pager, time);
+            assert_eq!(sample.frame_index(), index);
+            let authored = sample.authored_frame();
+            let expected = fixture::crop(
+                &case.rgba,
+                case.extent,
+                authored.origin(),
+                authored.extent(),
+            );
+            let id = renderer
+                .render_texture_region(sample.region().clone())
+                .unwrap();
+            fixture::check(
+                &wait_frame(&renderer, &events, id).readback().unwrap(),
+                authored.extent(),
+                &expected,
+            )
+            .unwrap();
+        }
+        assert!(Arc::ptr_eq(
+            first.region(),
+            paged_sample(&pager, total).region()
+        ));
+        let stats = settled_pager(&pager, 1, 1);
+        assert_eq!(stats.page_decodes, 1);
+        assert_eq!(stats.frame_extracts, 2);
+        assert!(stats.peak_admitted_bytes <= 768 * 1024 * 1024);
+        pager.shutdown().unwrap();
+        assert_eq!(first.frame_index(), 0);
+    }
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn pager_prefetches_next_page_and_evicts_without_invalidating_retained_samples() {
+    let page = fixture::tex(0, [2, 2], &fixture::rgba(), false, false);
+    let mut texture = page.clone();
+    texture[55..59].copy_from_slice(&3_u32.to_le_bytes());
+    texture.extend_from_slice(&page[67..]);
+    texture.extend_from_slice(&page[67..]);
+    let texture = fixture::sprite(
+        texture,
+        &[
+            (0, 0.125, [0., 0., 2., 0., 0., 1.]),
+            (0, 0.25, [0., 1., 2., 0., 0., 1.]),
+            (1, 0.125, [0., 0., 2., 0., 0., 2.]),
+            (2, 0.125, [1., 0., 1., 0., 0., 2.]),
+        ],
+    );
+    let package = Package::new(&texture);
+    let (pager, _events) = SpritePager::new(package.source(), "image.tex".into()).unwrap();
+    let first = paged_sample(&pager, Duration::ZERO);
+    let pixels = first.region().page().data().to_vec();
+    assert_eq!(settled_pager(&pager, 2, 2).page_decodes, 2);
+    assert_eq!(
+        paged_sample(&pager, Duration::from_millis(375)).frame_index(),
+        2
+    );
+    assert_eq!(settled_pager(&pager, 2, 3).page_decodes, 3);
+    assert_eq!(
+        paged_sample(&pager, Duration::from_millis(500)).frame_index(),
+        3
+    );
+    let stats = settled_pager(&pager, 2, 4);
+    assert_eq!(stats.page_decodes, 4);
+    assert_eq!(stats.cached_frame_bytes, 24);
+    assert_eq!(
+        paged_sample(&pager, Duration::from_millis(625)).frame_index(),
+        0
+    );
+    assert_eq!(
+        paged_sample(&pager, Duration::from_nanos(124_999_999)).frame_index(),
+        0
+    );
+    assert_eq!(
+        paged_sample(&pager, Duration::from_millis(125)).frame_index(),
+        1
+    );
+    assert_eq!(paged_sample(&pager, Duration::MAX).frame_index(), 1);
+    pager.shutdown().unwrap();
+    assert_eq!(first.region().page().data(), pixels);
+}
+
+#[test]
+fn pager_rejects_overlapping_batch_budget_before_corrupt_png_decode() {
+    let texture = fixture::sprite(
+        fixture::tex(0, [4096, 4096], b"invalid PNG", false, true),
+        &[(0, 0.125, [0., 0., 4096., 0., 0., 4096.]); 5],
+    );
+    let package = Package::new(&texture);
+    let (pager, _events) = SpritePager::new(package.source(), "image.tex".into()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let error = loop {
+        match pager.try_sample_at(Duration::ZERO) {
+            Err(error) => break error,
+            Ok(_) => assert!(Instant::now() < deadline, "admission error timed out"),
+        }
+        std::thread::yield_now();
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("sprite batch exceeds 256 MiB before decode"),
+        "{error}"
+    );
+    assert_eq!(pager.try_stats().unwrap().unwrap().page_decodes, 0);
+    assert!(
+        pager
+            .try_sample_at(Duration::ZERO)
+            .unwrap_err()
+            .to_string()
+            .contains("worker stopped")
+    );
+    pager.shutdown().unwrap();
 }

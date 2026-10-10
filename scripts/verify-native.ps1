@@ -6,7 +6,8 @@ param(
     [switch]$TextureFixture,
     [switch]$RegionFixture,
     [switch]$LayersFixture,
-    [switch]$ExtractedFixture
+    [switch]$ExtractedFixture,
+    [switch]$PagedFixture
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,6 +27,7 @@ if ($TextureFixture) { $start.ArgumentList.Add('--texture-fixture') }
 if ($RegionFixture) { $start.ArgumentList.Add('--region-fixture') }
 if ($LayersFixture) { $start.ArgumentList.Add('--layers-fixture') }
 if ($ExtractedFixture) { $start.ArgumentList.Add('--extracted-fixture') }
+if ($PagedFixture) { $start.ArgumentList.Add('--paged-fixture') }
 $process = [Diagnostics.Process]::new()
 $process.StartInfo = $start
 $transcript = [Collections.Generic.List[object]]::new()
@@ -60,7 +62,7 @@ try {
     $initialCapture = Send-Command @{id=1; command='capture'; name='initial.png'}
     if ($LayersFixture) {
         if ($initialCapture.layers_check -ne $true) { throw 'Initial native composition pixels differ' }
-    } elseif ($TextureFixture -or $RegionFixture -or $ExtractedFixture) {
+    } elseif ($TextureFixture -or $RegionFixture -or $ExtractedFixture -or $PagedFixture) {
         if ($initialCapture.texture_check -ne $true) { throw 'Initial native texture pixels differ' }
     } elseif (($initialCapture.uniform_rgba -join ',') -ne '16,24,32,255') { throw 'Initial native GPU pixels differ' }
     $before = Send-Command @{id=2; command='inspect'}
@@ -82,7 +84,7 @@ try {
     $resizedCapture = Send-Command @{id=5; command='capture'; name='resized.png'}
     if ($LayersFixture) {
         if ($resizedCapture.layers_check -ne $true) { throw 'Resized native composition pixels differ' }
-    } elseif ($TextureFixture -or $RegionFixture -or $ExtractedFixture) {
+    } elseif ($TextureFixture -or $RegionFixture -or $ExtractedFixture -or $PagedFixture) {
         if ($resizedCapture.texture_check -ne $true) { throw 'Resized native texture pixels differ' }
     } elseif (($resizedCapture.uniform_rgba -join ',') -ne '16,24,32,255') { throw 'Resized native GPU pixels differ' }
     $null = Send-Command @{id=6; command='fixture_at'; time_ms=0}
@@ -118,6 +120,7 @@ try {
         region_fixture=[bool]$RegionFixture;
         layers_fixture=[bool]$LayersFixture;
         extracted_fixture=[bool]$ExtractedFixture;
+        paged_fixture=[bool]$PagedFixture;
         motion_fixture=[ordered]@{checkpoint_pixels='passed'; live_samples=$live.Count; two_loops='passed'; paused_idle='passed'};
         limits=@('Blank, diagnostic texture pages/regions, extracted frames, image composition and motion only.', 'Captures do not establish final desktop composition or live sprite playback.', 'No GPU time or host input latency measured.');
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outputPath 'report.json') -Encoding utf8

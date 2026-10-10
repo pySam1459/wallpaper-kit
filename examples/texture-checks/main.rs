@@ -5,14 +5,16 @@ mod texture_checks;
 use texture_checks as fixture;
 #[path = "../support/layers.rs"]
 mod layers_checks;
+#[path = "../support/paging.rs"]
+mod paging;
 #[path = "../support/sprite.rs"]
 mod sprite_checks;
 #[path = "../support/mod.rs"]
 mod support;
 
 use scene_renderer::{
-    Frame, OutputStats, Renderer, SceneSource, Size, SpriteWorker, TextureDecoder, TextureFormat,
-    TextureRegion,
+    Frame, OutputStats, Renderer, SceneSource, Size, SpritePager, SpriteWorker, TextureDecoder,
+    TextureFormat, TextureRegion,
 };
 use serde_json::json;
 use std::{
@@ -51,6 +53,88 @@ fn wait_stats(renderer: &Renderer, sequence: u64) -> Result<OutputStats> {
         }
         std::thread::sleep(Duration::from_millis(1));
     }
+}
+
+// Diagnostic wall-clock consumer: waits for GPU readiness, never reads pixels
+// during timing. This measures this consumer, not a host UI or display cadence.
+fn live_pager(
+    renderer: &Renderer,
+    events: &Receiver<()>,
+    pager: &SpritePager,
+    pager_events: &Receiver<()>,
+    duration: Duration,
+) -> Result<serde_json::Value> {
+    let started = Instant::now();
+    let tick = Duration::from_nanos(1_000_000_000 / 60);
+    let finish = duration * 2;
+    let mut deadline = Duration::ZERO;
+    let mut polls = 0;
+    let mut unavailable = 0;
+    let mut max_poll_ms = 0_f64;
+    let mut max_gpu_ready_ms = 0_f64;
+    let mut max_tick_gap_ms = 0_f64;
+    let mut last_tick = Duration::ZERO;
+    let mut previous = None;
+    let mut rendered = 0;
+    let mut skipped_frames = 0;
+    let mut first_sequence = None;
+    let mut last_sequence = None;
+    let mut latest = None;
+    while started.elapsed() < finish {
+        let time = started.elapsed();
+        if time < deadline {
+            std::thread::sleep(deadline - time);
+            continue;
+        }
+        max_tick_gap_ms = max_tick_gap_ms.max((time - last_tick).as_secs_f64() * 1000.);
+        last_tick = time;
+        deadline = time + tick;
+        let poll = Instant::now();
+        let sample = pager.try_sample_at(time)?;
+        max_poll_ms = max_poll_ms.max(poll.elapsed().as_secs_f64() * 1000.);
+        polls += 1;
+        let Some(sample) = sample else {
+            unavailable += 1;
+            continue; // Retain the previous completed GPU frame.
+        };
+        let index = sample.frame_index();
+        if previous == Some(index) {
+            continue;
+        }
+        if let Some(old) = previous {
+            // This route only runs the two inspected 480-frame target assets.
+            let advance = (index + 480 - old) % 480;
+            skipped_frames += advance.saturating_sub(1);
+        }
+        previous = Some(index);
+        let ready = Instant::now();
+        let id = renderer.render_texture_region(sample.region().clone())?;
+        let frame = wait_frame(renderer, events, id)?;
+        max_gpu_ready_ms = max_gpu_ready_ms.max(ready.elapsed().as_secs_f64() * 1000.);
+        first_sequence.get_or_insert(frame.sequence());
+        last_sequence = Some(frame.sequence());
+        latest = Some(frame);
+        rendered += 1;
+    }
+    if rendered == 0 {
+        return Err("live pager produced no GPU frames".into());
+    }
+    // Pausing holds the exact final demand; any outstanding prefetch may settle.
+    let elapsed_ms = started.elapsed().as_secs_f64() * 1000.;
+    let paused = paging::settled(pager, pager_events, 2)?;
+    let idle_started = Instant::now();
+    std::thread::sleep(Duration::from_millis(100));
+    let idle = paging::settled(pager, pager_events, 2)?;
+    if paused.page_decodes != idle.page_decodes || paused.frame_extracts != idle.frame_extracts {
+        return Err("paused pager continued periodic work".into());
+    }
+    let resources = wait_stats(
+        renderer,
+        latest.as_ref().expect("rendered frame").sequence(),
+    )?;
+    Ok(
+        json!({"loops":2,"authored_duration_ns":duration.as_nanos(),"requested_tick_hz":60,"elapsed_ms":elapsed_ms,"polls":polls,"unavailable_polls":unavailable,"rendered_frames":rendered,"skipped_authored_frames":skipped_frames,"max_sample_poll_ms":max_poll_ms,"max_gpu_ready_wait_ms":max_gpu_ready_ms,"max_tick_gap_ms":max_tick_gap_ms,"first_sequence":first_sequence,"last_sequence":last_sequence,"pause_observed_ms":idle_started.elapsed().as_secs_f64()*1000.,"pause_counters_unchanged":true,"resources":support::pool_info(resources)}),
+    )
 }
 
 fn main() -> Result<()> {
@@ -99,6 +183,7 @@ fn main() -> Result<()> {
     let mut region_results = Vec::new();
     let mut extracted_results = Vec::new();
     let mut worker_results = Vec::new();
+    let mut paged_results = Vec::new();
     for case in &cases {
         let page = Arc::new(decoder.decode_page(case.name, 0)?);
         let id = renderer.render_texture_page(page.clone())?;
@@ -267,6 +352,48 @@ fn main() -> Result<()> {
         }
         worker.shutdown()?;
         worker_results.push(json!({"name":case.name,"preparation":metrics,"resources":support::pool_info(stats),"checks":"passed"}));
+        drop(frame);
+        drop(repeated);
+        let (pager, pager_events) = SpritePager::new(source.clone(), case.name.into())?;
+        let initial = paging::sample(&pager, &pager_events, Duration::ZERO)?;
+        let total: Duration = decoder
+            .sprite_frames(case.name)?
+            .iter()
+            .map(|frame| frame.duration())
+            .sum();
+        for (label, time, expected_index) in [("boundary", first_end, 1), ("loop", total, 0)] {
+            let sample = paging::sample(&pager, &pager_events, time)?;
+            if sample.frame_index() != expected_index
+                || (expected_index == 0 && !Arc::ptr_eq(initial.region(), sample.region()))
+            {
+                return Err("prepared batch selection or reuse differs".into());
+            }
+            let authored = sample.authored_frame();
+            let expected = fixture::crop(
+                &case.rgba,
+                case.extent,
+                authored.origin(),
+                authored.extent(),
+            );
+            let id = renderer.render_texture_region(sample.region().clone())?;
+            let frame = wait_frame(&renderer, &events, id)?;
+            let pixels = frame.readback()?;
+            fixture::check(&pixels, authored.extent(), &expected)?;
+            support::write_png(
+                &output.join(format!("paged-{}-{label}.png", case.name)),
+                &pixels,
+            )?;
+        }
+        let cache = paging::settled(&pager, &pager_events, 1)?;
+        if cache.page_decodes != 1
+            || cache.frame_extracts != 2
+            || cache.peak_admitted_bytes > 768 * 1024 * 1024
+        {
+            return Err("generated batch bounds or decode reuse differ".into());
+        }
+        pager.shutdown()?;
+        paged_results
+            .push(json!({"name":case.name,"cache":paging::stats(cache),"checks":"passed"}));
         let id = renderer.resize(Size::new(320, 180)?)?;
         drop(wait_frame(&renderer, &events, id)?);
     }
@@ -302,6 +429,7 @@ fn main() -> Result<()> {
     let mut target_frames = Vec::new();
     let mut target_extracted = Vec::new();
     let mut target_worker = Vec::new();
+    let mut target_paged = Vec::new();
     let mut target_identity = None;
     if let (Some(package), Some(engine_assets)) = (package, engine) {
         let source = SceneSource {
@@ -495,6 +623,78 @@ fn main() -> Result<()> {
             }
             worker.shutdown()?;
             target_worker.push(json!({"asset":asset,"frame_index":boundary,"preparation":metrics,"resources":support::pool_info(stats),"comparison":"Exact GPU pixels against whole-atlas crop; no Wallpaper Engine reference."}));
+            drop(frame);
+            let metadata = decoder.sprite_frames(asset)?;
+            let duration: Duration = metadata.iter().map(|frame| frame.duration()).sum();
+            let (pager, pager_events) = SpritePager::new(source.clone(), asset.into())?;
+            let started = Instant::now();
+            drop(paging::sample(&pager, &pager_events, Duration::ZERO)?);
+            let initial = paging::settled(&pager, &pager_events, 2)?;
+            if initial.page_decodes != 2 {
+                return Err("initial current/next prefetch differs".into());
+            }
+            let startup_ms = started.elapsed().as_secs_f64() * 1000.;
+            let mut captures = Vec::new();
+            for (label, index, time) in [
+                ("first", 0, Duration::ZERO),
+                (
+                    "before-page",
+                    boundary - 1,
+                    metadata
+                        .iter()
+                        .take(boundary - 1)
+                        .map(|frame| frame.duration())
+                        .sum(),
+                ),
+                ("next-page", boundary, time),
+                (
+                    "middle",
+                    239,
+                    metadata
+                        .iter()
+                        .take(239)
+                        .map(|frame| frame.duration())
+                        .sum(),
+                ),
+                (
+                    "last",
+                    479,
+                    metadata
+                        .iter()
+                        .take(479)
+                        .map(|frame| frame.duration())
+                        .sum(),
+                ),
+                ("loop", 0, duration),
+            ] {
+                let sample = paging::sample(&pager, &pager_events, time)?;
+                if sample.frame_index() != index {
+                    return Err("target batch selected wrong time".into());
+                }
+                let id = renderer.render_texture_region(sample.region().clone())?;
+                let frame = wait_frame(&renderer, &events, id)?;
+                let pixels = frame.readback()?;
+                if pixels.rgba != references[&(name, index)] {
+                    return Err("target batch differs from whole-atlas crop".into());
+                }
+                support::write_png(
+                    &output.join(format!("target-paged-{name}-{label}.png")),
+                    &pixels,
+                )?;
+                captures.push(json!({"label":label,"frame_index":index,"time_ns":time.as_nanos()}));
+            }
+            // Explicitly reestablish initial demand before starting the live clock.
+            drop(paging::sample(&pager, &pager_events, Duration::ZERO)?);
+            let before_live = paging::settled(&pager, &pager_events, 2)?;
+            let live = live_pager(&renderer, &events, &pager, &pager_events, duration)?;
+            let final_cache = paging::settled(&pager, &pager_events, 2)?;
+            if final_cache.cached_frame_bytes > 512 * 1024 * 1024
+                || final_cache.peak_admitted_bytes > 768 * 1024 * 1024
+            {
+                return Err("target prefetch exceeded admission".into());
+            }
+            pager.shutdown()?;
+            target_paged.push(json!({"asset":asset,"startup_ms":startup_ms,"initial_cache":paging::stats(initial),"captures":captures,"before_live":paging::stats(before_live),"live":live,"final_cache":paging::stats(final_cache),"comparison":"Controlled captures exactly match whole-atlas GPU crops. Live headless readiness is separate, without readback or native presentation."}));
         }
         for (name, objects, frame_index) in [
             ("images", vec![28, 32, 77, 86], 0),
@@ -534,7 +734,7 @@ fn main() -> Result<()> {
     support::write_json(
         &output.join("report.json"),
         &json!({
-            "schema_version":5,"status":"passed","consumer":"texture-checks", "generated_cases":results, "generated_regions":region_results,"generated_extracted":extracted_results,"generated_worker":worker_results,"generated_composition":composition_result,"target_identity":target_identity,"target_pages":target,"target_frames":target_frames,"target_extracted":target_extracted,"target_worker":target_worker,"target_compositions":target_compositions,
+            "schema_version":6,"status":"passed","consumer":"texture-checks", "generated_cases":results, "generated_regions":region_results,"generated_extracted":extracted_results,"generated_worker":worker_results,"generated_paged":paged_results,"generated_composition":composition_result,"target_identity":target_identity,"target_pages":target,"target_frames":target_frames,"target_extracted":target_extracted,"target_worker":target_worker,"target_paged":target_paged,"target_compositions":target_compositions,
             "limits":["Diagnostic fixed-time sprite sampling, pages/crops and selected composition; no live scene playback/effects.","Point sampling and straight-alpha code-value composition; scene fidelity unverified.","Decode/upload/capture observations are not steady rendering or host latency measurements."]
         }),
     )?;

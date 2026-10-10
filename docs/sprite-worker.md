@@ -1,6 +1,6 @@
 # Background sprite preparation
 
-`SpriteWorker` runs package opening, hashing, TEX indexing, page decoding and [frame extraction](sprite-extraction.md) on a dedicated asset thread. The consuming app submits times and takes completed samples. This stage-4 component has no timer or prefetch; it does not implement continuous scene playback.
+`SpriteWorker` runs package opening, hashing, TEX indexing, page decoding and [frame extraction](sprite-extraction.md) on a dedicated asset thread. The consuming app submits times and takes completed samples. This stage-4 component has no timer or prefetch; use [SpritePager](sprite-prefetch.md) for current/next batch preparation while selecting ready frames.
 
 ## Use from a consumer
 

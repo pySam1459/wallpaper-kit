@@ -5,6 +5,8 @@ mod fixture;
 mod layers_checks;
 #[path = "../support/motion.rs"]
 mod motion_checks;
+#[path = "../support/paging.rs"]
+mod paging;
 mod presentation;
 #[path = "../support/sprite.rs"]
 mod sprite_checks;
@@ -15,8 +17,8 @@ mod texture_checks;
 
 use presentation::Presentation;
 use scene_renderer::{
-    DeviceMode, Frame, Renderer, SceneSource, Size, SpriteWorker, TextureDecoder, TexturePage,
-    TextureRegion,
+    DeviceMode, Frame, Renderer, SceneSource, Size, SpritePager, SpriteWorker, TextureDecoder,
+    TexturePage, TextureRegion,
 };
 use serde_json::{Value, json};
 use std::{
@@ -416,12 +418,17 @@ fn main() -> Result<()> {
     let mut region = false;
     let mut layers = false;
     let mut extracted = false;
+    let mut paged = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--texture-fixture" => texture = true,
             "--extracted-fixture" => {
                 texture = true;
                 extracted = true;
+            }
+            "--paged-fixture" => {
+                texture = true;
+                paged = true;
             }
             "--layers-fixture" => layers = true,
             "--region-fixture" => {
@@ -457,13 +464,23 @@ fn main() -> Result<()> {
             package: generated.join("scene.pkg"),
             engine_assets: generated.join("engine"),
         };
-        let (page, crop) = if extracted {
-            let (worker, events) = SpriteWorker::new(source, case.name.into())?;
-            let id = sprite_checks::request(&worker, Duration::ZERO)?;
-            let (result, metrics) = sprite_checks::wait(&worker, &events, id)?;
-            support::write_json(&output.join("sprite-preparation.json"), &metrics)?;
-            let sample = result.into_sample()?;
-            worker.shutdown()?;
+        let (page, crop) = if extracted || paged {
+            let sample = if paged {
+                let (pager, events) = SpritePager::new(source, case.name.into())?;
+                let sample = paging::sample(&pager, &events, Duration::ZERO)?;
+                let stats = paging::settled(&pager, &events, 1)?;
+                support::write_json(&output.join("sprite-prefetch.json"), &paging::stats(stats))?;
+                pager.shutdown()?;
+                sample
+            } else {
+                let (worker, events) = SpriteWorker::new(source, case.name.into())?;
+                let id = sprite_checks::request(&worker, Duration::ZERO)?;
+                let (result, metrics) = sprite_checks::wait(&worker, &events, id)?;
+                support::write_json(&output.join("sprite-preparation.json"), &metrics)?;
+                let sample = result.into_sample()?;
+                worker.shutdown()?;
+                sample
+            };
             let authored = sample.authored_frame();
             case.rgba = texture_checks::crop(
                 &case.rgba,

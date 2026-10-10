@@ -56,6 +56,48 @@ pub struct SpriteStream {
     frame_extracts: u64,
 }
 impl SpriteStream {
+    pub(super) fn batch_admission(
+        &self,
+        frames: std::ops::Range<usize>,
+    ) -> Result<(u64, u64), InspectionError> {
+        let mut bytes = 0;
+        for frame in &self.frames[frames.clone()] {
+            let (_, extent, _) = extraction(self.indexed.summary.format, *frame);
+            let size = layout_bytes(self.indexed.summary.format, extent);
+            if size > MAX_FRAME_BYTES {
+                return Err(self
+                    .reader
+                    .invalid("extracted sprite frame exceeds 64 MiB before atlas decode"));
+            }
+            bytes += size;
+        }
+        if bytes > MAX_PAGE_BYTES {
+            return Err(self
+                .reader
+                .invalid("sprite batch exceeds 256 MiB before decode"));
+        }
+        let page = &self.indexed.summary.pages[self.frames[frames.start].page as usize];
+        if page.decoded_bytes > MAX_PAGE_BYTES {
+            return Err(self.reader.invalid("decoded page exceeds 256 MiB"));
+        }
+        // PNG: stored input, optional LZ4-expanded PNG, decoder workspace.
+        // Raw LZ4: stored input plus its final page buffer.
+        let workspace = if self.indexed.png {
+            3 * MAX_ENCODED_BYTES
+        } else if self.indexed.locations[self.frames[frames.start].page as usize].compressed {
+            MAX_ENCODED_BYTES
+        } else {
+            0
+        };
+        Ok((
+            bytes,
+            (page.decoded_bytes + bytes).max(page.decoded_bytes + workspace),
+        ))
+    }
+    pub(super) fn clear_pixels(&mut self) {
+        self.current = None;
+        self.page = None;
+    }
     pub(super) fn open(package: &Package, asset: &str) -> Result<Self, InspectionError> {
         let mut reader = package
             .reader(asset)?

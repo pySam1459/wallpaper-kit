@@ -14,8 +14,8 @@ mod motion;
 mod scene;
 
 pub use assets::texture::{
-    SpriteFrame, SpriteResult, SpriteSample, SpriteStats, SpriteStream, SpriteWorker,
-    TextureDecoder, TextureFormat, TexturePage, TextureRegion,
+    SpriteFrame, SpritePager, SpritePagingStats, SpriteResult, SpriteSample, SpriteStats,
+    SpriteStream, SpriteWorker, TextureDecoder, TextureFormat, TexturePage, TextureRegion,
 };
 
 pub use scene::{
