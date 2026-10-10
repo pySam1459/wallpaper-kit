@@ -2,7 +2,7 @@
 
 ## Status
 
-Blank resize, retained-frame lifetime and shutdown are implemented through the [blank infrastructure](blank-renderer.md). [Diagnostic motion](diagnostic-motion.md) adds consumer-owned play/pause and controlled stepping. [Bounded frame-pool backpressure](../../../../docs/frame-pool.md) is implemented and verified. [Sprite extraction](sprite-extraction.md) adds deterministic frame selection and loop boundaries on an asset worker/tool; [background preparation](../../../../docs/sprite-worker.md) handles async asset work, seek generations and joined shutdown. These components do not schedule live playback. Device-loss recovery and scene playback remain planned.
+Blank resize, retained-frame lifetime and shutdown are implemented through the [blank infrastructure](blank-renderer.md). [Diagnostic motion](diagnostic-motion.md) adds consumer-owned play/pause and controlled stepping. [Bounded frame-pool backpressure](../../../../docs/frame-pool.md) is implemented and verified. [Sprite extraction](sprite-extraction.md) adds deterministic frame selection and loop boundaries on an asset worker/tool; [background preparation](../../../../docs/sprite-worker.md) handles async asset work, seek generations and joined shutdown. [Selected image playback](../../../../docs/image-playback.md) adds a library-owned clock, host-scheduled native playback, exact seeks and joined source shutdown. Device-loss recovery and full scene lifecycle remain planned.
 
 ## Consumer outcome
 
@@ -10,7 +10,7 @@ The host can control playback and output size, consume completed frames with def
 
 ## How to reach it
 
-Use the example viewer's public library path. Fixture controls and pause semantics are in [motion verification](../../../../docs/motion-verification.md#native-controls). Use `Frame::sequence()` for publication identity and `Renderer::try_output_stats()` for output ownership and saturation. The required gate tests release-triggered progress and shutdown while saturated. Production playback controls remain planned.
+Use the example viewer's public library path. Fixture controls and pause semantics are in [motion verification](../../../../docs/motion-verification.md#native-controls). Use `Frame::sequence()` for publication identity and `Renderer::try_output_stats()` for output ownership and saturation. The required gate tests release-triggered progress and shutdown while saturated. Selected image controls are documented in [image playback](../../../../docs/image-playback.md#native-controls). Full scene lifecycle controls remain planned.
 
 ## Drive and observe
 

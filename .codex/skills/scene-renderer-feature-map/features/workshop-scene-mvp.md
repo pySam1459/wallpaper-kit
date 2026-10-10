@@ -10,7 +10,7 @@ A consuming application loads the actual scene and displays its visible layers, 
 
 ## How to reach it
 
-For metadata, use the public `inspect_scene(&SceneSource)` API or `scene-inspect` example described in [the guide](../../../../docs/scene-inspection.md). The required gate accepts paired `-ScenePath` and `-EngineAssets` arguments to run the actual target inspection. Inspect counts, object order, hashes, effect bindings, sprite pages/durations and diagnostics. Generated public tests also check conditional dependency upgrades, normalized references and changed profiles. This produces no rendered scene. Runtime loader/viewer controls remain planned.
+For metadata, use the public `inspect_scene(&SceneSource)` API or `scene-inspect` example described in [the guide](../../../../docs/scene-inspection.md). The required gate accepts paired `-ScenePath` and `-EngineAssets` arguments to run the actual target inspection. Inspect counts, object order, hashes, effect bindings, sprite pages/durations and diagnostics. Generated public tests also check conditional dependency upgrades, normalized references and changed profiles. This produces no rendered scene. [Selected image playback](../../../../docs/image-playback.md) adds a native startup route for six supported objects and both sprite sequences, with exact seek/play/pause controls and explicit omissions. Complete scene loading remains planned.
 
 ## Drive and observe
 

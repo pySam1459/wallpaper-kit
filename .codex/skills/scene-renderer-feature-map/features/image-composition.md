@@ -19,3 +19,7 @@ Check generated four-layer composition pixels, crops, cardinal rotations, overla
 ## Evidence and limits
 
 Inspect `textures/composition.png`, target composition captures, `textures/report.json` and `native-layers/report.json` plus captures/transcript. Source payloads are capped separately from output and total process memory. Cardinal pixel fixtures avoid exact rasterization ties. Target snapshots omit effects, particles, parallax and general settings; nonzero crop offsets fail. Capture correctness does not establish animation, scene fidelity, GPU duration or consuming-app latency. Doctor with `-ScenePath` still rejects full scene readiness.
+
+## Selected image playback
+
+[Selected image playback](../../../../docs/image-playback.md) combines static layers and unique animated sources under a library clock. The native `--image-fixture` route checks independent generated pixels. Paired scene/engine roots also drive six supported target images through `scripts/verify-image-playback.ps1`. Inspect source identity and omissions, exact seek replies, live observations, resize, paused idle and owned-process exit. Full scene fidelity and host impact remain unverified.

@@ -3,7 +3,8 @@
 //! A worker renders on demand. Completed frames are immutable; resize creates a
 //! replacement and does not invalidate a frame held by a consumer. A bounded
 //! output pool reuses textures after leases and GPU access have finished. This
-//! experimental API does not implement scene playback.
+//! experimental API includes selected-image playback. Full scene effects,
+//! particles and camera behavior remain unsupported.
 
 #[cfg(not(windows))]
 compile_error!("The initial scene-renderer backend requires Windows.");
@@ -20,9 +21,10 @@ pub use assets::texture::{
 
 pub use scene::{
     AssetSummary, DependencySummary, Diagnostic, DiagnosticSeverity, EffectBindingSummary,
-    EffectPassSummary, EffectSummary, ImageComposition, ImageLayer, ImageSnapshot, InspectionError,
-    MaterialPassSummary, MaterialSummary, ObjectKind, ObjectSummary, PackageSummary, PageSummary,
-    SceneInspection, SceneSource, SceneSummary, TextureSummary, inspect_scene,
+    EffectPassSummary, EffectSummary, ImageComposition, ImageLayer, ImagePlayback,
+    ImagePlaybackReport, ImagePlaybackSample, ImageSnapshot, InspectionError, MaterialPassSummary,
+    MaterialSummary, ObjectKind, ObjectSummary, PackageSummary, PageSummary, SceneInspection,
+    SceneSource, SceneSummary, TextureSummary, inspect_scene,
 };
 
 use std::sync::{Arc, Condvar, Mutex, TryLockError, mpsc};

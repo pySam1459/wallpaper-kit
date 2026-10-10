@@ -4,7 +4,7 @@ Status: implementation started, 10 October 2026. [Read-only inspection](scene-in
 
 ## Current implementation priority
 
-Build the complete target scene before further performance tuning. The next deliverable is library-owned playback of the supported image layers and both sprite sequences together in the native viewer. Follow with the required effects, particles, parallax and unresolved placement behavior, comparing the complete output with Wallpaper Engine.
+Build the complete target scene before further performance tuning. [Selected image playback](image-playback.md) combines the six supported image layers and both sprite sequences in the native viewer. Follow with the required effects, particles, parallax and unresolved placement behavior, comparing the complete output with Wallpaper Engine.
 
 Reuse the existing renderer, extraction, prefetch and resource bounds. Keep decoding off the host UI thread and retain explicit unsupported-feature reports. Add scheduling and lifecycle behavior needed for correct playback; defer cache redesign, scene-wide memory tuning and broader performance experiments until the visual scene works. General content support and production adapters remain later milestones.
 

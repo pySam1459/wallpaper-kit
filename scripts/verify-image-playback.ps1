@@ -1,0 +1,124 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)][string]$Executable,
+    [Parameter(Mandatory)][string]$Output,
+    [switch]$Software,
+    [string]$ScenePath,
+    [string]$EngineAssets
+)
+
+$ErrorActionPreference = 'Stop'
+if ([bool]$ScenePath -ne [bool]$EngineAssets) { throw 'ScenePath and EngineAssets must be supplied together' }
+$outputPath = [IO.Path]::GetFullPath($Output)
+$start = [Diagnostics.ProcessStartInfo]::new([IO.Path]::GetFullPath($Executable))
+$start.UseShellExecute = $false
+$start.CreateNoWindow = $true
+$start.RedirectStandardInput = $true
+$start.RedirectStandardOutput = $true
+$start.RedirectStandardError = $true
+$start.WorkingDirectory = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$start.ArgumentList.Add('--output')
+$start.ArgumentList.Add($outputPath)
+if ($Software) { $start.ArgumentList.Add('--software') }
+if ($ScenePath) {
+    foreach ($argument in @('--scene', $ScenePath, '--engine-assets', $EngineAssets)) { $start.ArgumentList.Add($argument) }
+} else { $start.ArgumentList.Add('--image-fixture') }
+$process = [Diagnostics.Process]::new()
+$process.StartInfo = $start
+$transcript = [Collections.Generic.List[object]]::new()
+$started = $false
+$errors = $null
+$requestId = 0
+
+function Read-Reply {
+    $task = $process.StandardOutput.ReadLineAsync()
+    if (-not $task.Wait(30000)) { throw 'Image viewer response timed out' }
+    if ($null -eq $task.Result) { throw 'Image viewer exited before responding' }
+    $reply = $task.Result | ConvertFrom-Json
+    $transcript.Add($reply)
+    if ($reply.event -eq 'failed' -or $reply.ok -eq $false) { throw "Image viewer error: $($task.Result)" }
+    return $reply
+}
+function Send-Command([hashtable]$Command) {
+    $script:requestId += 1
+    $Command.id = $script:requestId
+    $process.StandardInput.WriteLine(($Command | ConvertTo-Json -Compress))
+    $process.StandardInput.Flush()
+    $reply = Read-Reply
+    if ($reply.id -ne $Command.id) { throw 'Unexpected image viewer request identity' }
+    return $reply
+}
+function Check-Selection($Reply, [long]$TimeMs) {
+    $sample = $Reply.state.image_playback.presented_sample
+    if ([decimal]$sample.time_ns -ne [decimal]$TimeMs * 1000000) { throw 'Image seek replied before the requested time was presented' }
+    if ($Reply.state.continuous_rendering -or $Reply.state.image_playback.pending_sample) { throw 'Controlled image sample is not settled and paused' }
+    $expected = if ($ScenePath) {
+        # Target assets have 480 frames of authored f32 0.06 seconds each.
+        $index = [int][Math]::Floor(($TimeMs % 28799.99952) / 59.999999)
+        @($index, $index)
+    } else { @([int](($TimeMs % 375) -ge 125), [int](($TimeMs % 500) -ge 250)) }
+    if (($sample.frame_indices -join ',') -ne ($expected -join ',')) { throw 'Common-time sprite indices differ' }
+}
+function Capture([string]$Name) {
+    $reply = Send-Command @{command='capture'; name=$Name}
+    if (-not $ScenePath -and $reply.layers_check -ne $true) { throw 'Combined image fixture pixels differ' }
+    return $reply
+}
+
+try {
+    if (-not $process.Start()) { throw 'Image viewer launch failed' }
+    $started = $true
+    $errors = $process.StandardError.ReadToEndAsync()
+    $ready = Read-Reply
+    $expectedLayers = if ($ScenePath) { 6 } else { 4 }
+    if ($ready.event -ne 'ready' -or $ready.state.pid -ne $process.Id -or $ready.state.frame.image_layer_count -ne $expectedLayers) {
+        throw 'Image readiness must identify a completed composition in the owned process'
+    }
+    if (@($ready.state.image_playback.report.animated_assets).Count -ne 2 -or @($ready.state.image_playback.report.omissions).Count -eq 0) {
+        throw 'Playback source identity or explicit omissions missing'
+    }
+    $times = if ($ScenePath) { @(0, 125, 960, 1080, 1500, 28799, 28800, 29000) } else { @(0, 124, 125, 249, 250, 374, 375, 500, 1500) }
+    foreach ($time in $times) {
+        $selected = Send-Command @{command='image_at'; time_ms=$time}
+        Check-Selection $selected $time
+        $null = Capture ('image-{0:D5}.png' -f $time)
+    }
+    $before = Send-Command @{command='inspect'}
+    # Defined paused interval after an acknowledged completed seek.
+    Start-Sleep -Milliseconds 500
+    $after = Send-Command @{command='inspect'}
+    if ($before.state.frame.frame_id -ne $after.state.frame.frame_id -or $before.state.presented -ne $after.state.presented) { throw 'Paused image viewer performed unsolicited presentation' }
+    $resized = Send-Command @{command='resize'; width=317; height=193}
+    if ($resized.state.frame.width -ne 317 -or $resized.state.frame.height -ne 193) { throw 'Image resize dimensions differ' }
+    Check-Selection $resized $times[-1]
+    $null = Capture 'resized.png'
+    $null = Send-Command @{command='image_at'; time_ms=0}
+    $playing = Send-Command @{command='play_images'}
+    # Live interval has no capture/readback. Fixture covers two combined loops;
+    # the actual target crosses several sprite page boundaries, not two loops.
+    Start-Sleep -Milliseconds 4200
+    $paused = Send-Command @{command='pause_images'}
+    $clockNs = [decimal]$paused.state.image_playback.presented_sample.time_ns
+    if ($clockNs -lt 4000000000) { throw 'Live image playback did not advance for the observed interval' }
+    $null = Send-Command @{command='image_at'; time_ms=1500}
+    $null = Capture 'paused.png'
+    $null = Send-Command @{command='stop'}
+    if (-not $process.WaitForExit(15000)) { throw 'Image viewer did not shut down' }
+    if ($process.ExitCode -ne 0) { throw "Image viewer exit code $($process.ExitCode)" }
+    $timeline = Get-Content -LiteralPath (Join-Path $outputPath 'image-timeline.json') -Raw | ConvertFrom-Json
+    $live = @($timeline.observations | Where-Object { $_.frame_id -gt $playing.state.frame.frame_id -and $_.frame_id -le $paused.state.frame.frame_id })
+    if ($live.Count -lt 2) { throw 'Missing live image presentation observations' }
+    [ordered]@{status='passed'; pid=$process.Id; scene=[bool]$ScenePath; image_layers=$expectedLayers;
+        controlled_indices='passed'; pixel_oracle=$(if ($ScenePath) {'not available'} else {'passed'});
+        paused_idle='passed'; resize='passed'; live_interval_ms=4200; live_samples=$live.Count; latest_live_time_ns=$clockNs.ToString();
+        actions=$transcript; cleanup='Owned process exited';
+        limits=@('Selected images only. Omissions are recorded in image-playback.json.', 'Presentation-call return times do not establish display cadence or GPU duration.', 'Target captures need comparison against Wallpaper Engine. Host impact is unmeasured.');
+    } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $outputPath 'report.json') -Encoding utf8
+} finally {
+    if ($started -and -not $process.HasExited) { $process.Kill(); $null = $process.WaitForExit(10000) }
+    if (Test-Path -LiteralPath $outputPath) {
+        if ($errors -and $errors.IsCompleted) { $errors.Result | Set-Content -LiteralPath (Join-Path $outputPath 'stderr.log') -Encoding utf8 }
+        $transcript | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $outputPath 'transcript.json') -Encoding utf8
+    }
+    $process.Dispose()
+}

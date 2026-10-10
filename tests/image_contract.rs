@@ -2,12 +2,14 @@
 
 #[path = "../examples/support/layers.rs"]
 mod layers_checks;
+#[path = "../examples/support/image_playback.rs"]
+mod playback_checks;
 #[path = "../examples/support/texture.rs"]
 mod texture_checks;
 
 use scene_renderer::{
-    DeviceMode, Frame, ImageComposition, ImageLayer, OutputStats, Renderer, SceneSource, Size,
-    TextureDecoder, TextureRegion,
+    DeviceMode, Frame, ImageComposition, ImageLayer, ImagePlayback, ImagePlaybackSample,
+    OutputStats, Renderer, SceneSource, Size, TextureDecoder, TextureRegion,
 };
 use serde_json::{Value, json};
 use std::{
@@ -356,4 +358,114 @@ fn snapshot_rejects_geometry_and_appearance_before_payload_decode() {
             .to_string();
         assert!(error.contains("image layer"), "{key}: {error}");
     }
+}
+
+fn playback_sample(playback: &ImagePlayback) -> ImagePlaybackSample {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(sample) = playback.try_sample().unwrap() {
+            return sample;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "combined playback did not become ready"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn playback_rejects_invisible_selections_and_propagates_sprite_failures() {
+    let texture = texture_checks::tex(0, [2, 2], &texture_checks::rgba(), false, false);
+    let mut hidden = object(1);
+    hidden["visible"] = json!(false);
+    let package = snapshot_package(json!([hidden]), model(), material(false), &texture);
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    assert!(ImagePlayback::open(&source, &[1]).is_err());
+
+    let invalid = texture_checks::tex(0, [2, 2], b"invalid PNG", false, true);
+    let package = snapshot_package(json!([object(1)]), model(), material(true), &invalid);
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    let playback = ImagePlayback::open(&source, &[1]).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match playback.try_sample() {
+            Ok(None) => (),
+            Ok(Some(_)) => panic!("failed sprite must not publish a composition"),
+            Err(error) => {
+                assert!(error.to_string().contains("materials/image.tex"));
+                break;
+            }
+        }
+        assert!(Instant::now() < deadline, "sprite failure was not reported");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn combined_playback_uses_one_clock_shared_sprites_and_authored_order() {
+    let package = Package::new(&[]);
+    fs::write(package.root.join("scene.pkg"), playback_checks::package()).unwrap();
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    let mut playback = ImagePlayback::open(&source, &playback_checks::OBJECTS).unwrap();
+    assert!(fs::write(&source.package, b"must remain read-only during playback").is_err());
+    assert_eq!(playback.report().object_ids, [1, 2, 3, 4]);
+    assert_eq!(
+        playback.report().animated_assets,
+        ["materials/birds.tex", "materials/character.tex"]
+    );
+    assert!(
+        playback
+            .report()
+            .omissions
+            .iter()
+            .any(|line| line.contains("Object 5"))
+    );
+    assert!(!playback.playing());
+    let (renderer, events) =
+        Renderer::new(Size::new(320, 180).unwrap(), DeviceMode::Software).unwrap();
+    let initial = playback_sample(&playback);
+    let static_region = initial.composition.layers()[0].region().clone();
+    for time_ms in [0, 124, 125, 249, 250, 374, 375, 500, 1500] {
+        playback.seek(Duration::from_millis(time_ms));
+        let sample = playback_sample(&playback);
+        assert_eq!(sample.time, Duration::from_millis(time_ms));
+        assert_eq!(sample.frame_indices, playback_checks::indices(time_ms));
+        let layers = sample.composition.layers();
+        assert!(Arc::ptr_eq(layers[1].region(), layers[2].region()));
+        assert!(Arc::ptr_eq(layers[0].region(), &static_region));
+        let id = renderer.render_images(sample.composition).unwrap();
+        playback_checks::check(&wait(&renderer, &events, id).readback().unwrap(), time_ms).unwrap();
+    }
+    let id = renderer.resize(Size::new(317, 193).unwrap()).unwrap();
+    playback_checks::check(&wait(&renderer, &events, id).readback().unwrap(), 1500).unwrap();
+    let paused = playback.time();
+    std::thread::sleep(Duration::from_millis(2));
+    assert_eq!(playback.time(), paused);
+    playback.play();
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while playback.time() == paused {
+        assert!(Instant::now() < deadline);
+    }
+    playback.play(); // Idempotent resume preserves elapsed time.
+    assert!(playback.time() > paused);
+    playback.pause();
+    let paused = playback.time();
+    assert!(!playback.playing());
+    assert_eq!(playback.time(), paused);
+    playback.shutdown().unwrap();
+    fs::write(&source.package, playback_checks::package()).unwrap(); // Joined asset handles released.
+    let id = renderer.render_images(initial.composition).unwrap();
+    playback_checks::check(&wait(&renderer, &events, id).readback().unwrap(), 0).unwrap();
+    renderer.shutdown().unwrap();
 }

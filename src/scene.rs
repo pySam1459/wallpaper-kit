@@ -4,8 +4,10 @@ use std::{fmt, path::PathBuf};
 
 mod inspect;
 mod layers;
+mod playback;
 pub(crate) mod snapshot;
 pub use layers::{ImageComposition, ImageLayer};
+pub use playback::{ImagePlayback, ImagePlaybackReport, ImagePlaybackSample};
 pub use snapshot::ImageSnapshot;
 
 /// Explicit read-only package and engine roots for inspection or TEX decoding.

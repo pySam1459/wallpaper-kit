@@ -50,6 +50,10 @@ try {
         & "$PSScriptRoot/verify-native.ps1" -Executable (Join-Path $target 'native-viewer.exe') -Output (Join-Path $output 'native-layers') -Software:$Software -LayersFixture
         & "$PSScriptRoot/verify-native.ps1" -Executable (Join-Path $target 'native-viewer.exe') -Output (Join-Path $output 'native-extracted') -Software:$Software -ExtractedFixture
         & "$PSScriptRoot/verify-native.ps1" -Executable (Join-Path $target 'native-viewer.exe') -Output (Join-Path $output 'native-paged') -Software:$Software -PagedFixture
+        & "$PSScriptRoot/verify-image-playback.ps1" -Executable (Join-Path $target 'native-viewer.exe') -Output (Join-Path $output 'native-image-playback') -Software:$Software
+        if ($ScenePath) {
+            & "$PSScriptRoot/verify-image-playback.ps1" -Executable (Join-Path $target 'native-viewer.exe') -Output (Join-Path $output 'native-target-images') -Software:$Software -ScenePath $ScenePath -EngineAssets $EngineAssets
+        }
     }
     $status = & git status --porcelain=v1 --untracked-files=all
     $revision = & git rev-parse --verify HEAD 2>$null
@@ -71,11 +75,14 @@ try {
         texture_status='passed';
         texture_region_status='passed';
         image_composition_status='passed';
+        image_playback_status='passed';
+        native_image_playback_status=$(if ($SkipNative) {'skipped'} else {'passed'});
+        target_image_playback_status=$(if ($SkipNative -or -not $ScenePath) {'skipped'} else {'passed'});
         sprite_extraction_status='passed';
         sprite_worker_status='passed';
         sprite_prefetch_status='passed';
         scene_inspection_status=$inspectionStatus;
-        limits=@('Blank, diagnostic motion, TEX page/region, sprite extraction/background preparation/prefetch and selected image composition only.', 'Paired scene roots also exercise two-loop headless sprite readiness. No full scene effects or native scene playback.', 'Controlled captures use diagnostic readback; live sprite timing does not.', 'No scene fidelity, GPU timing or host latency claims.');
+        limits=@('Blank, diagnostic motion, TEX page/region, sprite extraction/background preparation/prefetch and selected image composition/playback only.', 'Paired scene roots also exercise two-loop headless sprite readiness and native playback of six selected target images when native checks run. Full scene rendering remains unsupported.', 'Controlled captures use diagnostic readback; live sprite timing does not.', 'No scene fidelity, GPU timing or host latency claims.');
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $output 'manifest.json') -Encoding utf8
     Write-Output "Evidence: $output"
 } catch {

@@ -17,6 +17,37 @@ pub struct ImageSnapshot {
     pub omissions: Vec<String>,
 }
 
+pub(crate) struct ImagePlan {
+    pub canvas: Size,
+    pub layers: Vec<LayerDescription>,
+    pub object_ids: Vec<u64>,
+    pub omissions: Vec<String>,
+}
+
+pub(crate) struct LayerDescription {
+    pub asset: String,
+    pub sprite: bool,
+    center: [f32; 2],
+    size: [f32; 2],
+    angle: f32,
+    opacity: f32,
+    brightness: f32,
+}
+
+impl LayerDescription {
+    pub fn layer(&self, region: Arc<TextureRegion>) -> Result<ImageLayer, InspectionError> {
+        ImageLayer::new(
+            region,
+            self.center,
+            self.size,
+            self.angle,
+            self.opacity,
+            self.brightness,
+        )
+        .map_err(|error| InspectionError::invalid(&self.asset, error.to_string()))
+    }
+}
+
 fn json(package: &Package, asset: &str) -> Result<Value, InspectionError> {
     let mut reader = package
         .reader(asset)?
@@ -61,11 +92,10 @@ fn scalar(value: Option<&Value>, default: f32, asset: &str) -> Result<f32, Inspe
     }
 }
 
-pub(crate) fn prepare(
+pub(crate) fn plan(
     decoder: &TextureDecoder,
     selection: &[u64],
-    frame_index: u32,
-) -> Result<ImageSnapshot, InspectionError> {
+) -> Result<ImagePlan, InspectionError> {
     let selected: BTreeSet<_> = selection.iter().copied().collect();
     if selected.is_empty() || selected.len() != selection.len() || selected.len() > 32 {
         return Err(InspectionError::invalid(
@@ -87,8 +117,6 @@ pub(crate) fn prepare(
     )
     .map_err(|error| InspectionError::invalid("scene.json", error.to_string()))?;
     let mut seen = BTreeSet::new();
-    let mut pages: BTreeMap<(String, u32), Arc<TexturePage>> = BTreeMap::new();
-    let mut bytes = 0;
     let mut layers = Vec::new();
     let mut object_ids = Vec::new();
     let mut omissions=vec!["General scene camera, color and postprocessing settings are omitted; the diagnostic canvas fills the output over BLANK_RGBA.".into()];
@@ -290,10 +318,52 @@ pub(crate) fn prepare(
             .as_str()
             .ok_or_else(|| InspectionError::invalid(&material, "expected texture name"))?;
         let asset = asset_key(&format!("materials/{reference}.tex"))?.to_ascii_lowercase();
-        let (page_index, region_origin, region_extent) = if sprite {
-            let frames = decoder.sprite_frames(&asset)?;
+        layers.push(LayerDescription {
+            asset,
+            sprite,
+            center,
+            size: displayed_size,
+            angle: angles[2],
+            opacity,
+            brightness,
+        });
+        object_ids.push(object.id);
+    }
+    if !selected.is_subset(&seen) {
+        return Err(InspectionError::invalid(
+            "scene.json",
+            "selected object ID is missing",
+        ));
+    }
+    if layers.is_empty() {
+        return Err(InspectionError::invalid(
+            "scene.json",
+            "selection contains no visible image layers",
+        ));
+    }
+    Ok(ImagePlan {
+        canvas,
+        layers,
+        object_ids,
+        omissions,
+    })
+}
+
+pub(crate) fn prepare(
+    decoder: &TextureDecoder,
+    selection: &[u64],
+    frame_index: u32,
+) -> Result<ImageSnapshot, InspectionError> {
+    let plan = plan(decoder, selection)?;
+    let mut pages: BTreeMap<(String, u32), Arc<TexturePage>> = BTreeMap::new();
+    let mut bytes = 0;
+    let mut layers = Vec::new();
+    for description in &plan.layers {
+        let asset = &description.asset;
+        let (page_index, region_origin, region_extent) = if description.sprite {
+            let frames = decoder.sprite_frames(asset)?;
             let frame = frames.get(frame_index as usize).ok_or_else(|| {
-                InspectionError::invalid(&asset, "sprite frame index out of range")
+                InspectionError::invalid(asset, "sprite frame index out of range")
             })?;
             (frame.page_index(), frame.origin(), Some(frame.extent()))
         } else {
@@ -302,7 +372,7 @@ pub(crate) fn prepare(
         let key = (asset.clone(), page_index);
         if !pages.contains_key(&key) {
             let page = Arc::new(decoder.decode_page_admitted(
-                &asset,
+                asset,
                 page_index,
                 super::layers::MAX_SOURCE_BYTES - bytes,
             )?);
@@ -316,34 +386,17 @@ pub(crate) fn prepare(
                 region_origin,
                 region_extent.unwrap_or(page.extent()),
             )
-            .map_err(|error| InspectionError::invalid(&asset, error.to_string()))?,
+            .map_err(|error| InspectionError::invalid(asset, error.to_string()))?,
         );
-        layers.push(
-            ImageLayer::new(
-                region,
-                center,
-                displayed_size,
-                angles[2],
-                opacity,
-                brightness,
-            )
-            .map_err(|error| InspectionError::invalid(&context, error.to_string()))?,
-        );
-        object_ids.push(object.id);
-    }
-    if !selected.is_subset(&seen) {
-        return Err(InspectionError::invalid(
-            "scene.json",
-            "selected object ID is missing",
-        ));
+        layers.push(description.layer(region)?);
     }
     let composition = Arc::new(
-        ImageComposition::new(canvas, layers)
+        ImageComposition::new(plan.canvas, layers)
             .map_err(|error| InspectionError::invalid("scene.json", error.to_string()))?,
     );
     Ok(ImageSnapshot {
         composition,
-        object_ids,
-        omissions,
+        object_ids: plan.object_ids,
+        omissions: plan.omissions,
     })
 }

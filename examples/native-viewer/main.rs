@@ -1,12 +1,15 @@
 //! Native window consumer with line-delimited JSON control over stdin/stdout.
 
 mod fixture;
+mod images;
 #[path = "../support/layers.rs"]
 mod layers_checks;
 #[path = "../support/motion.rs"]
 mod motion_checks;
 #[path = "../support/paging.rs"]
 mod paging;
+#[path = "../support/image_playback.rs"]
+mod playback_checks;
 mod presentation;
 #[path = "../support/sprite.rs"]
 mod sprite_checks;
@@ -17,8 +20,8 @@ mod texture_checks;
 
 use presentation::Presentation;
 use scene_renderer::{
-    DeviceMode, Frame, Renderer, SceneSource, Size, SpritePager, SpriteWorker, TextureDecoder,
-    TexturePage, TextureRegion,
+    DeviceMode, Frame, ImagePlayback, Renderer, SceneSource, Size, SpritePager, SpriteWorker,
+    TextureDecoder, TexturePage, TextureRegion,
 };
 use serde_json::{Value, json};
 use std::{
@@ -60,6 +63,7 @@ struct App {
     texture_fixture: Option<(Arc<TexturePage>, texture_checks::Case)>,
     texture_region: Option<Arc<TextureRegion>>,
     layers_fixture: Option<layers_checks::Fixture>,
+    images: Option<images::Images>,
 }
 
 fn emit(value: Value) {
@@ -84,6 +88,9 @@ impl App {
         if frame.id() != self.expected_id {
             return Ok(());
         }
+        if self.images.is_some() && frame.image_layer_count().is_none() {
+            return Ok(());
+        }
         let window = self.window.as_ref().ok_or("no window")?;
         let actual = window.inner_size();
         if actual.width != frame.size().width() || actual.height != frame.size().height() {
@@ -106,11 +113,17 @@ impl App {
             .is_none_or(|previous| previous.id() != frame.id())
         {
             self.fixture.presented(&frame);
+            if let Some(images) = &mut self.images {
+                images.presented(&frame);
+            }
         }
         self.frame = Some(frame.clone());
         self.presented += 1;
         if !self.ready {
             self.ready = true;
+            if let Some(images) = &mut self.images {
+                images.play();
+            }
             let state = self.inspect();
             support::write_json(&self.output.join("ready.json"), &state)?;
             emit(json!({"event": "ready", "state": state}));
@@ -118,7 +131,15 @@ impl App {
         if let Some(command) = self.pending_resize.take() {
             emit(json!({"id": command["id"], "ok": true, "state": self.inspect()}));
         }
-        if let Some(command) = self.pending_fixture.take() {
+        let selected_time_ready = self.pending_fixture.as_ref().is_none_or(|command| {
+            command["command"] != "image_at"
+                || self.images.as_ref().is_some_and(|images| {
+                    images.presented_at(Duration::from_millis(
+                        command["time_ms"].as_u64().expect("validated image time"),
+                    ))
+                })
+        });
+        if selected_time_ready && let Some(command) = self.pending_fixture.take() {
             emit(json!({"id":command["id"],"ok":true,"state":self.inspect()}));
         }
         Ok(())
@@ -133,7 +154,7 @@ impl App {
         json!({"pid": std::process::id(), "consumer": "native-viewer", "ready": self.ready,
             "frame": self.frame.as_ref().map(|frame| support::frame_info(frame)), "presented": self.presented,
             "output_pool":output_pool,
-            "continuous_rendering": self.fixture.running(), "output": self.output, "scene_support": false})
+            "continuous_rendering": self.fixture.running() || self.images.as_ref().is_some_and(images::Images::playing), "output": self.output, "scene_support": false,"image_playback":self.images.as_ref().map(images::Images::inspect)})
     }
 
     fn resized(&mut self, size: PhysicalSize<u32>) -> Result<()> {
@@ -150,6 +171,9 @@ impl App {
             return Ok(());
         }
         self.expected_id = renderer.resize(size)?;
+        if let Some(images) = &mut self.images {
+            images.resized(self.expected_id);
+        }
         Ok(())
     }
 
@@ -175,6 +199,9 @@ impl App {
                 }
             }
             "fixture_at" => {
+                if self.images.is_some() {
+                    return Err("image playback uses image_at".into());
+                }
                 if self.pending_resize.is_some() || self.pending_fixture.is_some() {
                     return Err("frame command already pending".into());
                 }
@@ -191,11 +218,40 @@ impl App {
                 self.pending_fixture = Some(command);
             }
             "play_fixture" => {
+                if self.images.is_some() {
+                    return Err("image playback uses play_images".into());
+                }
                 self.fixture.play();
                 emit(json!({"id":command["id"],"ok":true,"state":self.inspect()}));
             }
             "pause_fixture" => {
+                if self.images.is_some() {
+                    return Err("image playback uses pause_images".into());
+                }
                 self.fixture.pause();
+                emit(json!({"id":command["id"],"ok":true,"state":self.inspect()}));
+            }
+            "image_at" => {
+                if self.pending_resize.is_some() || self.pending_fixture.is_some() {
+                    return Err("frame command already pending".into());
+                }
+                let time =
+                    Duration::from_millis(command["time_ms"].as_u64().ok_or("invalid image time")?);
+                self.images.as_mut().ok_or("no image playback")?.seek(time);
+                self.pending_fixture = Some(command);
+            }
+            "play_images" => {
+                if self.pending_resize.is_some() || self.pending_fixture.is_some() {
+                    return Err("frame command already pending".into());
+                }
+                self.images.as_mut().ok_or("no image playback")?.play();
+                emit(json!({"id":command["id"],"ok":true,"state":self.inspect()}));
+            }
+            "pause_images" => {
+                if self.pending_resize.is_some() || self.pending_fixture.is_some() {
+                    return Err("frame command already pending".into());
+                }
+                self.images.as_mut().ok_or("no image playback")?.pause();
                 emit(json!({"id":command["id"],"ok":true,"state":self.inspect()}));
             }
             "capture" => {
@@ -245,11 +301,20 @@ impl App {
                     None
                 };
                 let layers_check = if frame.image_layer_count().is_some() {
-                    self.layers_fixture
-                        .as_ref()
-                        .ok_or("no layer fixture oracle")?
-                        .check(&pixels)?;
-                    Some(true)
+                    if let Some(images) = &self.images {
+                        if images.fixture {
+                            playback_checks::check(&pixels, images.capture_time_ms()?)?;
+                            Some(true)
+                        } else {
+                            None
+                        }
+                    } else {
+                        self.layers_fixture
+                            .as_ref()
+                            .ok_or("no layer fixture oracle")?
+                            .check(&pixels)?;
+                        Some(true)
+                    }
                 } else {
                     None
                 };
@@ -259,6 +324,12 @@ impl App {
                 );
             }
             "stop" => {
+                if let Some(images) = &self.images {
+                    support::write_json(
+                        &self.output.join("image-timeline.json"),
+                        &images.report(),
+                    )?;
+                }
                 support::write_json(
                     &self.output.join("motion-timeline.json"),
                     &self.fixture.report(),
@@ -281,12 +352,21 @@ impl ApplicationHandler<Event> for App {
         let result: Result<()> = (|| {
             let window = event_loop.create_window(
                 Window::default_attributes()
-                    .with_title("Scene renderer | texture and motion diagnostics | Esc to close")
+                    .with_title(if self.images.is_some() {
+                        "Scene renderer | selected image playback | Esc to close"
+                    } else {
+                        "Scene renderer | texture and motion diagnostics | Esc to close"
+                    })
                     .with_inner_size(PhysicalSize::new(640, 360)),
             )?;
             let size = window.inner_size();
             let (renderer, events) = Renderer::new(Size::new(size.width, size.height)?, self.mode)?;
-            if let Some(layers) = &self.layers_fixture {
+            if let Some(images) = &mut self.images {
+                if let Some(sample) = images.tick()? {
+                    self.expected_id = renderer.render_images(sample.composition.clone())?;
+                    images.requested(self.expected_id, &sample);
+                }
+            } else if let Some(layers) = &self.layers_fixture {
                 self.expected_id = renderer.render_images(layers.composition.clone())?;
             } else if let Some(region) = &self.texture_region {
                 self.expected_id = renderer.render_texture_region(region.clone())?;
@@ -352,6 +432,49 @@ impl ApplicationHandler<Event> for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self.images.is_some() {
+            let result: Result<()> = (|| {
+                let waiting = self
+                    .frame
+                    .as_ref()
+                    .is_some_and(|frame| frame.id() != self.expected_id);
+                if !waiting
+                    && self.pending_resize.is_none()
+                    && let Some(images) = &mut self.images
+                    && let Some(sample) = images.tick()?
+                {
+                    self.expected_id = self
+                        .renderer
+                        .as_ref()
+                        .ok_or("no renderer")?
+                        .render_images(sample.composition.clone())?;
+                    images.requested(self.expected_id, &sample);
+                }
+                if self
+                    .frame
+                    .as_ref()
+                    .is_none_or(|frame| frame.id() != self.expected_id)
+                {
+                    self.update()?;
+                }
+                let pending = self
+                    .frame
+                    .as_ref()
+                    .is_none_or(|frame| frame.id() != self.expected_id);
+                let deadline = if pending {
+                    Some(Instant::now() + Duration::from_millis(10))
+                } else {
+                    self.images.as_ref().and_then(images::Images::deadline)
+                };
+                event_loop
+                    .set_control_flow(deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
+                Ok(())
+            })();
+            if let Err(error) = result {
+                self.fail(event_loop, error);
+            }
+            return;
+        }
         let waiting = self
             .frame
             .as_ref()
@@ -395,6 +518,12 @@ impl ApplicationHandler<Event> for App {
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(images) = &self.images
+            && let Err(error) =
+                support::write_json(&self.output.join("image-timeline.json"), &images.report())
+        {
+            self.failure = Some(error.to_string());
+        }
         if let Err(error) = support::write_json(
             &self.output.join("motion-timeline.json"),
             &self.fixture.report(),
@@ -405,6 +534,11 @@ impl ApplicationHandler<Event> for App {
         self.window = None;
         if let Some(renderer) = self.renderer.take()
             && let Err(error) = renderer.shutdown()
+        {
+            self.failure = Some(error.to_string());
+        }
+        if let Some(images) = self.images.take()
+            && let Err(error) = images.shutdown()
         {
             self.failure = Some(error.to_string());
         }
@@ -419,8 +553,20 @@ fn main() -> Result<()> {
     let mut layers = false;
     let mut extracted = false;
     let mut paged = false;
+    let mut image_fixture = false;
+    let mut scene_path = None;
+    let mut engine_assets = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--image-fixture" => image_fixture = true,
+            "--scene" => {
+                scene_path = Some(PathBuf::from(args.next().ok_or("--scene needs a package")?))
+            }
+            "--engine-assets" => {
+                engine_assets = Some(PathBuf::from(
+                    args.next().ok_or("--engine-assets needs a directory")?,
+                ))
+            }
             "--texture-fixture" => texture = true,
             "--extracted-fixture" => {
                 texture = true;
@@ -445,7 +591,46 @@ fn main() -> Result<()> {
     if layers && texture {
         return Err("choose either layers or texture fixture".into());
     }
+    if scene_path.is_some() != engine_assets.is_some() {
+        return Err("--scene and --engine-assets must be supplied together".into());
+    }
+    if (image_fixture || scene_path.is_some()) && (layers || texture)
+        || image_fixture && scene_path.is_some()
+    {
+        return Err("choose one image playback or diagnostic fixture route".into());
+    }
     let (output, mode) = support::options(common.into_iter())?;
+    let images = if image_fixture || scene_path.is_some() {
+        let (source, objects) = if image_fixture {
+            let generated = output.join("generated");
+            std::fs::create_dir(&generated)?;
+            std::fs::create_dir(generated.join("engine"))?;
+            std::fs::write(generated.join("scene.pkg"), playback_checks::package())?;
+            (
+                SceneSource {
+                    package: generated.join("scene.pkg"),
+                    engine_assets: generated.join("engine"),
+                },
+                playback_checks::OBJECTS.to_vec(),
+            )
+        } else {
+            (
+                SceneSource {
+                    package: scene_path.expect("paired source"),
+                    engine_assets: engine_assets.expect("paired source"),
+                },
+                vec![28, 32, 72, 89, 77, 86],
+            )
+        };
+        let playback = ImagePlayback::open(&source, &objects)?;
+        support::write_json(
+            &output.join("image-playback.json"),
+            &serde_json::to_value(playback.report())?,
+        )?;
+        Some(images::Images::new(playback, image_fixture))
+    } else {
+        None
+    };
     // Diagnostic input is prepared before a window/event loop exists. Host
     // controls only enqueue GPU work; file I/O and decode never run in update.
     let (texture_fixture, texture_region) = if texture {
@@ -569,6 +754,7 @@ fn main() -> Result<()> {
         texture_fixture,
         texture_region,
         layers_fixture,
+        images,
     };
     event_loop.run_app(&mut app)?;
     if let Some(error) = app.failure {
