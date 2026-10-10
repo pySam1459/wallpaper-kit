@@ -5,8 +5,9 @@ use std::{fmt, path::PathBuf};
 mod inspect;
 mod layers;
 mod playback;
+mod precise;
 pub(crate) mod snapshot;
-pub use layers::{GaussianBlur, ImageComposition, ImageLayer};
+pub use layers::{GaussianBlur, ImageComposition, ImageLayer, PreciseBlur};
 pub use playback::{ImagePlayback, ImagePlaybackReport, ImagePlaybackSample};
 pub use snapshot::ImageSnapshot;
 

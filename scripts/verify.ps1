@@ -76,6 +76,7 @@ try {
         texture_region_status='passed';
         image_composition_status='passed';
         gaussian_blur_status='passed';
+        precise_blur_status='passed';
         image_playback_status='passed';
         native_image_playback_status=$(if ($SkipNative) {'skipped'} else {'passed'});
         target_image_playback_status=$(if ($SkipNative -or -not $ScenePath) {'skipped'} else {'passed'});

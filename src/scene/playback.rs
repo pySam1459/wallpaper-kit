@@ -16,6 +16,9 @@ pub struct ImagePlaybackReport {
     pub object_ids: Vec<u64>,
     /// Unique animated assets, in the order used by sample frame indices.
     pub animated_assets: Vec<String>,
+    /// Applied unmasked default-kernel precise blurs, keyed by scene object ID.
+    /// Values are horizontal/vertical source-texel sampling scales, not sigma.
+    pub precise_blurs: BTreeMap<u64, [f32; 2]>,
     /// Unsupported and unselected behavior. This is not full scene support.
     pub omissions: Vec<String>,
 }
@@ -40,8 +43,9 @@ enum Source {
 /// Static sources decode once; duplicate animated references share one pager.
 /// The host schedules sampling/presentation from its event loop. Sampling never
 /// waits for codecs and returns `None` until every source for that time is ready.
-/// Effects, particles, parallax, camera/color settings and animated crop offsets
-/// are unsupported, as reported or rejected by [`Self::open`]. Existing per-
+/// Default unmasked precise blur is supported. Other effects, particles,
+/// parallax, camera/color settings and animated crop offsets are unsupported,
+/// as reported or rejected by [`Self::open`]. Existing per-
 /// pager and composition bounds apply; aggregate scene memory is not budgeted.
 /// Opening and joined shutdown belong outside latency-critical UI updates.
 pub struct ImagePlayback {
@@ -118,6 +122,12 @@ impl ImagePlayback {
             package_sha256: decoder.package_sha256().into(),
             object_ids: plan.object_ids.clone(),
             animated_assets,
+            precise_blurs: plan
+                .object_ids
+                .iter()
+                .zip(&plan.layers)
+                .filter_map(|(id, layer)| layer.blur.map(|blur| (*id, blur.scale())))
+                .collect(),
             omissions: plan.omissions.clone(),
         };
         Ok(Self {

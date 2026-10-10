@@ -1,4 +1,4 @@
-use super::{ImageComposition, ImageLayer, InspectionError, RawScene};
+use super::{ImageComposition, ImageLayer, InspectionError, PreciseBlur, RawScene};
 use crate::assets::package::{Package, asset_key};
 use crate::{Size, TextureDecoder, TexturePage, TextureRegion};
 use serde_json::Value;
@@ -32,11 +32,12 @@ pub(crate) struct LayerDescription {
     angle: f32,
     opacity: f32,
     brightness: f32,
+    pub(super) blur: Option<PreciseBlur>,
 }
 
 impl LayerDescription {
     pub fn layer(&self, region: Arc<TextureRegion>) -> Result<ImageLayer, InspectionError> {
-        ImageLayer::new(
+        let layer = ImageLayer::new(
             region,
             self.center,
             self.size,
@@ -44,11 +45,15 @@ impl LayerDescription {
             self.opacity,
             self.brightness,
         )
-        .map_err(|error| InspectionError::invalid(&self.asset, error.to_string()))
+        .map_err(|error| InspectionError::invalid(&self.asset, error.to_string()))?;
+        Ok(match self.blur {
+            Some(blur) => layer.with_precise_blur(blur),
+            None => layer,
+        })
     }
 }
 
-fn json(package: &Package, asset: &str) -> Result<Value, InspectionError> {
+pub(super) fn json(package: &Package, asset: &str) -> Result<Value, InspectionError> {
     let mut reader = package
         .reader(asset)?
         .ok_or_else(|| InspectionError::invalid(asset, "missing JSON asset"))?;
@@ -56,7 +61,7 @@ fn json(package: &Package, asset: &str) -> Result<Value, InspectionError> {
     serde_json::from_slice(&bytes).map_err(|error| reader.invalid(error.to_string()))
 }
 
-fn vector<const N: usize>(
+pub(super) fn vector<const N: usize>(
     value: Option<&Value>,
     default: [f32; N],
     asset: &str,
@@ -249,11 +254,43 @@ pub(crate) fn plan(
                 "disablepropagation is unsupported",
             ));
         }
+        let mut blur = None;
         for effect in &object.effects {
-            omissions.push(format!(
-                "Object {}: effect {} is omitted.",
-                object.id, effect.file
-            ));
+            let visibility = effect.properties.get("visible");
+            if visibility.is_some_and(|v| !v.is_boolean()) {
+                return Err(InspectionError::invalid(
+                    &context,
+                    "effect visible must be Boolean",
+                ));
+            }
+            if visibility == Some(&Value::Bool(false)) {
+                continue;
+            }
+            if asset_key(&effect.file)?.eq_ignore_ascii_case("effects/blurprecise/effect.json") {
+                if raw
+                    .general
+                    .properties
+                    .get("hdr")
+                    .is_some_and(|value| value != false)
+                {
+                    return Err(InspectionError::invalid(
+                        &context,
+                        "precise blur requires SDR scene settings",
+                    ));
+                }
+                if blur.is_some() {
+                    return Err(InspectionError::invalid(
+                        &context,
+                        "multiple precise blurs are unsupported",
+                    ));
+                }
+                blur = Some(super::precise::load(&decoder.package, effect)?);
+            } else {
+                omissions.push(format!(
+                    "Object {}: effect {} is omitted.",
+                    object.id, effect.file
+                ));
+            }
         }
         if object.properties.contains_key("parallaxDepth") {
             omissions.push(format!("Object {}: parallax is omitted.", object.id));
@@ -389,6 +426,7 @@ pub(crate) fn plan(
             angle: angles[2],
             opacity,
             brightness,
+            blur,
         });
         object_ids.push(object.id);
     }

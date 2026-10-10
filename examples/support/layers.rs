@@ -2,7 +2,8 @@
 
 use crate::texture_checks;
 use scene_renderer::{
-    GaussianBlur, ImageComposition, ImageLayer, Pixels, Size, TextureDecoder, TextureRegion,
+    GaussianBlur, ImageComposition, ImageLayer, Pixels, PreciseBlur, Size, TextureDecoder,
+    TextureRegion,
 };
 use std::sync::Arc;
 
@@ -62,6 +63,16 @@ impl Fixture {
                 0.7,
                 2.,
             ),
+            (
+                "rgba-raw",
+                [0, 0],
+                [2, 2],
+                [27.137, 4.717],
+                [10.337, 7.713],
+                90.,
+                0.8,
+                1.1,
+            ),
         ] {
             let case = cases
                 .iter()
@@ -90,6 +101,7 @@ impl Fixture {
             layers.push(match layers.len() {
                 0 => layer.with_blur(GaussianBlur::new([0.8, 1.4], Some(mask.clone()))?),
                 2 => layer.with_blur(GaussianBlur::new([0.4, 0.], None)?),
+                4 => layer.with_precise_blur(PreciseBlur::new([0.32, 2.])?),
                 _ => layer,
             });
             rgba.push(texture_checks::crop(
@@ -113,12 +125,13 @@ impl Fixture {
             .layers()
             .iter()
             .zip(&self.rgba)
-            .map(|(layer, rgba)| {
-                filter(
+            .map(|(layer, rgba)| match layer.precise_blur() {
+                Some(blur) => precise_filter(rgba, layer.region().extent(), blur.scale()),
+                None => filter(
                     rgba,
                     layer.region().extent(),
                     layer.blur().map_or([0., 0.], GaussianBlur::sigma),
-                )
+                ),
             })
             .collect();
         for y in 0..pixels.size.height() {
@@ -195,6 +208,63 @@ impl Fixture {
         }
         Ok(())
     }
+}
+
+fn precise_filter(rgba: &[u8], extent: [u32; 2], scale: [f32; 2]) -> Vec<[f64; 4]> {
+    // Expand each paired bilinear sample into integer weighted taps. The CPU
+    // oracle then convolves byte arrays; it never samples a GPU intermediate.
+    // Coefficients: MIT glsl-fast-gaussian-blur, see THIRD-PARTY-NOTICES.md.
+    let kernels = scale.map(|scale| {
+        let mut taps = std::collections::BTreeMap::from([(0_i32, 0.1964825501511404)]);
+        for (distance, weight) in [
+            (1.411764705882353, 0.2969069646728344),
+            (3.2941176470588234, 0.09447039785044732),
+            (5.176470588235294, 0.010381362401148057),
+        ] {
+            for sign in [-1., 1.] {
+                let offset = sign * distance * f64::from(scale);
+                let left = offset.floor() as i32;
+                let fraction = offset - f64::from(left);
+                *taps.entry(left).or_default() += weight * (1. - fraction);
+                *taps.entry(left + 1).or_default() += weight * fraction;
+            }
+        }
+        taps
+    });
+    let mut horizontal = vec![[0.; 4]; (extent[0] * extent[1]) as usize];
+    for y in 0..extent[1] {
+        for x in 0..extent[0] {
+            let color = &mut horizontal[(y * extent[0] + x) as usize];
+            for (&offset, &weight) in &kernels[0] {
+                let sx = (x as i32 + offset).clamp(0, extent[0] as i32 - 1) as u32;
+                let pixel = ((y * extent[0] + sx) * 4) as usize;
+                for channel in 0..4 {
+                    color[channel] += f64::from(rgba[pixel + channel]) * weight;
+                }
+            }
+            for value in color {
+                *value = value.round();
+            }
+        }
+    }
+    let mut result = vec![[0.; 4]; horizontal.len()];
+    for y in 0..extent[1] {
+        for x in 0..extent[0] {
+            let color = &mut result[(y * extent[0] + x) as usize];
+            for (&offset, &weight) in &kernels[1] {
+                let sy = (y as i32 + offset).clamp(0, extent[1] as i32 - 1) as u32;
+                let source = horizontal[(sy * extent[0] + x) as usize];
+                for channel in 0..4 {
+                    color[channel] += source[channel] * weight;
+                }
+            }
+            color[3] /= 255.;
+            for channel in 0..3 {
+                color[channel] *= color[3];
+            }
+        }
+    }
+    result
 }
 
 fn filter(rgba: &[u8], extent: [u32; 2], sigma: [f32; 2]) -> Vec<[f64; 4]> {

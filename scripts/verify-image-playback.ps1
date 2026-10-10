@@ -80,6 +80,12 @@ try {
     if ($ScenePath) {
         if (($ready.state.image_playback.report.object_ids -join ',') -ne '28,32,22,72,89,77,86') { throw 'Target authored image order differs' }
         if (@($ready.state.image_playback.report.omissions | Where-Object { $_ -like 'Object 22*not selected*' }).Count -ne 0) { throw 'Target wire layer was omitted' }
+        $blurs = $ready.state.image_playback.report.precise_blurs
+        if (@($blurs.PSObject.Properties).Count -ne 2 -or @($blurs.'22').Count -ne 2 -or @($blurs.'72').Count -ne 2) { throw 'Target precise-blur dispatch differs' }
+        foreach ($axis in 0..1) {
+            if ([Math]::Abs($blurs.'22'[$axis] - 0.32) -gt 0.0000001 -or $blurs.'72'[$axis] -ne 2) { throw 'Target authored precise-blur scales differ' }
+        }
+        if (@($ready.state.image_playback.report.omissions | Where-Object { $_ -like '*blurprecise*' }).Count) { throw 'Target precise blur was omitted' }
     }
     $times = if ($ScenePath) { @(0, 125, 960, 1080, 1500, 28799, 28800, 29000) } else { @(0, 124, 125, 249, 250, 374, 375, 500, 1500) }
     foreach ($time in $times) {

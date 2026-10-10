@@ -1,6 +1,6 @@
 # Gaussian image blur
 
-`GaussianBlur` is a reusable source-space operation on `ImageLayer`, independent of scene names, object IDs and host frameworks. It supports separate horizontal and vertical standard deviations and an optional red-channel texture mask. Wallpaper Engine's `blurprecise` profile is not mapped to this operation yet. Its `scale` units, kernel and filtering conventions still require reference validation; scene playback continues to report that effect as omitted.
+`GaussianBlur` is a reusable source-space operation on `ImageLayer`, independent of scene names, object IDs and host frameworks. It supports separate horizontal and vertical standard deviations and an optional red-channel texture mask. Wallpaper Engine's default unmasked `blurprecise` profile now uses the separate [PreciseBlur operation](precise-blur.md). Its fixed kernel, sampling scale and straight-RGBA conventions differ from this operation.
 
 ## Public consumer path
 
@@ -26,10 +26,10 @@ Masks join the composition's existing 256 MiB unique source-page budget; shared 
 
 ## Verification
 
-Run `pwsh -File ./scripts/verify.ps1`. Use `-Software -SkipNative` without a desktop and report native checks as skipped. The generated composition in `texture-checks` and native `--layers-fixture` includes masked RGBA blur and unmasked horizontal BC3 blur. Its independent oracle performs a direct two-dimensional f64 convolution, rather than reproducing the GPU's separable intermediate. Pixel checks allow two RGB code values of rounding tolerance and require opaque output alpha.
+Run `pwsh -File ./scripts/verify.ps1`. Use `-Software -SkipNative` without a desktop and report native checks as skipped. The generated composition in `texture-checks` and native `--layers-fixture` includes masked RGBA blur, unmasked horizontal BC3 blur and a separate precise-blur layer. Gaussian's independent oracle performs a direct two-dimensional f64 convolution, rather than reproducing the GPU's separable intermediate. Pixel checks allow two RGB code values of rounding tolerance and require opaque output alpha.
 
 Public contracts vary both radii, masks, axis bypasses, zero blur, a subnormal radius and the maximum radius. They also exercise crop boundaries, hidden RGB under zero alpha, placement, opacity, brightness, resizing, shared sources, retained output and early scratch admission. Missing blur and reversed composition must fail the oracle. The native controller checks initial/resized consumer-device pixels, 288 scratch bytes for the fixture, scratch release on switching to motion, idle behavior and owned-process exit.
 
-GPU pixels establish this operation's defined behavior. They do not establish Wallpaper Engine precise-blur fidelity, cloud motion, display cadence, GPU duration or consuming-app responsiveness. The scene loader does not silently substitute this operation for an unverified effect profile.
+GPU pixels establish this operation's defined behavior. They do not establish Wallpaper Engine precise-blur fidelity, cloud motion, display cadence, GPU duration or consuming-app responsiveness. The scene loader uses the checked precise operation for its supported profile.
 
 The [hardware/native gate](../artifacts/20261010-170230-b7b71e44/manifest.json) and [WARP/headless gate](../artifacts/20261010-170653-342d95b2/manifest.json) passed on 10 October 2026. Both ran 59 tests, formatting, Clippy, Rustdoc, dependency boundaries and generated consumers. Hardware used Windows x64, Rust 1.91, a Ryzen 9 9950X3D and NVIDIA RTX 5080. The [native fixture report](../artifacts/20261010-170230-b7b71e44/native-layers/report.json) records correct pixels, matched-frame scratch observations of 288 and zero bytes, resize, idle and owned exit. WARP explicitly skipped native and proprietary target scenarios. Ignored evidence may be absent in another checkout; rerun the gate there.

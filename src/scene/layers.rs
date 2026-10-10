@@ -40,6 +40,57 @@ impl GaussianBlur {
     }
 }
 
+/// Fixed 13-texel Gaussian kernel with bilinear paired samples in straight RGBA.
+/// Scale changes sampling distance per axis, not the kernel weights. This is
+/// the unmasked SDR precise-blur profile; other kernels and masks are unsupported.
+#[derive(Debug, Clone, Copy)]
+pub struct PreciseBlur {
+    scale: [f32; 2],
+}
+
+impl PreciseBlur {
+    /// Finite sampling scales in 0..=2 source texels. Zero bypasses that axis.
+    /// Returns [`Error::InvalidBlur`] otherwise. RGB under zero alpha participates
+    /// in this filter. The horizontal result is quantized to eight-bit RGBA.
+    pub fn new(scale: [f32; 2]) -> Result<Self, Error> {
+        if scale
+            .iter()
+            .any(|v| !v.is_finite() || !(0. ..=2.).contains(v))
+        {
+            return Err(Error::InvalidBlur);
+        }
+        Ok(Self { scale })
+    }
+    /// Horizontal and vertical sampling distances in source texels.
+    pub fn scale(&self) -> [f32; 2] {
+        self.scale
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum LayerBlur {
+    Gaussian(GaussianBlur),
+    Precise(PreciseBlur),
+}
+
+impl LayerBlur {
+    pub(crate) fn parameters(&self) -> ([f32; 2], u32) {
+        match self {
+            Self::Gaussian(blur) => (blur.sigma(), 0),
+            Self::Precise(blur) => (blur.scale(), 1),
+        }
+    }
+    pub(crate) fn mask(&self) -> Option<&Arc<TextureRegion>> {
+        match self {
+            Self::Gaussian(blur) => blur.mask(),
+            Self::Precise(_) => None,
+        }
+    }
+    pub(crate) fn active(&self) -> bool {
+        self.parameters().0 != [0.; 2]
+    }
+}
+
 /// A cropped image placed on a two-dimensional orthographic canvas.
 ///
 /// The region retains its shared source page. All values are checked at
@@ -52,7 +103,7 @@ pub struct ImageLayer {
     angle: f32,
     opacity: f32,
     brightness: f32,
-    blur: Option<GaussianBlur>,
+    blur: Option<LayerBlur>,
 }
 
 impl ImageLayer {
@@ -130,11 +181,29 @@ impl ImageLayer {
     /// Apply one checked blur before placing and blending this image. The
     /// source and mask join the composition's existing unique-page budget.
     pub fn with_blur(mut self, blur: GaussianBlur) -> Self {
-        self.blur = Some(blur);
+        self.blur = Some(LayerBlur::Gaussian(blur));
         self
     }
-    /// Optional source-space blur applied before placement and appearance.
+    /// Optional premultiplied Gaussian blur. Precise blur uses a separate accessor.
     pub fn blur(&self) -> Option<&GaussianBlur> {
+        match self.blur.as_ref() {
+            Some(LayerBlur::Gaussian(blur)) => Some(blur),
+            _ => None,
+        }
+    }
+    /// Replace any existing blur with the checked unmasked precise operation.
+    pub fn with_precise_blur(mut self, blur: PreciseBlur) -> Self {
+        self.blur = Some(LayerBlur::Precise(blur));
+        self
+    }
+    /// Optional fixed-kernel straight-RGBA blur, before placement and appearance.
+    pub fn precise_blur(&self) -> Option<&PreciseBlur> {
+        match self.blur.as_ref() {
+            Some(LayerBlur::Precise(blur)) => Some(blur),
+            _ => None,
+        }
+    }
+    pub(crate) fn filter(&self) -> Option<&LayerBlur> {
         self.blur.as_ref()
     }
 
@@ -182,8 +251,8 @@ impl ImageComposition {
         for page in layers.iter().flat_map(|layer| {
             std::iter::once(layer.region.page()).chain(
                 layer
-                    .blur()
-                    .and_then(GaussianBlur::mask)
+                    .filter()
+                    .and_then(LayerBlur::mask)
                     .map(|mask| mask.page()),
             )
         }) {
@@ -197,7 +266,7 @@ impl ImageComposition {
         }
         let mut extent = [0, 0];
         for layer in &layers {
-            if layer.blur().is_some_and(|blur| blur.sigma() != [0.; 2]) {
+            if layer.filter().is_some_and(LayerBlur::active) {
                 let source = layer.region.extent();
                 extent = [extent[0].max(source[0]), extent[1].max(source[1])];
             }

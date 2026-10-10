@@ -34,7 +34,14 @@ fn wait_frame(renderer: &Renderer, events: &Receiver<()>, id: u64) -> Result<Arc
             return Ok(frame);
         }
         if Instant::now() >= deadline {
-            return Err("texture frame timed out".into());
+            let latest = renderer
+                .try_frame()?
+                .map(|frame| (frame.id(), frame.sequence()));
+            return Err(format!(
+                "texture frame timed out: requested {id}, latest {latest:?}, pool {:?}",
+                renderer.try_output_stats()?
+            )
+            .into());
         }
         let _ = events.recv_timeout(Duration::from_millis(10));
     }
@@ -401,7 +408,7 @@ fn main() -> Result<()> {
     let id = renderer.render_images(layers.composition.clone())?;
     let composed = wait_frame(&renderer, &events, id)?;
     layers.check(&composed.readback()?)?;
-    if composed.image_layer_count() != Some(4) {
+    if composed.image_layer_count() != Some(5) {
         return Err("composition metadata differs".into());
     }
     support::write_png(&output.join("composition.png"), &composed.readback()?)?;
@@ -730,7 +737,7 @@ fn main() -> Result<()> {
         &output.join("report.json"),
         &json!({
             "schema_version":6,"status":"passed","consumer":"texture-checks", "generated_cases":results, "generated_regions":region_results,"generated_extracted":extracted_results,"generated_worker":worker_results,"generated_paged":paged_results,"generated_composition":composition_result,"target_identity":target_identity,"target_pages":target,"target_frames":target_frames,"target_extracted":target_extracted,"target_worker":target_worker,"target_paged":target_paged,"target_compositions":target_compositions,
-            "limits":["Diagnostic fixed-time sprite sampling, pages/crops and selected composition; no live scene playback/effects.","Point sampling and straight-alpha code-value composition; scene fidelity unverified.","Decode/upload/capture observations are not steady rendering or host latency measurements."]
+            "limits":["Diagnostic fixed-time sprite sampling, pages/crops and selected composition with partial image effects; no complete scene playback.","Point placement sampling and straight-alpha SDR composition; scene fidelity unverified.","Decode/upload/capture observations are not steady rendering or host latency measurements."]
         }),
     )?;
     let mut html = String::from(

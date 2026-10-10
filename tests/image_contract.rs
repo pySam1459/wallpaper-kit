@@ -9,7 +9,8 @@ mod texture_checks;
 
 use scene_renderer::{
     DeviceMode, Frame, GaussianBlur, ImageComposition, ImageLayer, ImagePlayback,
-    ImagePlaybackSample, OutputStats, Renderer, SceneSource, Size, TextureDecoder, TextureRegion,
+    ImagePlaybackSample, OutputStats, PreciseBlur, Renderer, SceneSource, Size, TextureDecoder,
+    TextureRegion,
 };
 use serde_json::{Value, json};
 use std::{
@@ -101,7 +102,7 @@ fn placed_layers_are_ordered_reused_and_retained_across_resize() {
     let id = renderer.render_images(fixture.composition.clone()).unwrap();
     let first = wait(&renderer, &events, id);
     fixture.check(&first.readback().unwrap()).unwrap();
-    assert_eq!(first.image_layer_count(), Some(4));
+    assert_eq!(first.image_layer_count(), Some(5));
     let initial_stats = stats(&renderer, first.sequence());
     assert_eq!(initial_stats.effect_texture_bytes, 6 * 6 * 8);
     assert_eq!(
@@ -304,6 +305,118 @@ fn checked_geometry_rejects_invalid_inputs_and_layer_counts() {
             .layers()
             .len(),
         32
+    );
+}
+
+#[test]
+fn precise_blur_scales_straight_alpha_crops_and_replacement_match_pixels() {
+    let cases = texture_checks::cases();
+    let entries: Vec<_> = cases
+        .iter()
+        .map(|case| (case.name, case.tex.as_slice()))
+        .collect();
+    let package = Package::new(&entries);
+    let mut fixture = layers_checks::Fixture::new(&package.decoder()).unwrap();
+    let (renderer, events) =
+        Renderer::new(Size::new(64, 48).unwrap(), DeviceMode::Software).unwrap();
+    for scale in [
+        [0., 0.],
+        [0.32, 0.32],
+        [1., 1.],
+        [2., 2.],
+        [0., 1.],
+        [2., 0.],
+        [0.7, 1.3],
+    ] {
+        let layers = fixture
+            .composition
+            .layers()
+            .iter()
+            .map(|layer| {
+                ImageLayer::new(
+                    layer.region().clone(),
+                    layer.center(),
+                    layer.size(),
+                    layer.angle_degrees(),
+                    layer.opacity(),
+                    layer.brightness(),
+                )
+                .unwrap()
+                .with_blur(GaussianBlur::new([8., 8.], None).unwrap())
+                .with_precise_blur(PreciseBlur::new(scale).unwrap())
+            })
+            .collect();
+        fixture.composition =
+            Arc::new(ImageComposition::new(fixture.composition.canvas(), layers).unwrap());
+        assert!(
+            fixture
+                .composition
+                .layers()
+                .iter()
+                .all(|l| l.blur().is_none() && l.precise_blur().unwrap().scale() == scale)
+        );
+        let id = renderer.render_images(fixture.composition.clone()).unwrap();
+        let frame = wait(&renderer, &events, id);
+        fixture.check(&frame.readback().unwrap()).unwrap();
+        assert_eq!(
+            stats(&renderer, frame.sequence()).effect_texture_bytes,
+            if scale == [0.; 2] { 0 } else { 288 }
+        );
+    }
+    for scale in [[f32::NAN, 1.], [1., f32::INFINITY], [-0.1, 1.], [2.01, 1.]] {
+        assert!(PreciseBlur::new(scale).is_err());
+    }
+    let layer = &fixture.composition.layers()[0];
+    let replaced = ImageLayer::new(
+        layer.region().clone(),
+        layer.center(),
+        layer.size(),
+        0.,
+        1.,
+        1.,
+    )
+    .unwrap()
+    .with_precise_blur(PreciseBlur::new([1.; 2]).unwrap())
+    .with_blur(GaussianBlur::new([1.; 2], None).unwrap());
+    assert!(replaced.precise_blur().is_none());
+    assert!(replaced.blur().is_some());
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn unsupported_precise_overrides_fail_before_decode_and_disabled_effects_skip() {
+    let corrupt = texture_checks::tex(0, [2, 2], b"not a PNG", false, true);
+    for overrides in [
+        json!({"combos":{"KERNEL":1}}),
+        json!({"textures":[null,null,"mask"]}),
+        json!({"constantshadervalues":{"scale":"NaN 1"}}),
+    ] {
+        let mut image = object(991);
+        image["effects"] =
+            json!([{"file":"effects/blurprecise/effect.json","passes":[overrides,{}]}]);
+        let package = snapshot_package(json!([image]), model(), material(false), &corrupt);
+        let error = match package.decoder().image_snapshot(&[991], 0) {
+            Ok(_) => panic!("unsupported blur was accepted"),
+            Err(error) => error,
+        };
+        assert!(
+            error
+                .to_string()
+                .contains("effects/blurprecise/effect.json")
+        );
+        assert!(!error.to_string().contains("PNG"));
+    }
+    let mut image = object(991);
+    image["effects"] = json!([{"file":"effects/blurprecise/effect.json","visible":false,"passes":[{"combos":{"KERNEL":9}}]}]);
+    let texture = texture_checks::tex(0, [2, 2], &texture_checks::rgba(), false, false);
+    let package = snapshot_package(json!([image]), model(), material(false), &texture);
+    let snapshot = package.decoder().image_snapshot(&[991], 0).unwrap();
+    assert!(snapshot.composition.layers()[0].precise_blur().is_none());
+    assert!(
+        !snapshot
+            .omissions
+            .iter()
+            .any(|line| line.contains("blurprecise"))
     );
 }
 

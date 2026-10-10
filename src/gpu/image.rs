@@ -352,16 +352,17 @@ impl ImageRenderer {
                     0,
                 );
                 let mut sources = [Some(texture.view.clone()), None, None];
-                if let Some(blur) = layer.blur().filter(|blur| blur.sigma() != [0.; 2]) {
+                if let Some(blur) = layer.filter().filter(|blur| blur.active()) {
                     let scratch = self.blur.as_ref().expect("blur target admitted");
                     let mask = blur.mask();
                     let mask_origin = mask.map_or([0, 0], |mask| mask.origin());
                     let mask_extent = mask.map_or([1, 1], |mask| mask.extent());
+                    let (amount, profile) = blur.parameters();
                     let constants = [
-                        blur.sigma()[0].to_bits(),
-                        blur.sigma()[1].to_bits(),
+                        amount[0].to_bits(),
+                        amount[1].to_bits(),
                         u32::from(mask.is_some()),
-                        0,
+                        profile,
                         mask_origin[0],
                         mask_origin[1],
                         mask_extent[0],

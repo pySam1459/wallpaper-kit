@@ -23,8 +23,8 @@ pub use scene::{
     AssetSummary, DependencySummary, Diagnostic, DiagnosticSeverity, EffectBindingSummary,
     EffectPassSummary, EffectSummary, GaussianBlur, ImageComposition, ImageLayer, ImagePlayback,
     ImagePlaybackReport, ImagePlaybackSample, ImageSnapshot, InspectionError, MaterialPassSummary,
-    MaterialSummary, ObjectKind, ObjectSummary, PackageSummary, PageSummary, SceneInspection,
-    SceneSource, SceneSummary, TextureSummary, inspect_scene,
+    MaterialSummary, ObjectKind, ObjectSummary, PackageSummary, PageSummary, PreciseBlur,
+    SceneInspection, SceneSource, SceneSummary, TextureSummary, inspect_scene,
 };
 
 use std::sync::{Arc, Condvar, Mutex, TryLockError, mpsc};
@@ -106,7 +106,7 @@ impl std::fmt::Display for Error {
                 f.write_str("texture region must be nonempty and entirely inside its page")
             }
             Self::InvalidImageLayer => f.write_str("image layer geometry or appearance is invalid"),
-            Self::InvalidBlur => f.write_str("blur requires sigma 0..=8 and at most 128 MiB of scratch texture"),
+            Self::InvalidBlur => f.write_str("blur parameters or scratch dimensions exceed the selected profile's documented bounds"),
             Self::ImageCompositionLimit => f.write_str("image composition requires 1..=32 layers and at most 256 MiB of unique source pages"),
             Self::Graphics(error) => write!(f, "Direct3D operation failed: {error}"),
             Self::Worker(message) => write!(f, "renderer worker failed: {message}"),
