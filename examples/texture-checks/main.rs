@@ -94,6 +94,7 @@ fn main() -> Result<()> {
     }
     let mut results = Vec::new();
     let mut region_results = Vec::new();
+    let mut extracted_results = Vec::new();
     for case in &cases {
         let page = Arc::new(decoder.decode_page(case.name, 0)?);
         let id = renderer.render_texture_page(page.clone())?;
@@ -179,6 +180,52 @@ fn main() -> Result<()> {
             }
             region_results.push(json!({"name":case.name,"frame_index":index,"origin":origin,"extent":extent,"checks":"passed","frame":support::frame_info(&resized),"resources":support::pool_info(stats)}));
         }
+        let mut stream = decoder.sprite_stream(case.name)?;
+        let first_end = stream.frames()[0].duration();
+        let total = stream.duration();
+        for (checkpoint, time, expected_index) in [
+            ("start", Duration::ZERO, 0),
+            ("before-boundary", first_end - Duration::from_nanos(1), 0),
+            ("boundary", first_end, 1),
+            ("last", total - Duration::from_nanos(1), 1),
+            ("loop", total, 0),
+            ("second-loop", total * 2 + first_end, 1),
+        ] {
+            let sample = stream.sample(time)?;
+            if sample.frame_index() != expected_index {
+                return Err("sprite time selection differs".into());
+            }
+            let authored = sample.authored_frame();
+            let expected = fixture::crop(
+                &case.rgba,
+                case.extent,
+                authored.origin(),
+                authored.extent(),
+            );
+            let id = renderer.render_texture_region(sample.region().clone())?;
+            let frame = wait_frame(&renderer, &events, id)?;
+            let pixels = frame.readback()?;
+            fixture::check(&pixels, authored.extent(), &expected)?;
+            support::write_png(
+                &output.join(format!("extracted-{}-{checkpoint}.png", case.name)),
+                &pixels,
+            )?;
+            let before = wait_stats(&renderer, frame.sequence())?;
+            let repeated = stream.sample(time)?;
+            if !Arc::ptr_eq(sample.region(), repeated.region()) {
+                return Err("current extracted frame was copied again".into());
+            }
+            let id = renderer.render_texture_region(repeated.region().clone())?;
+            let repeated = wait_frame(&renderer, &events, id)?;
+            let stats = wait_stats(&renderer, repeated.sequence())?;
+            if stats.texture_uploads != before.texture_uploads
+                || stats.source_texture_bytes != sample.region().page().data().len() as u64
+            {
+                return Err("extracted source upload reuse differs".into());
+            }
+            let cache = stream.stats();
+            extracted_results.push(json!({"name":case.name,"checkpoint":checkpoint,"time_ns":time.as_nanos(),"frame_index":sample.frame_index(),"source_origin":authored.origin(),"source_extent":authored.extent(),"extracted_extent":sample.region().page().extent(),"residual_crop":sample.region().origin(),"page_decodes":cache.page_decodes,"frame_extracts":cache.frame_extracts,"cached_page_bytes":cache.cached_page_bytes,"cached_frame_bytes":cache.cached_frame_bytes,"resources":support::pool_info(stats),"checks":"passed"}));
+        }
         let id = renderer.resize(Size::new(320, 180)?)?;
         drop(wait_frame(&renderer, &events, id)?);
     }
@@ -212,6 +259,7 @@ fn main() -> Result<()> {
     let mut target_compositions = Vec::new();
     let mut target = Vec::new();
     let mut target_frames = Vec::new();
+    let mut target_extracted = Vec::new();
     let mut target_identity = None;
     if let (Some(package), Some(engine_assets)) = (package, engine) {
         let source = SceneSource {
@@ -256,6 +304,7 @@ fn main() -> Result<()> {
             support::write_png(&output.join(format!("target-{name}.png")), &pixels)?;
             target.push(json!({"asset":asset,"page":page_index,"extent":page.extent(),"format":format!("{:?}", page.format()),"bytes":page.data().len(),"decode_ms":decode_ms,"frame":support::frame_info(&frame),"comparison":if page.format() == TextureFormat::Rgba8 {"point sampling checked against decoded page"} else {"capture only; generated format oracle tested separately"}}));
         }
+        let mut references = std::collections::BTreeMap::new();
         for (name, asset, boundary) in [
             ("birds", "materials/Oiseaux optimized_00000.tex", 18),
             ("character", "materials/Resize Yuta_00000.tex", 16),
@@ -300,6 +349,80 @@ fn main() -> Result<()> {
                     &pixels,
                 )?;
                 target_frames.push(json!({"asset":asset,"frame_index":index,"page_index":metadata.page_index(),"origin":metadata.origin(),"extent":metadata.extent(),"duration_seconds":metadata.duration().as_secs_f64(),"frame":support::frame_info(&frame),"comparison":if page.format()==TextureFormat::Rgba8 {"GPU crop checked against CPU rows"} else {"capture only; unaligned BC3 crops checked with generated fixtures"}}));
+                references.insert((name, index), pixels.rgba);
+            }
+        }
+        for (name, asset, boundary) in [
+            ("birds", "materials/Oiseaux optimized_00000.tex", 18),
+            ("character", "materials/Resize Yuta_00000.tex", 16),
+        ] {
+            let mut stream = decoder.sprite_stream(asset)?;
+            for (label, index, time) in [
+                ("first", 0, Duration::ZERO),
+                (
+                    "before-page",
+                    boundary - 1,
+                    stream
+                        .frames()
+                        .iter()
+                        .take(boundary - 1)
+                        .map(|frame| frame.duration())
+                        .sum(),
+                ),
+                (
+                    "next-page",
+                    boundary,
+                    stream
+                        .frames()
+                        .iter()
+                        .take(boundary)
+                        .map(|frame| frame.duration())
+                        .sum(),
+                ),
+                (
+                    "middle",
+                    239,
+                    stream
+                        .frames()
+                        .iter()
+                        .take(239)
+                        .map(|frame| frame.duration())
+                        .sum(),
+                ),
+                (
+                    "last",
+                    479,
+                    stream
+                        .frames()
+                        .iter()
+                        .take(479)
+                        .map(|frame| frame.duration())
+                        .sum(),
+                ),
+                ("loop", 0, stream.duration()),
+            ] {
+                let started = Instant::now();
+                let sample = stream.sample(time)?;
+                let sample_ms = started.elapsed().as_secs_f64() * 1000.;
+                if sample.frame_index() != index {
+                    return Err("target time selection differs".into());
+                }
+                let id = renderer.render_texture_region(sample.region().clone())?;
+                let frame = wait_frame(&renderer, &events, id)?;
+                let pixels = frame.readback()?;
+                if pixels.rgba != references[&(name, index)] {
+                    return Err("extracted target pixels differ from whole-atlas GPU crop".into());
+                }
+                support::write_png(
+                    &output.join(format!("target-extracted-{name}-{label}.png")),
+                    &pixels,
+                )?;
+                let stats = wait_stats(&renderer, frame.sequence())?;
+                let cache = stream.stats();
+                if stats.source_texture_bytes != cache.cached_frame_bytes {
+                    return Err("target extraction uploaded full atlas".into());
+                }
+                target_extracted.push(json!({"asset":asset,"time_ns":time.as_nanos(),"frame_index":index,"page_index":sample.authored_frame().page_index(),"sample_ms":sample_ms,"extracted_extent":sample.region().page().extent(),"residual_crop":sample.region().origin(),"page_decodes":cache.page_decodes,"frame_extracts":cache.frame_extracts,"cached_page_bytes":cache.cached_page_bytes,"cached_frame_bytes":cache.cached_frame_bytes,"resources":support::pool_info(stats),"comparison":"Exact GPU pixels against earlier whole-atlas crop; no Wallpaper Engine reference."}));
             }
         }
         for (name, objects, frame_index) in [
@@ -340,8 +463,8 @@ fn main() -> Result<()> {
     support::write_json(
         &output.join("report.json"),
         &json!({
-            "schema_version":3,"status":"passed","consumer":"texture-checks", "generated_cases":results, "generated_regions":region_results,"generated_composition":composition_result,"target_identity":target_identity,"target_pages":target,"target_frames":target_frames,"target_compositions":target_compositions,
-            "limits":["Diagnostic page/crop and selected image composition; no scene playback/effects.","Point sampling and straight-alpha code-value composition; scene fidelity unverified.","Decode/upload/capture observations are not steady rendering or host latency measurements."]
+            "schema_version":4,"status":"passed","consumer":"texture-checks", "generated_cases":results, "generated_regions":region_results,"generated_extracted":extracted_results,"generated_composition":composition_result,"target_identity":target_identity,"target_pages":target,"target_frames":target_frames,"target_extracted":target_extracted,"target_compositions":target_compositions,
+            "limits":["Diagnostic fixed-time sprite sampling, pages/crops and selected composition; no live scene playback/effects.","Point sampling and straight-alpha code-value composition; scene fidelity unverified.","Decode/upload/capture observations are not steady rendering or host latency measurements."]
         }),
     )?;
     let mut html = String::from(

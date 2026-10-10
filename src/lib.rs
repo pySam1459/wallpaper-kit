@@ -13,7 +13,10 @@ mod gpu;
 mod motion;
 mod scene;
 
-pub use assets::texture::{SpriteFrame, TextureDecoder, TextureFormat, TexturePage, TextureRegion};
+pub use assets::texture::{
+    SpriteFrame, SpriteSample, SpriteStats, SpriteStream, TextureDecoder, TextureFormat,
+    TexturePage, TextureRegion,
+};
 
 pub use scene::{
     AssetSummary, DependencySummary, Diagnostic, DiagnosticSeverity, EffectBindingSummary,

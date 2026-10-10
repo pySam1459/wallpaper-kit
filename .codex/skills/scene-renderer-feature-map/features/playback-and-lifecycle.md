@@ -2,7 +2,7 @@
 
 ## Status
 
-Blank resize, retained-frame lifetime and shutdown are implemented through the [blank infrastructure](blank-renderer.md). [Diagnostic motion](diagnostic-motion.md) adds consumer-owned play/pause and controlled stepping. [Bounded frame-pool backpressure](../../../../docs/frame-pool.md) is implemented and verified. Device-loss recovery and scene playback remain planned.
+Blank resize, retained-frame lifetime and shutdown are implemented through the [blank infrastructure](blank-renderer.md). [Diagnostic motion](diagnostic-motion.md) adds consumer-owned play/pause and controlled stepping. [Bounded frame-pool backpressure](../../../../docs/frame-pool.md) is implemented and verified. [Sprite extraction](sprite-extraction.md) adds deterministic frame selection and loop boundaries on an asset worker/tool; it does not schedule live playback. Device-loss recovery and scene playback remain planned.
 
 ## Consumer outcome
 

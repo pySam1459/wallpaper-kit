@@ -456,6 +456,159 @@ fn gpu_crops_all_formats_and_reuses_source_across_region_changes() {
 }
 
 #[test]
+fn sprite_stream_uses_variable_durations_and_reloads_only_page_transitions() {
+    let first = fixture::tex(0, [2, 2], &fixture::rgba(), false, false);
+    let mut texture = first.clone();
+    texture[55..59].copy_from_slice(&2_u32.to_le_bytes());
+    texture.extend_from_slice(&first[67..]);
+    let texture = fixture::sprite(
+        texture,
+        &[
+            (0, 0.125, [1., 0., 1., 0., 0., 2.]),
+            (0, 0.25, [0., 1., 2., 0., 0., 1.]),
+            (1, 0.125, [0., 0., 2., 0., 0., 2.]),
+        ],
+    );
+    let package = Package::new(&texture);
+    let mut stream = package_decoder_stream(&package);
+    assert_eq!(stream.duration(), Duration::from_millis(500));
+    assert_eq!(stream.stats().page_decodes, 0);
+    for (nanos, index) in [
+        (0, 0),
+        (124_999_999, 0),
+        (125_000_000, 1),
+        (374_999_999, 1),
+        (375_000_000, 2),
+        (499_999_999, 2),
+        (500_000_000, 0),
+        (1_125_000_000, 1),
+    ] {
+        assert_eq!(stream.frame_index_at(Duration::from_nanos(nanos)), index);
+    }
+    assert_eq!(stream.frame_index_at(Duration::MAX), 2);
+    let first = stream.sample(Duration::ZERO).unwrap();
+    let again = stream.sample(Duration::from_millis(124)).unwrap();
+    assert!(Arc::ptr_eq(first.region(), again.region()));
+    assert_eq!(stream.stats().frame_extracts, 1);
+    stream.sample(Duration::from_millis(125)).unwrap();
+    assert_eq!(stream.stats().page_decodes, 1);
+    stream.sample(Duration::from_millis(375)).unwrap();
+    assert_eq!(stream.stats().page_decodes, 2);
+    stream.sample(Duration::from_millis(500)).unwrap();
+    assert_eq!(stream.stats().page_decodes, 3);
+    assert_eq!(
+        first.region().page().data(),
+        fixture::crop(&fixture::rgba(), [2, 2], [1, 0], [1, 2])
+    );
+    assert_eq!(stream.stats().cached_page_bytes, 16);
+    assert_eq!(stream.stats().cached_frame_bytes, 8);
+}
+
+fn package_decoder_stream(package: &Package) -> scene_renderer::SpriteStream {
+    // The stream must remain usable after its decoder is dropped.
+    TextureDecoder::open(&package.source())
+        .unwrap()
+        .sprite_stream("image.tex")
+        .unwrap()
+}
+
+#[test]
+fn extracted_sprite_gpu_pixels_match_whole_atlas_crops_in_all_storage_formats() {
+    let (renderer, events) =
+        Renderer::new(Size::new(31, 23).unwrap(), DeviceMode::Software).unwrap();
+    let mut cases = fixture::cases();
+    cases.push(fixture::Case {
+        name: "bc3-partial-edge",
+        extent: [7, 5],
+        tex: fixture::sprite(
+            fixture::tex(4, [7, 5], &fixture::bc3(), false, false),
+            &[(0, 0.125, [5., 3., 2., 0., 0., 2.])],
+        ),
+        rgba: fixture::crop(
+            &fixture::cases()
+                .into_iter()
+                .find(|case| case.name == "bc3-raw")
+                .unwrap()
+                .rgba,
+            [8, 8],
+            [0, 0],
+            [7, 5],
+        ),
+    });
+    for case in cases {
+        let package = Package::new(&case.tex);
+        let mut stream = package_decoder_stream(&package);
+        let frames = stream.frames().to_vec();
+        let mut time = Duration::ZERO;
+        for (index, authored) in frames.iter().enumerate() {
+            let sample = stream.sample(time).unwrap();
+            assert_eq!(sample.frame_index(), index);
+            let expected = fixture::crop(
+                &case.rgba,
+                case.extent,
+                authored.origin(),
+                authored.extent(),
+            );
+            let id = renderer
+                .render_texture_region(sample.region().clone())
+                .unwrap();
+            let frame = wait_frame(&renderer, &events, id);
+            fixture::check(&frame.readback().unwrap(), authored.extent(), &expected).unwrap();
+            let uploads = wait_stats(&renderer, &frame).texture_uploads;
+            let sample2 = stream.sample(time + authored.duration() / 2).unwrap();
+            assert!(Arc::ptr_eq(sample.region(), sample2.region()));
+            let id = renderer
+                .render_texture_region(sample2.region().clone())
+                .unwrap();
+            let repeated = wait_frame(&renderer, &events, id);
+            assert_eq!(wait_stats(&renderer, &repeated).texture_uploads, uploads);
+            drop(repeated);
+            let id = renderer.resize(Size::new(17, 13).unwrap()).unwrap();
+            let resized = wait_frame(&renderer, &events, id);
+            fixture::check(&resized.readback().unwrap(), authored.extent(), &expected).unwrap();
+            fixture::check(&frame.readback().unwrap(), authored.extent(), &expected).unwrap();
+            assert_eq!(
+                wait_stats(&renderer, &resized).source_texture_bytes,
+                sample.region().page().data().len() as u64
+            );
+            time += authored.duration();
+        }
+        assert_eq!(stream.sample(time).unwrap().frame_index(), 0);
+        assert_eq!(stream.stats().page_decodes, 1);
+    }
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn sprite_extraction_rejects_large_frames_before_decoding_and_keeps_asset_locked() {
+    let texture = fixture::sprite(
+        fixture::tex(0, [8192, 8192], b"invalid PNG", false, true),
+        &[(0, 0.125, [0., 0., 8192., 0., 0., 8192.])],
+    );
+    let package = Package::new(&texture);
+    let mut stream = package_decoder_stream(&package);
+    let error = stream.sample(Duration::ZERO).unwrap_err().to_string();
+    assert!(
+        error.contains("extracted sprite frame exceeds 64 MiB before atlas decode"),
+        "{error}"
+    );
+    assert_eq!(stream.stats().page_decodes, 0);
+    assert!(
+        fs::OpenOptions::new()
+            .write(true)
+            .open(package.root.join("scene.pkg"))
+            .is_err()
+    );
+    drop(stream);
+    assert!(
+        fs::OpenOptions::new()
+            .write(true)
+            .open(package.root.join("scene.pkg"))
+            .is_ok()
+    );
+}
+
+#[test]
 fn crop_oracle_uses_expected_rows_and_detects_wrong_region() {
     let rgba = fixture::rgba();
     assert_eq!(

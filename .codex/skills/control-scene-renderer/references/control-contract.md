@@ -4,7 +4,7 @@
 
 `scripts/doctor.ps1` resolves the repository from its own location, so invoking the copy in a worktree inspects that worktree. It reads filesystem presence and tool versions without building, downloading, launching a viewer, or contacting an existing application.
 
-The JSON report contains checkout and toolchain identity, manifest presence, scene input existence, readiness, blockers, verification scope, and the matching evidence receipt. Scene input is never opened or parsed. Diagnostic runtime readiness requires passed blank, motion, texture, composition and native scenarios with a source-set/hash and five executable-hash matches for this checkout. A build alone is insufficient.
+The JSON report contains checkout and toolchain identity, manifest presence, scene input existence, readiness, blockers, verification scope, and the matching evidence receipt. Scene input is never opened or parsed. Diagnostic runtime readiness requires passed blank, motion, texture, fixed-time sprite extraction, composition and native scenarios with a source-set/hash and five executable-hash matches for this checkout. A build alone is insufficient.
 
 Exit code `0` means the diagnostic runtime has matching verified evidence. Code `2` means blocked or unverified. Code `1` means doctor failed. Supplying a scene path remains blocked because full scene loading is unavailable. Headless-only evidence is identified separately and does not establish native readiness.
 
@@ -14,7 +14,7 @@ Exit code `0` means the diagnostic runtime has matching verified evidence. Code 
 
 Headless verification checks actual GPU output, idle behavior, resize, input bounds and retained-frame lifetime. Native captures check the imported/copied swap-chain back buffer. One measured native idle interval reports process CPU time, working set and handle count. GPU timings and host input latency remain unavailable.
 
-The [TEX page procedure](../../../../docs/texture-pages.md) adds selected payload decoding, independent format/alpha/sampling checks, upload reuse, authored integer sprite crops and native full-page/crop PNG/LZ4 fixtures. Source-page memory is reported separately from the three-output pool. The separate [image composition procedure](../../../../docs/image-layers.md) adds ordered placed crops and diagnostic selected-object snapshots with named omissions. Neither route implements sprite animation or full scene behavior.
+The [TEX page procedure](../../../../docs/texture-pages.md) adds selected payload decoding, independent format/alpha/sampling checks, upload reuse, authored integer sprite crops and native full-page/crop PNG/LZ4 fixtures. Source-page memory is reported separately from the three-output pool. The separate [image composition procedure](../../../../docs/image-layers.md) adds ordered placed crops and diagnostic selected-object snapshots with named omissions. The [sprite extraction procedure](../../../../docs/sprite-extraction.md) adds deterministic timing, bounded per-stream atlas/frame caches and a native extracted-frame fixture. These routes do not implement live sprite playback or full scene behavior.
 
 The [motion procedure](../../../../docs/motion-verification.md) adds fixed-time pixel checks, oracle fault cases, separate live readiness telemetry and native fixture step/play/pause controls. Contact sheets establish checkpoint appearance; raw live observations establish readiness or presentation-call cadence. They do not measure displayed frames.
 

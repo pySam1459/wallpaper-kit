@@ -412,9 +412,14 @@ fn main() -> Result<()> {
     let mut texture = false;
     let mut region = false;
     let mut layers = false;
+    let mut extracted = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--texture-fixture" => texture = true,
+            "--extracted-fixture" => {
+                texture = true;
+                extracted = true;
+            }
             "--layers-fixture" => layers = true,
             "--region-fixture" => {
                 texture = true;
@@ -434,7 +439,7 @@ fn main() -> Result<()> {
     // Diagnostic input is prepared before a window/event loop exists. Host
     // controls only enqueue GPU work; file I/O and decode never run in update.
     let (texture_fixture, texture_region) = if texture {
-        let case = texture_checks::cases()
+        let mut case = texture_checks::cases()
             .into_iter()
             .find(|case| case.name == "rgba-png-lz4")
             .expect("PNG/LZ4 fixture exists");
@@ -449,16 +454,34 @@ fn main() -> Result<()> {
             package: generated.join("scene.pkg"),
             engine_assets: generated.join("engine"),
         })?;
-        let page = Arc::new(decoder.decode_page(case.name, 0)?);
-        let crop = if region {
-            let metadata = decoder.sprite_frames(case.name)?[0];
-            Some(Arc::new(TextureRegion::new(
-                page.clone(),
-                metadata.origin(),
-                metadata.extent(),
-            )?))
+        let (page, crop) = if extracted {
+            let mut stream = decoder.sprite_stream(case.name)?;
+            let sample = stream.sample(Duration::ZERO)?;
+            let authored = sample.authored_frame();
+            case.rgba = texture_checks::crop(
+                &case.rgba,
+                case.extent,
+                authored.origin(),
+                authored.extent(),
+            );
+            case.extent = authored.extent();
+            (
+                sample.region().page().clone(),
+                Some(sample.region().clone()),
+            )
         } else {
-            None
+            let page = Arc::new(decoder.decode_page(case.name, 0)?);
+            let crop = if region {
+                let metadata = decoder.sprite_frames(case.name)?[0];
+                Some(Arc::new(TextureRegion::new(
+                    page.clone(),
+                    metadata.origin(),
+                    metadata.extent(),
+                )?))
+            } else {
+                None
+            };
+            (page, crop)
         };
         (Some((page, case)), crop)
     } else {

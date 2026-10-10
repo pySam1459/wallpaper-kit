@@ -18,7 +18,7 @@ The diagnostic draw stretches the page or selected rectangle to the output. It s
 
 Decode the chosen page, then pass `Arc::new(TextureRegion::new(page, origin, extent)?)` to `Renderer::render_texture_region`. A region must be nonempty and entirely inside its page; arithmetic overflow fails construction. It shares the page bytes. GPU sampling adds the crop origin after integer texel-centre selection, so no neighbouring atlas frame is sampled and BC3 needs neither CPU decompression nor block-aligned crop coordinates. Selecting another region of the same page Arc reuses its upload. Resize preserves the crop. `Frame::texture_region` reports the submitted origin/extent for page and region draws, without retaining CPU pixels.
 
-This crops individual frames and stretches them to output. It does not implement time-based selection, interpolation, a page cache, prefetch, streaming, layer placement or composition. In the target package, birds change pages every 18 frames and the character every 16; each contains 480 frames. Do not assume these page capacities for other textures.
+This region path crops individual frames and stretches them to output. The separate [sprite extraction path](sprite-extraction.md) adds time-based selection, one cached atlas and extracted payloads. Neither path implements interpolation, prefetch or live scene playback. In the target package, birds change pages every 18 frames and the character every 16; each contains 480 frames. Do not assume these page capacities for other textures.
 
 ## Resource limits
 

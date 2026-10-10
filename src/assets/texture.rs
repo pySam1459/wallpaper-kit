@@ -3,6 +3,9 @@ use crate::Error;
 use crate::scene::{InspectionError, PageSummary, SceneSource, TextureSummary};
 use std::{sync::Arc, time::Duration};
 
+mod sprite;
+pub use sprite::{SpriteSample, SpriteStats, SpriteStream};
+
 /// Storage delivered to the GPU after container decompression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextureFormat {
@@ -155,6 +158,13 @@ pub struct TextureDecoder {
 }
 
 impl TextureDecoder {
+    /// Open a metadata-indexed, read-locked sprite extraction stream.
+    /// Blocks on I/O and validation, but decodes no pixels. The stream owns its
+    /// asset handle independently of this decoder and excludes writes/replacement
+    /// until dropped. Use its blocking sampling API on an asset worker/tool.
+    pub fn sprite_stream(&self, asset: &str) -> Result<SpriteStream, InspectionError> {
+        SpriteStream::open(&self.package, asset)
+    }
     /// Prepare explicitly selected images as a diagnostic static snapshot.
     /// Performs blocking JSON I/O and serial page decoding on the caller's thread.
     /// Retains authored order, 2D transforms and selected sprite rectangles.
@@ -195,49 +205,7 @@ impl TextureDecoder {
             .reader(asset)?
             .ok_or_else(|| InspectionError::invalid(asset, "texture asset is missing"))?;
         let index = index(&mut reader)?;
-        if index.frames.is_empty() {
-            return Err(reader.invalid("texture has no sprite frames"));
-        }
-        let mut frames = Vec::with_capacity(index.frames.len());
-        for (number, frame) in index.frames.iter().enumerate() {
-            let [x, y, wx, wy, hx, hy] = frame.rectangle;
-            if wy != 0.
-                || hx != 0.
-                || wx <= 0.
-                || hy <= 0.
-                || [x, y, wx, hy]
-                    .iter()
-                    .any(|value| *value < 0. || value.fract() != 0.)
-            {
-                return Err(reader.invalid(format!(
-                    "frame {number}: only positive integer axis-aligned rectangles are supported"
-                )));
-            }
-            let origin = [x as u32, y as u32];
-            let extent = [wx as u32, hy as u32];
-            // The inspector permits a small float tolerance; pixel crops do not.
-            let page = &index.summary.pages[frame.page as usize];
-            if (0..2).any(|axis| {
-                origin[axis]
-                    .checked_add(extent[axis])
-                    .is_none_or(|end| end > page.extent[axis])
-            }) {
-                return Err(reader.invalid(format!("frame {number} extends beyond its page")));
-            }
-            let duration = Duration::from_secs_f64(f64::from(frame.duration));
-            if duration.is_zero() {
-                return Err(reader.invalid(format!(
-                    "frame {number} duration is below nanosecond resolution"
-                )));
-            }
-            frames.push(SpriteFrame {
-                page: frame.page,
-                duration,
-                origin,
-                extent,
-            });
-        }
-        Ok(frames)
+        checked_frames(&reader, &index)
     }
 
     /// Decode a base mip after validating the entire TEX metadata structure.
@@ -263,70 +231,128 @@ impl TextureDecoder {
             .reader(asset)?
             .ok_or_else(|| InspectionError::invalid(asset, "texture asset is missing"))?;
         let index = index(&mut reader)?;
-        let summary = index
-            .summary
-            .pages
-            .get(page as usize)
-            .ok_or_else(|| reader.invalid("texture page index is out of range"))?;
-        let location = &index.locations[page as usize];
-        if summary.decoded_bytes > MAX_PAGE_BYTES {
-            return Err(reader.invalid("decoded page exceeds 256 MiB"));
-        }
-        if summary.decoded_bytes > remaining {
-            return Err(reader.invalid(
-                "decoded page exceeds remaining composition source budget before decode; streaming is required",
-            ));
-        }
-        if location.compressed {
-            let limit = if index.png {
-                MAX_ENCODED_BYTES
-            } else {
-                MAX_PAGE_BYTES
-            };
-            if location.declared == 0 || location.declared > limit {
-                return Err(reader.invalid("LZ4 decoded length exceeds allocation limit"));
-            }
-        }
-        let encoded = index.png || location.compressed;
-        reader.seek_to(location.offset)?;
-        let payload = reader.bytes(
-            location.stored,
-            if encoded {
-                MAX_ENCODED_BYTES
-            } else {
-                MAX_PAGE_BYTES
-            },
-        )?;
-        let payload = if location.compressed {
-            let mut decoded = vec![0; location.declared as usize];
-            let written = lz4_flex::block::decompress_into(&payload, &mut decoded)
-                .map_err(|error| reader.invalid(format!("invalid LZ4 payload: {error}")))?;
-            if written != decoded.len() {
-                return Err(reader.invalid("LZ4 decoded length disagrees with declaration"));
-            }
-            decoded
-        } else {
-            payload
-        };
-        let data = if index.png {
-            decode_png(&reader, &payload, summary.extent)?
-        } else {
-            payload
-        };
-        if data.len() as u64 != summary.decoded_bytes {
-            return Err(reader.invalid("decoded payload disagrees with page layout"));
-        }
-        Ok(TexturePage {
-            extent: summary.extent,
-            format: match index.summary.format {
-                0 => TextureFormat::Rgba8,
-                4 => TextureFormat::Bc3,
-                9 => TextureFormat::R8,
-                _ => unreachable!("index validated the pixel format"),
-            },
-            data,
-        })
+        decoded_page(&mut reader, &index, page, remaining)
     }
+}
+
+fn checked_frames(
+    reader: &AssetReader,
+    index: &Index,
+) -> Result<Vec<SpriteFrame>, InspectionError> {
+    if index.frames.is_empty() {
+        return Err(reader.invalid("texture has no sprite frames"));
+    }
+    let mut frames = Vec::with_capacity(index.frames.len());
+    for (number, frame) in index.frames.iter().enumerate() {
+        let [x, y, wx, wy, hx, hy] = frame.rectangle;
+        if wy != 0.
+            || hx != 0.
+            || wx <= 0.
+            || hy <= 0.
+            || [x, y, wx, hy]
+                .iter()
+                .any(|value| *value < 0. || value.fract() != 0.)
+        {
+            return Err(reader.invalid(format!(
+                "frame {number}: only positive integer axis-aligned rectangles are supported"
+            )));
+        }
+        let origin = [x as u32, y as u32];
+        let extent = [wx as u32, hy as u32];
+        // The inspector permits a small float tolerance; pixel crops do not.
+        let page = &index.summary.pages[frame.page as usize];
+        if (0..2).any(|axis| {
+            origin[axis]
+                .checked_add(extent[axis])
+                .is_none_or(|end| end > page.extent[axis])
+        }) {
+            return Err(reader.invalid(format!("frame {number} extends beyond its page")));
+        }
+        let duration = Duration::from_secs_f64(f64::from(frame.duration));
+        if duration.is_zero() {
+            return Err(reader.invalid(format!(
+                "frame {number} duration is below nanosecond resolution"
+            )));
+        }
+        frames.push(SpriteFrame {
+            page: frame.page,
+            duration,
+            origin,
+            extent,
+        });
+    }
+    Ok(frames)
+}
+
+fn decoded_page(
+    reader: &mut AssetReader,
+    index: &Index,
+    page: u32,
+    remaining: u64,
+) -> Result<TexturePage, InspectionError> {
+    let summary = index
+        .summary
+        .pages
+        .get(page as usize)
+        .ok_or_else(|| reader.invalid("texture page index is out of range"))?;
+    let location = &index.locations[page as usize];
+    if summary.decoded_bytes > MAX_PAGE_BYTES {
+        return Err(reader.invalid("decoded page exceeds 256 MiB"));
+    }
+    if summary.decoded_bytes > remaining {
+        return Err(reader.invalid(
+            "decoded page exceeds remaining composition source budget before decode; streaming is required",
+        ));
+    }
+    if location.compressed {
+        let limit = if index.png {
+            MAX_ENCODED_BYTES
+        } else {
+            MAX_PAGE_BYTES
+        };
+        if location.declared == 0 || location.declared > limit {
+            return Err(reader.invalid("LZ4 decoded length exceeds allocation limit"));
+        }
+    }
+    let encoded = index.png || location.compressed;
+    reader.seek_to(location.offset)?;
+    let payload = reader.bytes(
+        location.stored,
+        if encoded {
+            MAX_ENCODED_BYTES
+        } else {
+            MAX_PAGE_BYTES
+        },
+    )?;
+    let payload = if location.compressed {
+        let mut decoded = vec![0; location.declared as usize];
+        let written = lz4_flex::block::decompress_into(&payload, &mut decoded)
+            .map_err(|error| reader.invalid(format!("invalid LZ4 payload: {error}")))?;
+        if written != decoded.len() {
+            return Err(reader.invalid("LZ4 decoded length disagrees with declaration"));
+        }
+        decoded
+    } else {
+        payload
+    };
+    let data = if index.png {
+        decode_png(reader, &payload, summary.extent)?
+    } else {
+        payload
+    };
+    if data.len() as u64 != summary.decoded_bytes {
+        return Err(reader.invalid("decoded payload disagrees with page layout"));
+    }
+    Ok(TexturePage {
+        extent: summary.extent,
+        format: match index.summary.format {
+            0 => TextureFormat::Rgba8,
+            4 => TextureFormat::Bc3,
+            9 => TextureFormat::R8,
+            _ => unreachable!("index validated the pixel format"),
+        },
+        data,
+    })
 }
 
 fn decode_png(
