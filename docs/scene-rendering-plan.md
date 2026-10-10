@@ -2,6 +2,14 @@
 
 Status: implementation started, 10 October 2026. [Read-only inspection](scene-inspection.md), [bounded frame exchange](frame-pool.md), [TEX page/region decoding/drawing](texture-pages.md) and [diagnostic image composition](image-layers.md) are implemented. Stage-3 components establish storage formats, integer sprite crops, orthographic placement, order and translucent blending. Stage-4 components add [deterministic sprite extraction](sprite-extraction.md), [background sprite preparation](sprite-worker.md) and [bounded current/next batch prefetch](sprite-prefetch.md). Selected target snapshots report omitted features and reject unresolved crop offsets. Reference fidelity, complete runtime scene compilation, shared scene scheduling/memory admission and subsequent effects remain open. This plan extends the [specification](spec/scene-renderer.md). It does not establish complete scene support or host performance acceptance.
 
+## Current implementation priority
+
+Build the complete target scene before further performance tuning. The next deliverable is library-owned playback of the supported image layers and both sprite sequences together in the native viewer. Follow with the required effects, particles, parallax and unresolved placement behavior, comparing the complete output with Wallpaper Engine.
+
+Reuse the existing renderer, extraction, prefetch and resource bounds. Keep decoding off the host UI thread and retain explicit unsupported-feature reports. Add scheduling and lifecycle behavior needed for correct playback; defer cache redesign, scene-wide memory tuning and broader performance experiments until the visual scene works. General content support and production adapters remain later milestones.
+
+Once the complete scene plays correctly, measure and optimize that workload against the specification's resource and host-latency targets. Functional completion establishes the baseline for this work; final MVP acceptance still requires the performance and lifecycle gates below.
+
 ## Target and assumptions
 
 Build enough compatibility to render Workshop scene `3780699842` through the existing public library and independent Windows consumer. Keep Rust and Direct3D 11, one library crate, private implementation modules, and the existing native/headless verification paths.
