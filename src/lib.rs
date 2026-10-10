@@ -13,7 +13,7 @@ mod gpu;
 mod motion;
 mod scene;
 
-pub use assets::texture::{TextureDecoder, TextureFormat, TexturePage};
+pub use assets::texture::{SpriteFrame, TextureDecoder, TextureFormat, TexturePage, TextureRegion};
 
 pub use scene::{
     AssetSummary, DependencySummary, Diagnostic, DiagnosticSeverity, EffectBindingSummary,
@@ -77,6 +77,8 @@ pub enum DeviceMode {
 pub enum Error {
     /// Output must satisfy [`Size::new`]'s bounds.
     InvalidSize,
+    /// A source crop is empty, overflows, or extends beyond its page.
+    InvalidTextureRegion,
     /// A Windows graphics operation failed.
     Graphics(windows::core::Error),
     /// The renderer's worker or state could not be accessed.
@@ -88,6 +90,9 @@ impl std::fmt::Display for Error {
         match self {
             Self::InvalidSize => {
                 f.write_str("output dimensions are invalid or exceed the 64 MiB texture limit")
+            }
+            Self::InvalidTextureRegion => {
+                f.write_str("texture region must be nonempty and entirely inside its page")
             }
             Self::Graphics(error) => write!(f, "Direct3D operation failed: {error}"),
             Self::Worker(message) => write!(f, "renderer worker failed: {message}"),
@@ -115,6 +120,17 @@ enum Content {
     Blank,
     MotionFixture(Duration),
     TexturePage(Arc<TexturePage>),
+    TextureRegion(Arc<TextureRegion>),
+}
+
+impl Content {
+    fn texture(&self) -> Option<(&Arc<TexturePage>, [u32; 2], [u32; 2])> {
+        match self {
+            Self::TexturePage(page) => Some((page, [0, 0], page.extent())),
+            Self::TextureRegion(region) => Some((region.page(), region.origin(), region.extent())),
+            Self::Blank | Self::MotionFixture(_) => None,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -251,6 +267,16 @@ impl Renderer {
     /// three-output cap. Caller-owned pages have no aggregate memory budget.
     pub fn render_texture_page(&self, page: Arc<TexturePage>) -> Result<u64, Error> {
         self.request(None, Some(Content::TexturePage(page)))
+    }
+
+    /// Enqueue a diagnostic cropped draw, stretching the region to the output.
+    /// Uses the same integer point sampling, straight-alpha composition and
+    /// source memory bounds as [`Self::render_texture_page`]. Regions sharing
+    /// the same source Arc reuse its upload, including across crop/resize changes.
+    /// No CPU crop, sprite timer or scene placement is performed. Resize retains
+    /// the selected region. This method locks only coalesced request metadata.
+    pub fn render_texture_region(&self, region: Arc<TextureRegion>) -> Result<u64, Error> {
+        self.request(None, Some(Content::TextureRegion(region)))
     }
 
     fn request(&self, size: Option<Size>, content: Option<Content>) -> Result<u64, Error> {

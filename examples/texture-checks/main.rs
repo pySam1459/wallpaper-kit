@@ -5,7 +5,9 @@ mod fixture;
 #[path = "../support/mod.rs"]
 mod support;
 
-use scene_renderer::{Frame, Renderer, SceneSource, Size, TextureDecoder, TextureFormat};
+use scene_renderer::{
+    Frame, Renderer, SceneSource, Size, TextureDecoder, TextureFormat, TextureRegion,
+};
 use serde_json::json;
 use std::{
     fs,
@@ -73,6 +75,7 @@ fn main() -> Result<()> {
         return Err("initial blank frame differs".into());
     }
     let mut results = Vec::new();
+    let mut region_results = Vec::new();
     for case in &cases {
         let page = Arc::new(decoder.decode_page(case.name, 0)?);
         let id = renderer.render_texture_page(page.clone())?;
@@ -121,10 +124,48 @@ fn main() -> Result<()> {
         results.push(json!({"name":case.name,"checks":"passed","frame":support::frame_info(&resized),"resources":support::pool_info(stats)}));
         drop(resized);
         drop(first);
+        let frames = decoder.sprite_frames(case.name)?;
+        for (index, metadata) in frames.iter().enumerate() {
+            let origin = metadata.origin();
+            let extent = metadata.extent();
+            let rgba = fixture::crop(&case.rgba, case.extent, origin, extent);
+            let region = Arc::new(TextureRegion::new(page.clone(), origin, extent)?);
+            let id = renderer.render_texture_region(region)?;
+            let first = wait_frame(&renderer, &events, id)?;
+            fixture::check(&first.readback()?, extent, &rgba)?;
+            support::write_png(
+                &output.join(format!("{}-crop-{index}.png", case.name)),
+                &first.readback()?,
+            )?;
+            let id = renderer.resize(Size::new(113, 79)?)?;
+            let resized = wait_frame(&renderer, &events, id)?;
+            fixture::check(&resized.readback()?, extent, &rgba)?;
+            fixture::check(&first.readback()?, extent, &rgba)?;
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let stats = loop {
+                if let Some(stats) = renderer.try_output_stats()?
+                    && stats.published_frames == resized.sequence()
+                {
+                    break stats;
+                }
+                if Instant::now() >= deadline {
+                    return Err("crop counters timed out".into());
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            };
+            if stats.texture_uploads != uploads
+                || stats.source_texture_bytes != page.data().len() as u64
+                || stats.resident_textures > 3
+            {
+                return Err("crop uploaded source again or exceeded output bounds".into());
+            }
+            region_results.push(json!({"name":case.name,"frame_index":index,"origin":origin,"extent":extent,"checks":"passed","frame":support::frame_info(&resized),"resources":support::pool_info(stats)}));
+        }
         let id = renderer.resize(Size::new(320, 180)?)?;
         drop(wait_frame(&renderer, &events, id)?);
     }
     let mut target = Vec::new();
+    let mut target_frames = Vec::new();
     let mut target_identity = None;
     if let (Some(package), Some(engine_assets)) = (package, engine) {
         let source = SceneSource {
@@ -169,13 +210,59 @@ fn main() -> Result<()> {
             support::write_png(&output.join(format!("target-{name}.png")), &pixels)?;
             target.push(json!({"asset":asset,"page":page_index,"extent":page.extent(),"format":format!("{:?}", page.format()),"bytes":page.data().len(),"decode_ms":decode_ms,"frame":support::frame_info(&frame),"comparison":if page.format() == TextureFormat::Rgba8 {"point sampling checked against decoded page"} else {"capture only; generated format oracle tested separately"}}));
         }
+        for (name, asset, boundary) in [
+            ("birds", "materials/Oiseaux optimized_00000.tex", 18),
+            ("character", "materials/Resize Yuta_00000.tex", 16),
+        ] {
+            let frames = decoder.sprite_frames(asset)?;
+            if frames.len() != 480 {
+                return Err("target sprite frame count differs".into());
+            }
+            let mut loaded = None;
+            for index in [0, boundary - 1, boundary, 239, 479] {
+                let metadata = frames[index];
+                if loaded
+                    .as_ref()
+                    .is_none_or(|(page_index, _)| *page_index != metadata.page_index())
+                {
+                    // Diagnostic captures decode serially; this is not a streaming cache.
+                    loaded = Some((
+                        metadata.page_index(),
+                        Arc::new(decoder.decode_page(asset, metadata.page_index())?),
+                    ));
+                }
+                let page = &loaded.as_ref().expect("selected page loaded").1;
+                let region = Arc::new(TextureRegion::new(
+                    page.clone(),
+                    metadata.origin(),
+                    metadata.extent(),
+                )?);
+                let id = renderer.render_texture_region(region)?;
+                let frame = wait_frame(&renderer, &events, id)?;
+                let pixels = frame.readback()?;
+                if page.format() == TextureFormat::Rgba8 {
+                    let rgba = fixture::crop(
+                        page.data(),
+                        page.extent(),
+                        metadata.origin(),
+                        metadata.extent(),
+                    );
+                    fixture::check(&pixels, metadata.extent(), &rgba)?;
+                }
+                support::write_png(
+                    &output.join(format!("target-{name}-frame-{index:03}.png")),
+                    &pixels,
+                )?;
+                target_frames.push(json!({"asset":asset,"frame_index":index,"page_index":metadata.page_index(),"origin":metadata.origin(),"extent":metadata.extent(),"duration_seconds":metadata.duration().as_secs_f64(),"frame":support::frame_info(&frame),"comparison":if page.format()==TextureFormat::Rgba8 {"GPU crop checked against CPU rows"} else {"capture only; unaligned BC3 crops checked with generated fixtures"}}));
+            }
+        }
     }
     renderer.shutdown()?;
     support::write_json(
         &output.join("report.json"),
         &json!({
-            "schema_version":1,"status":"passed","consumer":"texture-checks", "generated_cases":results, "target_identity":target_identity,"target_pages":target,
-            "limits":["Diagnostic full-page draws, not authored scene layers or sprite playback.","Point sampling and straight-alpha code-value composition; scene conventions unverified.","Decode/upload/capture observations are not steady rendering or host latency measurements."]
+            "schema_version":2,"status":"passed","consumer":"texture-checks", "generated_cases":results, "generated_regions":region_results,"target_identity":target_identity,"target_pages":target,"target_frames":target_frames,
+            "limits":["Diagnostic page/crop draws, not placed scene layers or sprite playback.","Point sampling and straight-alpha code-value composition; scene conventions unverified.","Decode/upload/capture observations are not steady rendering or host latency measurements."]
         }),
     )?;
     let mut html = String::from(

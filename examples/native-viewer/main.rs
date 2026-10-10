@@ -10,7 +10,9 @@ mod support;
 mod texture_checks;
 
 use presentation::Presentation;
-use scene_renderer::{DeviceMode, Frame, Renderer, SceneSource, Size, TextureDecoder, TexturePage};
+use scene_renderer::{
+    DeviceMode, Frame, Renderer, SceneSource, Size, TextureDecoder, TexturePage, TextureRegion,
+};
 use serde_json::{Value, json};
 use std::{
     io::{self, BufRead, Write},
@@ -49,6 +51,7 @@ struct App {
     failure: Option<String>,
     presented: u64,
     texture_fixture: Option<(Arc<TexturePage>, texture_checks::Case)>,
+    texture_region: Option<Arc<TextureRegion>>,
 }
 
 fn emit(value: Value) {
@@ -218,7 +221,17 @@ impl App {
                         .texture_fixture
                         .as_ref()
                         .ok_or("no texture fixture oracle")?;
-                    texture_checks::check(&pixels, case.extent, &case.rgba)?;
+                    let (origin, extent) = self
+                        .texture_region
+                        .as_ref()
+                        .map_or(([0, 0], case.extent), |region| {
+                            (region.origin(), region.extent())
+                        });
+                    if frame.texture_region() != Some((origin, extent)) {
+                        return Err("native source crop differs".into());
+                    }
+                    let rgba = texture_checks::crop(&case.rgba, case.extent, origin, extent);
+                    texture_checks::check(&pixels, extent, &rgba)?;
                     Some(true)
                 } else {
                     None
@@ -256,7 +269,9 @@ impl ApplicationHandler<Event> for App {
             )?;
             let size = window.inner_size();
             let (renderer, events) = Renderer::new(Size::new(size.width, size.height)?, self.mode)?;
-            if let Some((page, _)) = &self.texture_fixture {
+            if let Some(region) = &self.texture_region {
+                self.expected_id = renderer.render_texture_region(region.clone())?;
+            } else if let Some((page, _)) = &self.texture_fixture {
                 self.expected_id = renderer.render_texture_page(page.clone())?;
             }
             let proxy = self.proxy.clone();
@@ -381,9 +396,14 @@ fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let mut common = Vec::new();
     let mut texture = false;
+    let mut region = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--texture-fixture" => texture = true,
+            "--region-fixture" => {
+                texture = true;
+                region = true;
+            }
             "--output" => {
                 common.push(arg);
                 common.push(args.next().ok_or("--output needs a directory")?);
@@ -394,7 +414,7 @@ fn main() -> Result<()> {
     let (output, mode) = support::options(common.into_iter())?;
     // Diagnostic input is prepared before a window/event loop exists. Host
     // controls only enqueue GPU work; file I/O and decode never run in update.
-    let texture_fixture = if texture {
+    let (texture_fixture, texture_region) = if texture {
         let case = texture_checks::cases()
             .into_iter()
             .find(|case| case.name == "rgba-png-lz4")
@@ -410,9 +430,20 @@ fn main() -> Result<()> {
             package: generated.join("scene.pkg"),
             engine_assets: generated.join("engine"),
         })?;
-        Some((Arc::new(decoder.decode_page(case.name, 0)?), case))
+        let page = Arc::new(decoder.decode_page(case.name, 0)?);
+        let crop = if region {
+            let metadata = decoder.sprite_frames(case.name)?[0];
+            Some(Arc::new(TextureRegion::new(
+                page.clone(),
+                metadata.origin(),
+                metadata.extent(),
+            )?))
+        } else {
+            None
+        };
+        (Some((page, case)), crop)
     } else {
-        None
+        (None, None)
     };
     let event_loop = EventLoop::<Event>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
@@ -448,6 +479,7 @@ fn main() -> Result<()> {
         failure: None,
         presented: 0,
         texture_fixture,
+        texture_region,
     };
     event_loop.run_app(&mut app)?;
     if let Some(error) = app.failure {

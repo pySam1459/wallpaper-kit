@@ -4,7 +4,7 @@
 mod fixture;
 
 use scene_renderer::{DeviceMode, Frame, Renderer, Size};
-use scene_renderer::{SceneSource, TextureDecoder, TextureFormat};
+use scene_renderer::{SceneSource, TextureDecoder, TextureFormat, TextureRegion};
 use std::{
     fs,
     path::PathBuf,
@@ -252,6 +252,19 @@ fn wait_frame(renderer: &Renderer, events: &Receiver<()>, id: u64) -> Arc<Frame>
     }
 }
 
+fn wait_stats(renderer: &Renderer, frame: &Frame) -> scene_renderer::OutputStats {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(stats) = renderer.try_output_stats().unwrap()
+            && stats.published_frames == frame.sequence()
+        {
+            return stats;
+        }
+        assert!(Instant::now() < deadline, "crop counters timed out");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
 #[test]
 fn gpu_samples_all_storage_formats_and_preserves_old_frames() {
     let (renderer, events) =
@@ -311,4 +324,161 @@ fn texture_oracle_detects_orientation_alpha_and_channel_faults() {
     pixels.rgba.swap(0, 2);
     pixels.rgba[8..12].copy_from_slice(&[0, 0, 255, 255]);
     assert!(fixture::check(&pixels, case.extent, &case.rgba).is_err());
+}
+
+#[test]
+fn sprite_metadata_retains_order_page_rectangles_and_variable_durations() {
+    let first = fixture::tex(0, [2, 2], &fixture::rgba(), false, false);
+    let mut texture = first.clone();
+    texture[55..59].copy_from_slice(&2_u32.to_le_bytes());
+    texture.extend_from_slice(&first[67..]);
+    let texture = fixture::sprite(
+        texture,
+        &[
+            (0, 0.06, [1., 0., 1., 0., 0., 2.]),
+            (1, 0.12, [0., 1., 2., 0., 0., 1.]),
+        ],
+    );
+    let package = Package::new(&texture);
+    let decoder = TextureDecoder::open(&package.source()).unwrap();
+    let frames = decoder.sprite_frames("image.tex").unwrap();
+    assert_eq!(frames.len(), 2);
+    assert_eq!(frames[0].page_index(), 0);
+    assert_eq!(frames[0].origin(), [1, 0]);
+    assert_eq!(frames[0].extent(), [1, 2]);
+    assert!((frames[0].duration().as_secs_f64() - 0.06).abs() < 1e-8);
+    assert_eq!(frames[1].page_index(), 1);
+    assert_eq!(frames[1].origin(), [0, 1]);
+    assert_eq!(frames[1].extent(), [2, 1]);
+    assert!((frames[1].duration().as_secs_f64() - 0.12).abs() < 1e-8);
+    assert_eq!(
+        decoder.decode_page("image.tex", 1).unwrap().data(),
+        fixture::rgba()
+    );
+}
+
+#[test]
+fn rejects_unsupported_sprite_rectangles_and_invalid_regions() {
+    let base = fixture::tex(0, [2, 2], &fixture::rgba(), false, false);
+    let static_package = Package::new(&base);
+    let decoder = TextureDecoder::open(&static_package.source()).unwrap();
+    assert!(
+        decoder
+            .sprite_frames("image.tex")
+            .unwrap_err()
+            .to_string()
+            .contains("no sprite frames")
+    );
+    let page = Arc::new(decoder.decode_page("image.tex", 0).unwrap());
+    for (origin, extent) in [
+        ([0, 0], [0, 1]),
+        ([2, 0], [1, 1]),
+        ([0, 1], [2, 2]),
+        ([u32::MAX, 0], [2, 1]),
+    ] {
+        assert!(matches!(
+            TextureRegion::new(page.clone(), origin, extent),
+            Err(scene_renderer::Error::InvalidTextureRegion)
+        ));
+    }
+    for rectangle in [
+        [0.5, 0., 1., 0., 0., 1.], // fractional
+        [1., 0., -1., 0., 0., 1.], // mirrored
+        [0., 1., 0., -1., 1., 0.], // rotated
+        [0., 0., 1., 0., 0., 0.],  // degenerate
+        [0., 0., 2., 0., 0., 3.],  // outside
+        [f32::NAN, 0., 1., 0., 0., 1.],
+    ] {
+        let package = Package::new(&fixture::sprite(base.clone(), &[(0, 0.06, rectangle)]));
+        let error = TextureDecoder::open(&package.source())
+            .unwrap()
+            .sprite_frames("image.tex")
+            .unwrap_err();
+        assert!(error.to_string().starts_with("image.tex:"));
+    }
+    for (page_index, duration) in [
+        (1, 0.06),
+        (0, 0.),
+        (0, f32::INFINITY),
+        (0, f32::from_bits(1)),
+    ] {
+        let package = Package::new(&fixture::sprite(
+            base.clone(),
+            &[(page_index, duration, [0., 0., 2., 0., 0., 2.])],
+        ));
+        assert!(
+            TextureDecoder::open(&package.source())
+                .unwrap()
+                .sprite_frames("image.tex")
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn gpu_crops_all_formats_and_reuses_source_across_region_changes() {
+    let (renderer, events) =
+        Renderer::new(Size::new(31, 23).unwrap(), DeviceMode::Software).unwrap();
+    for case in fixture::cases() {
+        let package = Package::new(&case.tex);
+        let decoder = TextureDecoder::open(&package.source()).unwrap();
+        let page = Arc::new(decoder.decode_page("image.tex", 0).unwrap());
+        let id = renderer.render_texture_page(page.clone()).unwrap();
+        let frame = wait_frame(&renderer, &events, id);
+        let uploads = wait_stats(&renderer, &frame).texture_uploads;
+        drop(frame);
+        // BC3 cases deliberately begin inside a block and cross into its neighbours.
+        for (origin, extent) in [
+            ([1, 0], [case.extent[0] - 1, case.extent[1]]),
+            ([0, case.extent[1] - 1], [case.extent[0], 1]),
+        ] {
+            let rgba = fixture::crop(&case.rgba, case.extent, origin, extent);
+            let region = Arc::new(TextureRegion::new(page.clone(), origin, extent).unwrap());
+            let id = renderer.render_texture_region(region.clone()).unwrap();
+            let first = wait_frame(&renderer, &events, id);
+            assert_eq!(first.texture_region(), Some((origin, extent)));
+            fixture::check(&first.readback().unwrap(), extent, &rgba).unwrap();
+            let id = renderer.resize(Size::new(17, 13).unwrap()).unwrap();
+            let resized = wait_frame(&renderer, &events, id);
+            fixture::check(&resized.readback().unwrap(), extent, &rgba).unwrap();
+            fixture::check(&first.readback().unwrap(), extent, &rgba).unwrap();
+            let stats = wait_stats(&renderer, &resized);
+            assert_eq!(stats.texture_uploads, uploads);
+            assert_eq!(stats.source_texture_bytes, page.data().len() as u64);
+            assert!(stats.resident_textures <= 3);
+            drop(first);
+            drop(resized);
+            let id = renderer.resize(Size::new(31, 23).unwrap()).unwrap();
+            drop(wait_frame(&renderer, &events, id));
+        }
+    }
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn crop_oracle_uses_expected_rows_and_detects_wrong_region() {
+    let rgba = fixture::rgba();
+    assert_eq!(
+        fixture::crop(&rgba, [2, 2], [1, 0], [1, 2]),
+        [[0, 255, 0, 128], [240, 160, 80, 255]].concat()
+    );
+    let (renderer, events) = Renderer::new(Size::new(7, 5).unwrap(), DeviceMode::Software).unwrap();
+    let package = Package::new(&fixture::tex(0, [2, 2], &rgba, false, false));
+    let page = Arc::new(
+        TextureDecoder::open(&package.source())
+            .unwrap()
+            .decode_page("image.tex", 0)
+            .unwrap(),
+    );
+    let region = Arc::new(TextureRegion::new(page, [0, 0], [1, 2]).unwrap());
+    let id = renderer.render_texture_region(region).unwrap();
+    assert!(
+        fixture::check(
+            &wait_frame(&renderer, &events, id).readback().unwrap(),
+            [1, 2],
+            &fixture::crop(&rgba, [2, 2], [1, 0], [1, 2])
+        )
+        .is_err()
+    );
+    renderer.shutdown().unwrap();
 }

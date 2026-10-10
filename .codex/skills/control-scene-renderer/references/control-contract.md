@@ -14,7 +14,7 @@ Exit code `0` means the diagnostic runtime has matching verified evidence. Code 
 
 Headless verification checks actual GPU output, idle behavior, resize, input bounds and retained-frame lifetime. Native captures check the imported/copied swap-chain back buffer. One measured native idle interval reports process CPU time, working set and handle count. GPU timings and host input latency remain unavailable.
 
-The [TEX page procedure](../../../../docs/texture-pages.md) adds selected payload decoding, independent format/alpha/sampling checks, upload reuse and a native PNG/LZ4 fixture. Source-page memory is reported separately from the three-output pool. This does not implement authored scene layers or sprite animation.
+The [TEX page procedure](../../../../docs/texture-pages.md) adds selected payload decoding, independent format/alpha/sampling checks, upload reuse, authored integer sprite crops and native full-page/crop PNG/LZ4 fixtures. Source-page memory is reported separately from the three-output pool. This does not implement authored scene layers or sprite animation.
 
 The [motion procedure](../../../../docs/motion-verification.md) adds fixed-time pixel checks, oracle fault cases, separate live readiness telemetry and native fixture step/play/pause controls. Contact sheets establish checkpoint appearance; raw live observations establish readiness or presentation-call cadence. They do not measure displayed frames.
 

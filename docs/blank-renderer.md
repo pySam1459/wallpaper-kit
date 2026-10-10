@@ -41,7 +41,7 @@ Requires PowerShell 7 and the Windows MSVC build toolchain:
 pwsh -File ./scripts/verify.ps1
 ```
 
-The command runs format and Clippy checks, tests, Rustdoc, example builds, the dependency checker and its negative fixture, headless blank/motion/texture consumers, and owned native-viewer scenarios. Each run retains the dependency result in `boundaries.json`. Native operations wait for replies and verify process identity. The scenarios check blank and texture capture/idle/resize, motion capture/play/pause, and process exit. Failure cleanup targets only the process handle created for that run.
+The command runs format and Clippy checks, tests, Rustdoc, example builds, the dependency checker and its negative fixture, headless blank/motion/page/crop consumers, and owned native-viewer scenarios. Each run retains the dependency result in `boundaries.json`. Native operations wait for replies and verify process identity. Separate instances check blank, full-page and cropped capture/idle/resize, then motion capture/play/pause and process exit. Failure cleanup targets only the process handle created for that run.
 
 ```powershell
 pwsh -File ./scripts/verify.ps1 -Software -SkipNative
@@ -74,7 +74,7 @@ Resize replies after a frame matching the actual window size has been presented.
 pwsh -File ./.codex/skills/control-scene-renderer/scripts/doctor.ps1
 ```
 
-Doctor remains read-only. It reports diagnostic readiness only when a successful blank/motion/texture/native receipt from this checkout matches the current runtime source set, source hashes and five executable hashes. A build without a matching receipt is unverified. Exit codes are 0 for ready, 2 for blocked/unverified, and 1 for a doctor failure.
+Doctor remains read-only. It reports diagnostic readiness only when a successful blank/motion/page/crop/native receipt from this checkout matches the current runtime source set, source hashes and five executable hashes. A build without a matching receipt is unverified. Exit codes are 0 for ready, 2 for blocked/unverified, and 1 for a doctor failure.
 
 Supplying `-ScenePath` checks file existence and reports scene verification as blocked even when the blank runtime has been verified. It does not open or modify the package. A prior receipt describes its recorded build/configuration; it is not proof of general hardware support.
 

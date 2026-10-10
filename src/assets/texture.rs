@@ -1,5 +1,7 @@
 use super::package::{AssetReader, Package};
+use crate::Error;
 use crate::scene::{InspectionError, PageSummary, SceneSource, TextureSummary};
+use std::{sync::Arc, time::Duration};
 
 /// Storage delivered to the GPU after container decompression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,6 +42,91 @@ impl TexturePage {
     }
 }
 
+/// A checked rectangular view of a page, without copying or decompressing BC3.
+#[derive(Debug)]
+pub struct TextureRegion {
+    page: Arc<TexturePage>,
+    origin: [u32; 2],
+    extent: [u32; 2],
+}
+
+impl TextureRegion {
+    /// Select a nonempty, top-left pixel rectangle entirely inside `page`.
+    /// BC3 coordinates need not align with blocks; sampling remains on the GPU.
+    /// Returns [`Error::InvalidTextureRegion`] for empty/out-of-page rectangles,
+    /// including arithmetic overflow. Construction performs no pixel allocation.
+    pub fn new(page: Arc<TexturePage>, origin: [u32; 2], extent: [u32; 2]) -> Result<Self, Error> {
+        if (0..2).any(|axis| {
+            extent[axis] == 0
+                || origin[axis]
+                    .checked_add(extent[axis])
+                    .is_none_or(|end| end > page.extent[axis])
+        }) {
+            return Err(Error::InvalidTextureRegion);
+        }
+        Ok(Self {
+            page,
+            origin,
+            extent,
+        })
+    }
+
+    /// Shared immutable source; regions of the same Arc reuse its GPU upload.
+    pub fn page(&self) -> &Arc<TexturePage> {
+        &self.page
+    }
+
+    /// Top-left source pixel, with rows increasing downward.
+    pub fn origin(&self) -> [u32; 2] {
+        self.origin
+    }
+
+    /// Width and height of the selected rectangle, in source pixels.
+    pub fn extent(&self) -> [u32; 2] {
+        self.extent
+    }
+}
+
+/// One authored, axis-aligned TEXS frame rectangle and duration.
+///
+/// This is metadata only. Decode its page separately, then construct a
+/// [`TextureRegion`]. Frame selection does not start a playback timer.
+#[derive(Clone, Copy, Debug)]
+pub struct SpriteFrame {
+    page: u32,
+    duration: Duration,
+    origin: [u32; 2],
+    extent: [u32; 2],
+}
+
+impl SpriteFrame {
+    /// Zero-based page index for [`TextureDecoder::decode_page`].
+    pub fn page_index(self) -> u32 {
+        self.page
+    }
+
+    /// Authored positive frame duration; not a measured playback interval.
+    pub fn duration(self) -> Duration {
+        self.duration
+    }
+
+    /// Top-left source pixel, with rows increasing downward.
+    pub fn origin(self) -> [u32; 2] {
+        self.origin
+    }
+
+    /// Width and height of the authored source rectangle.
+    pub fn extent(self) -> [u32; 2] {
+        self.extent
+    }
+}
+
+struct FrameLocation {
+    page: u32,
+    duration: f32,
+    rectangle: [f32; 6],
+}
+
 struct PageLocation {
     offset: u64,
     stored: u64,
@@ -51,6 +138,7 @@ struct Index {
     summary: TextureSummary,
     locations: Vec<PageLocation>,
     png: bool,
+    frames: Vec<FrameLocation>,
 }
 
 const MAX_PAGE_BYTES: u64 = 256 * 1024 * 1024;
@@ -77,6 +165,64 @@ impl TextureDecoder {
     /// SHA-256 of the read-locked package, computed by [`Self::open`].
     pub fn package_sha256(&self) -> &str {
         &self.package.summary.sha256
+    }
+
+    /// Read the authored frame table in order, without decoding page payloads.
+    ///
+    /// Performs blocking I/O and full TEX structural validation. Returns an
+    /// asset-named error for static textures or rotated, flipped, fractional or
+    /// out-of-page rectangles. Only positive integer axis-aligned rectangles
+    /// are supported in this component slice. Durations below nanosecond
+    /// resolution fail. At most 65,536 records are read.
+    pub fn sprite_frames(&self, asset: &str) -> Result<Vec<SpriteFrame>, InspectionError> {
+        let mut reader = self
+            .package
+            .reader(asset)?
+            .ok_or_else(|| InspectionError::invalid(asset, "texture asset is missing"))?;
+        let index = index(&mut reader)?;
+        if index.frames.is_empty() {
+            return Err(reader.invalid("texture has no sprite frames"));
+        }
+        let mut frames = Vec::with_capacity(index.frames.len());
+        for (number, frame) in index.frames.iter().enumerate() {
+            let [x, y, wx, wy, hx, hy] = frame.rectangle;
+            if wy != 0.
+                || hx != 0.
+                || wx <= 0.
+                || hy <= 0.
+                || [x, y, wx, hy]
+                    .iter()
+                    .any(|value| *value < 0. || value.fract() != 0.)
+            {
+                return Err(reader.invalid(format!(
+                    "frame {number}: only positive integer axis-aligned rectangles are supported"
+                )));
+            }
+            let origin = [x as u32, y as u32];
+            let extent = [wx as u32, hy as u32];
+            // The inspector permits a small float tolerance; pixel crops do not.
+            let page = &index.summary.pages[frame.page as usize];
+            if (0..2).any(|axis| {
+                origin[axis]
+                    .checked_add(extent[axis])
+                    .is_none_or(|end| end > page.extent[axis])
+            }) {
+                return Err(reader.invalid(format!("frame {number} extends beyond its page")));
+            }
+            let duration = Duration::from_secs_f64(f64::from(frame.duration));
+            if duration.is_zero() {
+                return Err(reader.invalid(format!(
+                    "frame {number} duration is below nanosecond resolution"
+                )));
+            }
+            frames.push(SpriteFrame {
+                page: frame.page,
+                duration,
+                origin,
+                extent,
+            });
+        }
+        Ok(frames)
     }
 
     /// Decode a base mip after validating the entire TEX metadata structure.
@@ -314,6 +460,7 @@ fn index(reader: &mut AssetReader) -> Result<Index, InspectionError> {
     }
     let mut duration_seconds = 0.;
     let mut frames = 0;
+    let mut frame_locations = Vec::new();
     if flags & 4 != 0 {
         let sprite = reader.signature()?;
         if sprite != "TEXS0003" {
@@ -327,7 +474,7 @@ fn index(reader: &mut AssetReader) -> Result<Index, InspectionError> {
         dimensions(reader)?;
         frames = count as usize;
         for frame in 0..count {
-            let page = reader.u32()? as usize;
+            let page_index = reader.u32()?;
             let duration = reader.f32()?;
             let x = reader.f32()?;
             let y = reader.f32()?;
@@ -335,7 +482,7 @@ fn index(reader: &mut AssetReader) -> Result<Index, InspectionError> {
             let wy = reader.f32()?;
             let hx = reader.f32()?;
             let hy = reader.f32()?;
-            let Some(page) = pages.get(page) else {
+            let Some(page) = pages.get(page_index as usize) else {
                 return Err(reader.invalid(format!("frame {frame} references an invalid page")));
             };
             if !duration.is_finite() || duration <= 0. || duration > 60. {
@@ -363,6 +510,11 @@ fn index(reader: &mut AssetReader) -> Result<Index, InspectionError> {
                 }
             }
             duration_seconds += f64::from(duration);
+            frame_locations.push(FrameLocation {
+                page: page_index,
+                duration,
+                rectangle: [x, y, wx, wy, hx, hy],
+            });
         }
     }
     if reader.position != reader.length {
@@ -380,6 +532,7 @@ fn index(reader: &mut AssetReader) -> Result<Index, InspectionError> {
         },
         locations,
         png: codec == 13,
+        frames: frame_locations,
     })
 }
 

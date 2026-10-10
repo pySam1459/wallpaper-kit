@@ -46,6 +46,7 @@ try {
     if (-not $SkipNative) {
         & "$PSScriptRoot/verify-native.ps1" -Executable (Join-Path $target 'native-viewer.exe') -Output (Join-Path $output 'native') -Software:$Software
         & "$PSScriptRoot/verify-native.ps1" -Executable (Join-Path $target 'native-viewer.exe') -Output (Join-Path $output 'native-texture') -Software:$Software -TextureFixture
+        & "$PSScriptRoot/verify-native.ps1" -Executable (Join-Path $target 'native-viewer.exe') -Output (Join-Path $output 'native-region') -Software:$Software -RegionFixture
     }
     $status = & git status --porcelain=v1 --untracked-files=all
     $revision = & git rev-parse --verify HEAD 2>$null
@@ -65,8 +66,9 @@ try {
         native_status=$(if ($SkipNative) {'skipped'} else {'passed'}); software=[bool]$Software;
         motion_status='passed';
         texture_status='passed';
+        texture_region_status='passed';
         scene_inspection_status=$inspectionStatus;
-        limits=@('Blank, diagnostic motion and full TEX page rendering only.', 'Scene inspection does not render authored layers/effects/animation.', 'Captures use diagnostic readback.', 'No scene fidelity, GPU timing or host latency claims.');
+        limits=@('Blank, diagnostic motion and TEX page/region rendering only.', 'Scene inspection does not render placed layers/effects/animation.', 'Captures use diagnostic readback.', 'No scene fidelity, GPU timing or host latency claims.');
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $output 'manifest.json') -Encoding utf8
     Write-Output "Evidence: $output"
 } catch {

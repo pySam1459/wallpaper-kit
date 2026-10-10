@@ -30,7 +30,7 @@ impl ImageRenderer {
             device.CreatePixelShader(&r8_code, None, Some(&mut r8))?;
             device.CreateBuffer(
                 &D3D11_BUFFER_DESC {
-                    ByteWidth: 16,
+                    ByteWidth: 32,
                     Usage: D3D11_USAGE_DEFAULT,
                     BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as u32,
                     ..Default::default()
@@ -126,6 +126,8 @@ impl ImageRenderer {
         context: &ID3D11DeviceContext,
         output: &Output,
         format: TextureFormat,
+        origin: [u32; 2],
+        extent: [u32; 2],
     ) {
         let texture = self
             .texture
@@ -143,8 +145,17 @@ impl ImageRenderer {
             context.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             context.VSSetShader(&self.vertex, None);
             context.PSSetShader(pixel, None);
-            let extent = [output.size.width(), output.size.height(), 0, 0];
-            context.UpdateSubresource(&self.dimensions, 0, None, extent.as_ptr().cast(), 0, 0);
+            let constants = [
+                output.size.width(),
+                output.size.height(),
+                origin[0],
+                origin[1],
+                extent[0],
+                extent[1],
+                0,
+                0,
+            ];
+            context.UpdateSubresource(&self.dimensions, 0, None, constants.as_ptr().cast(), 0, 0);
             context.PSSetConstantBuffers(0, Some(&[Some(self.dimensions.clone())]));
             context.PSSetShaderResources(0, Some(&[Some(texture.view.clone())]));
             context.OMSetRenderTargets(Some(&[Some(output.view.clone())]), None);

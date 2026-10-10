@@ -47,6 +47,33 @@ pub fn package(entries: &[(&str, &[u8])]) -> Vec<u8> {
     bytes
 }
 
+pub fn sprite(mut texture: Vec<u8>, frames: &[(u32, f32, [f32; 6])]) -> Vec<u8> {
+    texture[22..26].copy_from_slice(&4_u32.to_le_bytes());
+    texture.extend_from_slice(b"TEXS0003\0");
+    texture.extend_from_slice(&(frames.len() as u32).to_le_bytes());
+    for dimension in [2_u32, 2] {
+        texture.extend_from_slice(&dimension.to_le_bytes());
+    }
+    for (page, duration, rectangle) in frames {
+        texture.extend_from_slice(&page.to_le_bytes());
+        texture.extend_from_slice(&duration.to_le_bytes());
+        for coordinate in rectangle {
+            texture.extend_from_slice(&coordinate.to_le_bytes());
+        }
+    }
+    texture
+}
+
+// The oracle copies CPU rows independently of the shader's integer addressing.
+pub fn crop(rgba: &[u8], page: [u32; 2], origin: [u32; 2], extent: [u32; 2]) -> Vec<u8> {
+    let mut result = Vec::new();
+    for y in origin[1]..origin[1] + extent[1] {
+        let start = (y as usize * page[0] as usize + origin[0] as usize) * 4;
+        result.extend_from_slice(&rgba[start..start + extent[0] as usize * 4]);
+    }
+    result
+}
+
 pub fn png(extent: [u32; 2], color: png::ColorType, data: &[u8]) -> Vec<u8> {
     let mut bytes = Vec::new();
     let mut encoder = png::Encoder::new(&mut bytes, extent[0], extent[1]);
@@ -145,6 +172,19 @@ pub fn cases() -> Vec<Case> {
         });
     }
     cases
+        .into_iter()
+        .map(|mut case| {
+            let [width, height] = case.extent;
+            case.tex = sprite(
+                case.tex,
+                &[
+                    (0, 0.06, [1., 0., (width - 1) as f32, 0., 0., height as f32]),
+                    (0, 0.12, [0., (height - 1) as f32, width as f32, 0., 0., 1.]),
+                ],
+            );
+            case
+        })
+        .collect()
 }
 
 pub fn check(pixels: &scene_renderer::Pixels, extent: [u32; 2], rgba: &[u8]) -> Result<(), String> {

@@ -2,6 +2,8 @@
 Texture2D<float4> image : register(t0);
 cbuffer Output : register(b0) {
     uint2 output_extent;
+    uint2 source_origin;
+    uint2 source_extent;
     uint2 padding;
 };
 
@@ -17,9 +19,7 @@ Vertex vertex_main(uint id : SV_VertexID) {
 }
 
 float4 sample_page(float4 position) {
-    uint width, height;
-    image.GetDimensions(width, height);
-    uint2 texel = ((uint2(position.xy) * 2 + 1) * uint2(width, height)) / (output_extent * 2);
+    uint2 texel = source_origin + ((uint2(position.xy) * 2 + 1) * source_extent) / (output_extent * 2);
     return image.Load(int3(texel, 0));
 }
 

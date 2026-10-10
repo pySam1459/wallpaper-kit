@@ -53,6 +53,7 @@ pub fn frame_info(frame: &Frame) -> Value {
         "backend": "direct3d11", "format": "rgba8-unorm", "alpha": "opaque",
         "content": if frame.fixture_time().is_some() { "motion-fixture" } else if frame.texture_format().is_some() { "texture-page" } else { "blank" },
         "source_format": frame.texture_format().map(|format| format!("{format:?}")),
+        "source_region": frame.texture_region(),
         "fixture_time_ms": frame.fixture_time().map(|time| time.as_millis()),
         "adapter": {"name": adapter.name, "vendor_id": adapter.vendor_id, "device_id": adapter.device_id,
             "luid": adapter.luid, "software": adapter.software},

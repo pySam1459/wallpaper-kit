@@ -254,7 +254,7 @@ impl Gpu {
                 Submission::Leased
             });
         };
-        if let Content::TexturePage(page) = &request.content {
+        if let Some((page, _, _)) = request.content.texture() {
             // Release GPU access during fallible compilation/upload. No Frame
             // can appear for this available slot while the worker prepares it.
             // SAFETY: slot selection acquired this output's key 0.
@@ -280,7 +280,7 @@ impl Gpu {
         // acquired mutex, including when interface lookup fails.
         let context1 = match &request.content {
             Content::MotionFixture(_) => self.context.cast::<ID3D11DeviceContext1>().map(Some),
-            Content::Blank | Content::TexturePage(_) => Ok(None),
+            Content::Blank | Content::TexturePage(_) | Content::TextureRegion(_) => Ok(None),
         };
         let context1 = match context1 {
             Ok(context) => context,
@@ -314,11 +314,13 @@ impl Gpu {
                         }]),
                     );
             }
-            if let Content::TexturePage(page) = &request.content {
+            if let Some((page, origin, extent)) = request.content.texture() {
                 self.image.as_ref().expect("image prepared").draw(
                     &self.context,
                     output,
                     page.format(),
+                    origin,
+                    extent,
                 );
             }
             output.mutex.ReleaseSync(0)?;
@@ -374,13 +376,14 @@ impl Gpu {
                 output: slot.output.clone(),
                 shared,
                 fixture_time: match &request.content {
-                    Content::Blank | Content::TexturePage(_) => None,
+                    Content::Blank | Content::TexturePage(_) | Content::TextureRegion(_) => None,
                     Content::MotionFixture(time) => Some(*time),
                 },
-                texture_format: match &request.content {
-                    Content::TexturePage(page) => Some(page.format()),
-                    _ => None,
-                },
+                texture_format: request.content.texture().map(|(page, _, _)| page.format()),
+                texture_region: request
+                    .content
+                    .texture()
+                    .map(|(_, origin, extent)| (origin, extent)),
             });
             slot.state = SlotState::Leased(Arc::downgrade(&frame));
             return Ok(Some(frame));
@@ -445,6 +448,7 @@ pub struct Frame {
     shared: Weak<Shared>,
     fixture_time: Option<Duration>,
     texture_format: Option<TextureFormat>,
+    texture_region: Option<([u32; 2], [u32; 2])>,
 }
 
 impl Frame {
@@ -453,9 +457,15 @@ impl Frame {
         self.fixture_time
     }
 
-    /// Source storage of a diagnostic full-page draw, or `None` otherwise.
+    /// Source storage of a diagnostic page/region draw, or `None` otherwise.
     pub fn texture_format(&self) -> Option<TextureFormat> {
         self.texture_format
+    }
+
+    /// Source pixel origin and extent of a diagnostic page/region draw.
+    /// Full-page draws have origin `[0,0]`. No CPU source data is held by Frame.
+    pub fn texture_region(&self) -> Option<([u32; 2], [u32; 2])> {
+        self.texture_region
     }
 
     /// Request identity, including skipped/coalesced requests.
