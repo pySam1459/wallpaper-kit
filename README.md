@@ -6,7 +6,7 @@ An open source renderer for high-quality photos, videos, and animated Wallpaper 
 
 The project starts on Windows. The consuming application's responsiveness takes priority over background animation.
 
-<img src="docs/assets/codex-example.png" alt="Wallpaper Kit integrated into OpenAI Codex" width="1200" />
+<img src="docs/assets/codex-example.gif" alt="Wallpaper Kit integrated into OpenAI Codex" width="1200" />
 
 </div>
 
