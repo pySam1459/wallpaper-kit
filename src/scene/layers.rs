@@ -98,12 +98,19 @@ enum LayerEffect {
         motion: Arc<CloudMotion>,
         time: Duration,
     },
+    Flow {
+        motion: Arc<super::flow::FlowMotion>,
+        time: Duration,
+    },
 }
 
 /// A cropped image placed on a two-dimensional orthographic canvas.
 ///
 /// The region retains its shared source page. All values are checked at
-/// construction; rendering uses point sampling and straight-alpha SDR blending.
+/// construction. Manually constructed images use point sampling and straight
+/// alpha SDR blending. Prepared scene particles also use these descriptors,
+/// with bilinear sampling, tint and their authored blend mode.
+/// Scene discovery can attach a normal map for background refraction.
 #[derive(Debug)]
 pub struct ImageLayer {
     region: Arc<TextureRegion>,
@@ -113,9 +120,29 @@ pub struct ImageLayer {
     opacity: f32,
     brightness: f32,
     effect: Option<LayerEffect>,
+    pub(crate) particle_color: Option<([f32; 3], bool)>,
+    pub(crate) particle_uv: Option<[f32; 6]>,
+    pub(crate) particle_next: Option<(Arc<TextureRegion>, [f32; 6], f32)>,
+    pub(crate) rays: Option<(Arc<super::rays::Rays>, Duration)>,
+    pub(crate) refraction: Option<(Arc<TextureRegion>, f32)>,
+    quality: super::ImageQuality,
 }
 
 impl ImageLayer {
+    pub(crate) fn with_flow(
+        mut self,
+        motion: Arc<super::flow::FlowMotion>,
+        time: Duration,
+    ) -> Self {
+        self.effect = Some(LayerEffect::Flow { motion, time });
+        self
+    }
+    pub(crate) fn flow_motion(&self) -> Option<(&Arc<super::flow::FlowMotion>, Duration)> {
+        match &self.effect {
+            Some(LayerEffect::Flow { motion, time }) => Some((motion, *time)),
+            _ => None,
+        }
+    }
     /// Place a region using a centre in canvas units, with Y increasing upward.
     /// `size` is the positive displayed width/height. Rotation is in degrees,
     /// counterclockwise about the centre. Opacity must be 0..=1 and brightness
@@ -138,7 +165,25 @@ impl ImageLayer {
             opacity,
             brightness,
             effect: None,
+            particle_color: None,
+            particle_uv: None,
+            particle_next: None,
+            rays: None,
+            refraction: None,
+            quality: super::ImageQuality::Nearest,
         })
+    }
+
+    /// Choose ordinary image sampling. Cloud effects and particles always use
+    /// bilinear sampling. Resolution remains a separate renderer setting.
+    pub fn with_image_quality(mut self, quality: super::ImageQuality) -> Self {
+        self.quality = quality;
+        self
+    }
+
+    /// Requested ordinary image sampling.
+    pub fn image_quality(&self) -> super::ImageQuality {
+        self.quality
     }
 
     pub(super) fn validate_geometry(
@@ -250,17 +295,21 @@ impl ImageLayer {
 
 /// Checked ordered image draws, independent of a GPU device or playback timer.
 ///
-/// The canvas fills the output, without preserving aspect ratio. At most 32
-/// layers and 256 MiB of unique source-page payloads are admitted. The budget
+/// The canvas fills the output, without preserving aspect ratio. Construction
+/// admits at most 32 images. Scene playback may add up to 4,096 particle quads.
+/// Both paths admit 256 MiB of unique source-page payloads. The budget
 /// includes masks but excludes output/consumer textures, driver overhead and
 /// caller-owned content. Blur uses one additional RGBA16F target capped at
 /// 128 MiB; maximum crop width/height across blurred layers determine its size.
+/// Scene HDR/refraction additionally use output-sized RGBA16F targets and a
+/// shrinking bloom pyramid, reported in [`crate::OutputStats::effect_texture_bytes`].
 #[derive(Debug)]
 pub struct ImageComposition {
     canvas: Size,
     layers: Vec<ImageLayer>,
     pages: Vec<Arc<TexturePage>>,
     blur_extent: Option<Size>,
+    pub(crate) hdr: Option<super::hdr::HdrBloom>,
 }
 
 impl ImageComposition {
@@ -272,22 +321,62 @@ impl ImageComposition {
         if layers.is_empty() || layers.len() > 32 {
             return Err(Error::ImageCompositionLimit);
         }
+        Self::from_layers(canvas, layers, &[])
+    }
+
+    pub(crate) fn scene(
+        canvas: Size,
+        layers: Vec<ImageLayer>,
+        retained: &[Arc<TexturePage>],
+    ) -> Result<Self, Error> {
+        if layers.is_empty()
+            || layers.len() > 4096 + 32
+            || layers
+                .iter()
+                .filter(|layer| layer.particle_color.is_none())
+                .count()
+                > 2048
+        {
+            return Err(Error::ImageCompositionLimit);
+        }
+        Self::from_layers(canvas, layers, retained)
+    }
+
+    fn from_layers(
+        canvas: Size,
+        layers: Vec<ImageLayer>,
+        retained: &[Arc<TexturePage>],
+    ) -> Result<Self, Error> {
         let mut pages = Vec::new();
         let mut bytes = 0;
-        for page in layers.iter().flat_map(|layer| {
-            let cloud = layer.cloud_motion().map(|(motion, _)| motion);
-            [
-                Some(layer.region.page()),
-                layer
-                    .filter()
-                    .and_then(LayerBlur::mask)
-                    .or_else(|| cloud.and_then(|motion| motion.mask()))
-                    .map(|mask| mask.page()),
-                cloud.map(|motion| motion.noise().page()),
-            ]
-            .into_iter()
-            .flatten()
-        }) {
+        for page in layers
+            .iter()
+            .flat_map(|layer| {
+                let cloud = layer.cloud_motion().map(|(motion, _)| motion);
+                let flow = layer.flow_motion().map(|(motion, _)| motion);
+                [
+                    Some(layer.region.page()),
+                    layer
+                        .particle_next
+                        .as_ref()
+                        .map(|(region, _, _)| region.page()),
+                    layer
+                        .filter()
+                        .and_then(LayerBlur::mask)
+                        .or_else(|| cloud.and_then(|motion| motion.mask()))
+                        .map(|mask| mask.page()),
+                    cloud.map(|motion| motion.noise().page()),
+                    layer.refraction.as_ref().map(|(normal, _)| normal.page()),
+                    flow.map(|motion| motion.mask.page()),
+                    flow.map(|motion| motion.phase.page()),
+                    layer.rays.as_ref().map(|(rays, _)| rays.noise.page()),
+                    layer.rays.as_ref().map(|(rays, _)| rays.gradient.page()),
+                ]
+                .into_iter()
+                .flatten()
+            })
+            .chain(retained)
+        {
             if !pages.iter().any(|existing| Arc::ptr_eq(existing, page)) {
                 bytes += page.data().len() as u64;
                 if bytes > MAX_SOURCE_BYTES {
@@ -316,6 +405,7 @@ impl ImageComposition {
             layers,
             pages,
             blur_extent,
+            hdr: None,
         })
     }
     /// Logical canvas dimensions, independent of output resolution.

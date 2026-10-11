@@ -28,8 +28,8 @@ use std::{
 };
 use support::Result;
 use wallpaper_kit::{
-    DeviceMode, Frame, ImagePlayback, Renderer, SceneSource, Size, SpritePager, SpriteWorker,
-    TextureDecoder, TexturePage, TextureRegion,
+    DeviceMode, Frame, ImagePlayback, ImageQuality, PlaybackSettings, Renderer, SceneSource, Size,
+    SpritePager, SpriteWorker, TextureDecoder, TexturePage, TextureRegion,
 };
 use winit::{
     application::ApplicationHandler,
@@ -172,6 +172,9 @@ impl App {
         }
         self.expected_id = renderer.resize(size)?;
         if let Some(images) = &mut self.images {
+            if let Some(sample) = images.frozen_sample() {
+                self.expected_id = renderer.render_images(sample.composition.clone())?;
+            }
             images.resized(self.expected_id);
         }
         Ok(())
@@ -245,6 +248,15 @@ impl App {
                     return Err("frame command already pending".into());
                 }
                 self.images.as_mut().ok_or("no image playback")?.play();
+                emit(json!({"id":command["id"],"ok":true,"state":self.inspect()}));
+            }
+            "freeze_images" => {
+                if self.pending_resize.is_some() || self.pending_fixture.is_some() {
+                    return Err("frame command already pending".into());
+                }
+                let frame = self.frame.as_ref().ok_or("no presented frame")?;
+                self.images.as_mut().ok_or("no image playback")?.freeze()?;
+                self.expected_id = frame.id();
                 emit(json!({"id":command["id"],"ok":true,"state":self.inspect()}));
             }
             "pause_images" => {
@@ -556,9 +568,14 @@ fn main() -> Result<()> {
     let mut image_fixture = false;
     let mut scene_path = None;
     let mut engine_assets = None;
+    let mut settings = PlaybackSettings::default();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--image-fixture" => image_fixture = true,
+            "--linear-images" => settings.image_quality = ImageQuality::Linear,
+            "--no-animation" => settings.animation = false,
+            "--no-vfx" => settings.visual_effects = false,
+            "--reduce-flashing" => settings.reduce_flashing = true,
             "--scene" => {
                 scene_path = Some(PathBuf::from(args.next().ok_or("--scene needs a package")?))
             }
@@ -600,6 +617,9 @@ fn main() -> Result<()> {
         return Err("choose one image playback or diagnostic fixture route".into());
     }
     let (output, mode) = support::options(common.into_iter())?;
+    if settings != PlaybackSettings::default() && !image_fixture && scene_path.is_none() {
+        return Err("playback settings require --scene or --image-fixture".into());
+    }
     let images = if image_fixture || scene_path.is_some() {
         let source = if image_fixture {
             let generated = output.join("generated");
@@ -616,7 +636,7 @@ fn main() -> Result<()> {
                 engine_assets: engine_assets.expect("paired source"),
             }
         };
-        let playback = ImagePlayback::open_scene_images(&source)?;
+        let playback = ImagePlayback::open_scene_images_with_settings(&source, settings)?;
         support::write_json(
             &output.join("image-playback.json"),
             &serde_json::to_value(playback.report())?,

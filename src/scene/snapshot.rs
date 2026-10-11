@@ -25,6 +25,11 @@ pub(crate) struct ImagePlan {
     pub canvas: Size,
     pub layers: Vec<LayerDescription>,
     pub object_ids: Vec<u64>,
+    pub draw_order: Vec<u64>,
+    pub(super) particles: Vec<super::RawObject>,
+    pub(super) ray_objects: Vec<super::RawObject>,
+    pub(super) text_objects: Vec<super::RawObject>,
+    pub(super) hdr: Option<super::hdr::HdrBloom>,
     pub omissions: Vec<String>,
 }
 
@@ -42,6 +47,7 @@ pub(crate) struct LayerDescription {
 pub(super) enum EffectDescription {
     Precise(PreciseBlur),
     Cloud(CloudMotionReport),
+    Flow(super::flow::FlowProfile),
 }
 
 impl LayerDescription {
@@ -65,6 +71,7 @@ impl LayerDescription {
             Some(EffectDescription::Cloud(_)) => {
                 layer.with_cloud_motion(cloud.expect("cloud inputs prepared").clone(), time)
             }
+            Some(EffectDescription::Flow(_)) => layer,
             None => layer,
         })
     }
@@ -109,7 +116,11 @@ pub(super) fn vector<const N: usize>(
     Ok(values.try_into().expect("component count checked"))
 }
 
-fn scalar(value: Option<&Value>, default: f32, asset: &str) -> Result<f32, InspectionError> {
+pub(super) fn scalar(
+    value: Option<&Value>,
+    default: f32,
+    asset: &str,
+) -> Result<f32, InspectionError> {
     match value {
         Some(value) => value
             .as_f64()
@@ -120,9 +131,34 @@ fn scalar(value: Option<&Value>, default: f32, asset: &str) -> Result<f32, Inspe
     }
 }
 
+pub(super) fn visible(value: Option<&Value>, asset: &str) -> Result<bool, InspectionError> {
+    let Some(value) = value else {
+        return Ok(true);
+    };
+    let value = if let Some(fields) = value.as_object() {
+        if fields.keys().any(|key| key != "value" && key != "user")
+            || !fields.get("user").is_some_and(Value::is_string)
+        {
+            return Err(InspectionError::invalid(
+                asset,
+                "unsupported visibility binding",
+            ));
+        }
+        fields
+            .get("value")
+            .ok_or_else(|| InspectionError::invalid(asset, "missing visibility default"))?
+    } else {
+        value
+    };
+    value.as_bool().ok_or_else(|| {
+        InspectionError::invalid(asset, "visible must be Boolean or a user-property default")
+    })
+}
+
 pub(crate) fn plan(
     decoder: &TextureDecoder,
     selection: Option<&[u64]>,
+    settings: super::PlaybackSettings,
 ) -> Result<ImagePlan, InspectionError> {
     let selected: Option<BTreeSet<_>> = selection.map(|ids| ids.iter().copied().collect());
     if let (Some(ids), Some(selected)) = (selection, &selected)
@@ -135,7 +171,7 @@ pub(crate) fn plan(
     }
     let raw: RawScene = serde_json::from_value(json(&decoder.package, "scene.json")?)
         .map_err(|error| InspectionError::invalid("scene.json", error.to_string()))?;
-    if raw.version != 5 || raw.objects.len() > 4096 {
+    if !matches!(raw.version, 1 | 5) || raw.objects.len() > 4096 {
         return Err(InspectionError::invalid(
             "scene.json",
             "unsupported scene version or object count",
@@ -146,10 +182,22 @@ pub(crate) fn plan(
         raw.general.orthogonalprojection.height,
     )
     .map_err(|error| InspectionError::invalid("scene.json", error.to_string()))?;
+    let hdr = if selection.is_none() && settings.visual_effects {
+        super::hdr::HdrBloom::load(&raw.general.properties)?
+    } else {
+        None
+    };
     let mut seen = BTreeSet::new();
     let mut layers = Vec::new();
     let mut object_ids = Vec::new();
-    let mut omissions=vec!["General scene camera, color and postprocessing settings are omitted; the diagnostic canvas fills the output over BLANK_RGBA.".into()];
+    let draw_order = raw.objects.iter().map(|object| object.id).collect();
+    let mut particles = Vec::new();
+    let mut ray_objects = Vec::new();
+    let mut text_objects = Vec::new();
+    let mut omissions=vec!["General scene camera, color and other postprocessing settings are omitted; the diagnostic canvas fills the output over BLANK_RGBA.".into()];
+    if hdr.is_some() {
+        omissions.push("HDR bloom uses a bounded floating-point filter pyramid; exact Wallpaper Engine bloom filtering is unverified.".into());
+    }
     for object in raw.objects {
         if !seen.insert(object.id) {
             return Err(InspectionError::invalid(
@@ -169,17 +217,9 @@ pub(crate) fn plan(
         }
         let context = format!("scene.json object {}", object.id);
         let discovered_model = if selected.is_none() {
-            if let Some(visible) = object.properties.get("visible") {
-                if !visible.is_boolean() {
-                    return Err(InspectionError::invalid(
-                        &context,
-                        "visible must be Boolean",
-                    ));
-                }
-                if visible == false {
-                    omissions.push(format!("Object {} is invisible.", object.id));
-                    continue;
-                }
+            if !visible(object.properties.get("visible"), &context)? {
+                omissions.push(format!("Object {} is invisible.", object.id));
+                continue;
             }
             let selectors = [
                 object.image.is_some(),
@@ -194,6 +234,36 @@ pub(crate) fn plan(
                 ));
             }
             let Some(model) = &object.image else {
+                if object.properties.contains_key("text") {
+                    text_objects.push(object);
+                    continue;
+                }
+                if object.shape.as_deref() == Some("quad")
+                    && object.effects.iter().any(|e| {
+                        e.file
+                            .eq_ignore_ascii_case("effects/lightshafts/effect.json")
+                    })
+                    && settings.visual_effects
+                {
+                    ray_objects.push(object);
+                    continue;
+                }
+                if object.particle.is_some() {
+                    if !settings.visual_effects || settings.reduce_flashing {
+                        omissions.push(format!(
+                            "Object {}: particles omitted by consumer {} settings.",
+                            object.id,
+                            if settings.reduce_flashing {
+                                "reduced-flashing"
+                            } else {
+                                "visual-effects"
+                            }
+                        ));
+                    } else {
+                        particles.push(object);
+                    }
+                    continue;
+                }
                 omissions.push(format!(
                     "Object {} ({}): non-image content is omitted.",
                     object.id, object.name
@@ -241,16 +311,53 @@ pub(crate) fn plan(
                 "visible",
                 "parallaxDepth",
                 "disablepropagation",
+                "locktransforms",
+                "castshadow",
             ]
             .contains(&key.as_str())
             {
+                if raw.version == 1
+                    && [
+                        "alignment",
+                        "color",
+                        "colorBlendMode",
+                        "copybackground",
+                        "ledsource",
+                        "locktransforms",
+                        "perspective",
+                        "solid",
+                    ]
+                    .contains(&key.as_str())
+                {
+                    continue;
+                }
                 return Err(InspectionError::invalid(
                     &context,
                     format!("unsupported selected image property {key}"),
                 ));
             }
         }
-        for flag in ["visible", "disablepropagation"] {
+        if raw.version == 1
+            && (object
+                .properties
+                .get("alignment")
+                .is_some_and(|v| v != "center")
+                || vector(object.properties.get("color"), [1.; 3], &context)? != [1.; 3]
+                || object
+                    .properties
+                    .get("colorBlendMode")
+                    .is_some_and(|v| v != 0)
+                || object
+                    .properties
+                    .get("perspective")
+                    .is_some_and(|v| v != false))
+        {
+            return Err(InspectionError::invalid(
+                &context,
+                "unsupported legacy image appearance or perspective",
+            ));
+        }
+        for flag in ["disablepropagation", "locktransforms", "castshadow"] {
             if object
                 .properties
                 .get(flag)
@@ -262,7 +369,13 @@ pub(crate) fn plan(
                 ));
             }
         }
-        if object.properties.get("visible").and_then(Value::as_bool) == Some(false) {
+        if object.properties.get("castshadow") == Some(&Value::Bool(true)) {
+            return Err(InspectionError::invalid(
+                &context,
+                "image shadow casting is unsupported",
+            ));
+        }
+        if !visible(object.properties.get("visible"), &context)? {
             omissions.push(format!("Object {} is invisible.", object.id));
             continue;
         }
@@ -279,6 +392,13 @@ pub(crate) fn plan(
         }
         let mut applied_effect = None;
         for effect in &object.effects {
+            if !settings.visual_effects {
+                omissions.push(format!(
+                    "Object {}: effect {} disabled by consumer settings.",
+                    object.id, effect.file
+                ));
+                continue;
+            }
             let visibility = effect.properties.get("visible");
             if visibility.is_some_and(|v| !v.is_boolean()) {
                 return Err(InspectionError::invalid(
@@ -292,6 +412,7 @@ pub(crate) fn plan(
             let key = asset_key(&effect.file)?;
             if key.eq_ignore_ascii_case("effects/blurprecise/effect.json")
                 || key.eq_ignore_ascii_case("effects/cloudmotion/effect.json")
+                || key.eq_ignore_ascii_case("effects/waterflow/effect.json")
             {
                 if raw
                     .general
@@ -313,6 +434,8 @@ pub(crate) fn plan(
                 applied_effect = Some(
                     if key.eq_ignore_ascii_case("effects/blurprecise/effect.json") {
                         EffectDescription::Precise(super::precise::load(&decoder.package, effect)?)
+                    } else if key.eq_ignore_ascii_case("effects/waterflow/effect.json") {
+                        EffectDescription::Flow(super::flow::load(decoder, effect)?)
                     } else {
                         EffectDescription::Cloud(super::cloud::load(decoder, effect)?)
                     },
@@ -412,7 +535,8 @@ pub(crate) fn plan(
                 "depthwrite",
             ]
             .contains(&key.as_str())
-        }) || pass["shader"] != "genericimage4"
+        }) || !(pass["shader"] == "genericimage4"
+            || (raw.version == 1 && pass["shader"] == "genericimage2"))
             || pass["blending"] != "translucent"
             || pass["cullmode"] != "nocull"
             || pass["depthtest"] != "disabled"
@@ -426,10 +550,11 @@ pub(crate) fn plan(
         let combos = pass["combos"]
             .as_object()
             .ok_or_else(|| InspectionError::invalid(&material, "expected combos object"))?;
-        if combos
-            .iter()
-            .any(|(key, value)| key != "SPRITESHEET" || value.as_u64() != Some(1))
-        {
+        let legacy = raw.version == 1 && pass["shader"] == "genericimage2";
+        if combos.iter().any(|(key, value)| {
+            !(key == "SPRITESHEET" && value.as_u64() == Some(1)
+                || legacy && key == "VERSION" && value.as_u64() == Some(2))
+        }) {
             return Err(InspectionError::invalid(
                 &material,
                 "unsupported material combination",
@@ -478,6 +603,11 @@ pub(crate) fn plan(
         canvas,
         layers,
         object_ids,
+        draw_order,
+        particles,
+        ray_objects,
+        text_objects,
+        hdr,
         omissions,
     })
 }
@@ -487,7 +617,7 @@ pub(crate) fn prepare(
     selection: &[u64],
     frame_index: u32,
 ) -> Result<ImageSnapshot, InspectionError> {
-    let plan = plan(decoder, Some(selection))?;
+    let plan = plan(decoder, Some(selection), super::PlaybackSettings::default())?;
     let mut pages: BTreeMap<(String, u32), Arc<TexturePage>> = BTreeMap::new();
     let mut bytes = 0;
     let mut layers = Vec::new();
@@ -515,7 +645,14 @@ pub(crate) fn prepare(
             .cloud_profile()
             .map(|profile| profile.prepare(decoder, &mut pages, &mut bytes))
             .transpose()?;
-        layers.push(description.layer(region, cloud.as_ref(), Duration::ZERO)?);
+        let mut layer = description.layer(region, cloud.as_ref(), Duration::ZERO)?;
+        if let Some(EffectDescription::Flow(profile)) = &description.effect {
+            layer = layer.with_flow(
+                profile.prepare(decoder, &mut pages, &mut bytes)?,
+                Duration::ZERO,
+            );
+        }
+        layers.push(layer);
     }
     let composition = Arc::new(
         ImageComposition::new(plan.canvas, layers)

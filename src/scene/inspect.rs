@@ -12,7 +12,7 @@ pub(super) fn run(source: &SceneSource) -> Result<SceneInspection, InspectionErr
     let bytes = reader.bytes(reader.length, 4 * 1024 * 1024)?;
     let raw: RawScene =
         serde_json::from_slice(&bytes).map_err(|error| reader.invalid(error.to_string()))?;
-    if raw.version != 5 {
+    if !matches!(raw.version, 1 | 5) {
         return Err(reader.invalid(format!("unsupported scene version {}", raw.version)));
     }
     let canvas = [
@@ -404,6 +404,7 @@ enum AssetKind {
     Particle,
     Shader,
     Texture,
+    ParticleTexture,
     Binary,
 }
 
@@ -574,10 +575,15 @@ impl<'a> Graph<'a> {
         }
         let first_visit = !self.visited.contains_key(&normalized);
         if let Some(&previous) = self.visited.get(&normalized) {
-            if previous == kind || kind == AssetKind::Binary {
+            if previous == kind
+                || kind == AssetKind::Binary
+                || (previous == AssetKind::Texture && kind == AssetKind::ParticleTexture)
+            {
                 return Ok(());
             }
-            if previous != AssetKind::Binary {
+            if previous != AssetKind::Binary
+                && !(previous == AssetKind::ParticleTexture && kind == AssetKind::Texture)
+            {
                 self.finding(
                     DiagnosticSeverity::Error,
                     "asset-kind-conflict",
@@ -618,10 +624,20 @@ impl<'a> Graph<'a> {
         }
         self.active.push(normalized);
         let result = match kind {
-            AssetKind::Texture => texture::inspect(&mut reader).map(|texture| {
+            AssetKind::Texture | AssetKind::ParticleTexture => texture::inspect(
+                &mut reader,
+                if kind == AssetKind::ParticleTexture {
+                    texture::SpriteSampling::Clamped
+                } else {
+                    texture::SpriteSampling::InPage
+                },
+            )
+            .map(|texture| {
                 if texture.frames > 0 {
                     self.features.insert("sprites".into());
                 }
+                self.textures
+                    .retain(|previous| !previous.path.eq_ignore_ascii_case(key));
                 self.textures.push(texture);
             }),
             AssetKind::Shader => self.shader(&mut reader, object),
@@ -990,7 +1006,10 @@ impl<'a> Graph<'a> {
                     false,
                 )?;
             }
-            AssetKind::Shader | AssetKind::Texture | AssetKind::Binary => {
+            AssetKind::Shader
+            | AssetKind::Texture
+            | AssetKind::ParticleTexture
+            | AssetKind::Binary => {
                 unreachable!("JSON kinds selected by visit")
             }
         }
@@ -1069,7 +1088,14 @@ impl<'a> Graph<'a> {
                     InspectionError::invalid(key, "texture must be a string or null")
                 })?;
                 let texture = texture_path(name)?;
-                self.edge(key, &texture, AssetKind::Texture, "texture", object, false)?;
+                let kind = if pass.get("shader").and_then(|value| value.as_str())
+                    == Some("genericparticle")
+                {
+                    AssetKind::ParticleTexture
+                } else {
+                    AssetKind::Texture
+                };
+                self.edge(key, &texture, kind, "texture", object, false)?;
             }
         }
         Ok(())
@@ -1164,10 +1190,18 @@ impl<'a> Graph<'a> {
                         reader.invalid(format!("invalid sampler annotation: {error}"))
                     })?;
                 if let Some(default) = annotation.get("default").and_then(|v| v.as_str()) {
+                    let kind = if matches!(
+                        reader.asset.as_str(),
+                        "shaders/genericparticle.vert" | "shaders/genericparticle.frag"
+                    ) {
+                        AssetKind::ParticleTexture
+                    } else {
+                        AssetKind::Texture
+                    };
                     self.edge(
                         &reader.asset,
                         &texture_path(default)?,
-                        AssetKind::Texture,
+                        kind,
                         "shader-default",
                         object,
                         true,
@@ -1260,13 +1294,8 @@ fn validate_flags(
     flags: &[&str],
 ) -> Result<(), InspectionError> {
     for &flag in flags {
-        if let Some(value) = properties.get(flag)
-            && !value.is_boolean()
-        {
-            return Err(InspectionError::invalid(
-                key,
-                format!("{flag} must be a boolean; property bindings are outside the MVP profile"),
-            ));
+        if let Some(value) = properties.get(flag) {
+            super::snapshot::visible(Some(value), key)?;
         }
     }
     Ok(())

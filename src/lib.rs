@@ -23,9 +23,9 @@ pub use scene::{
     AssetSummary, CloudMotion, CloudMotionReport, CloudMotionSettings, DependencySummary,
     Diagnostic, DiagnosticSeverity, EffectBindingSummary, EffectPassSummary, EffectSummary,
     GaussianBlur, ImageComposition, ImageLayer, ImagePlayback, ImagePlaybackReport,
-    ImagePlaybackSample, ImageSnapshot, InspectionError, MaterialPassSummary, MaterialSummary,
-    ObjectKind, ObjectSummary, PackageSummary, PageSummary, PreciseBlur, SceneInspection,
-    SceneSource, SceneSummary, TextureSummary, inspect_scene,
+    ImagePlaybackSample, ImageQuality, ImageSnapshot, InspectionError, MaterialPassSummary,
+    MaterialSummary, ObjectKind, ObjectSummary, PackageSummary, PageSummary, PlaybackSettings,
+    PreciseBlur, SceneInspection, SceneSource, SceneSummary, TextureSummary, inspect_scene,
 };
 
 use std::sync::{Arc, Condvar, Mutex, TryLockError, mpsc};

@@ -82,7 +82,7 @@ impl SpriteStream {
         }
         // PNG: stored input, optional LZ4-expanded PNG, decoder workspace.
         // Raw LZ4: stored input plus its final page buffer.
-        let workspace = if self.indexed.png {
+        let workspace = if self.indexed.codec != super::Codec::Raw {
             3 * MAX_ENCODED_BYTES
         } else if self.indexed.locations[self.frames[frames.start].page as usize].compressed {
             MAX_ENCODED_BYTES
@@ -181,6 +181,7 @@ impl SpriteStream {
         let (unit, divisor) = match source.format() {
             TextureFormat::Rgba8 => (4, 1),
             TextureFormat::R8 => (1, 1),
+            TextureFormat::Rg8 => (2, 1),
             TextureFormat::Bc3 => (16, 4),
         };
         let stride = source.extent()[0].div_ceil(divisor) as usize * unit;

@@ -10,6 +10,8 @@ Open `ImagePlayback::open(&SceneSource, &[object_ids])` on an asset thread or be
 
 Playback starts paused at zero. `play`, `pause` and `seek(Duration)` control its monotonic clock. Seek pauses at the exact requested time; play resumes from there. Repeated play calls preserve the start instant. Time saturates at `Duration::MAX`.
 
+[Consumer initialization settings](playback-settings.md) select image sampling, animation, VFX and reduced flashing. `freeze(&last_presented_sample)` retains the displayed composition at its exact time; the host retains its GPU frame and discards later in-flight completions.
+
 The host schedules `try_sample` through its event loop. One call captures a common time, polls every animated source without waiting, and constructs ordered layer descriptors. It returns `None` until all sources for that time are ready. Keep the previous completed GPU frame while retrying. Errors identify invalid assets or compositions. Submit a ready sample's composition to `Renderer::render_images`, then consume `Renderer::try_frame` as usual. Retained samples and frames remain valid after shutdown.
 
 Static images, noise and masks decode once. Cloud effects use the same sample time as sprites. Sprite decoding runs on the existing pager workers. Sampling allocates descriptors and Arc references, without copying pixels, decoding, shader compilation or file I/O. GPU uploads and drawing run on the renderer worker. Drop and `shutdown` join pagers, so they belong outside latency-critical UI updates.
@@ -17,6 +19,10 @@ Static images, noise and masks decode once. Cloud effects use the same sample ti
 Existing limits apply: 1..=32 distinct selected objects, 256 MiB of static source pages, 256 MiB of unique pages in a sampled composition, bounded per-pager batches and the three-output GPU pool. These limits do not constitute an aggregate scene or process memory budget. The host still chooses when to sample; autonomous rendering, replacement loading, device-loss recovery and visibility controls remain later work.
 
 ## Native controls
+
+Scene discovery also includes the [bounded 2D particle profile](scene-particles.md). Prepared particle IDs are recorded separately from image IDs; returned compositions can include up to 4,096 particle quads between the authored images. Explicit image selection remains image-only. Unsupported particle components are reported as omitted.
+
+Scene discovery additionally prepares translucent normal-map particle refraction and authored HDR bloom when VFX is enabled. `report.hdr_bloom` records activation. HDR accumulates into a float scene target before resolving to the existing eight-bit output; refraction samples an ordered background snapshot. SDR refraction retains eight-bit accumulation. Both paths run on the renderer worker. Generated pixel contracts and the native Gojo route verify the independent model. Exact engine refraction and bloom fidelity remain unverified; see [the particle guide](scene-particles.md).
 
 The generated fixture uses a static background, two instances of a shared bird animation and a character animation with different durations:
 
@@ -39,6 +45,7 @@ The existing line-delimited JSON protocol adds these commands:
 | `{"id":1,"command":"image_at","time_ms":1500}` | Pause, seek and reply only after that exact complete sample is presented |
 | `{"id":2,"command":"play_images"}` | Resume the library clock and host sampling at a requested 30 Hz |
 | `{"id":3,"command":"pause_images"}` | Freeze the clock; an outstanding GPU request may still finish |
+| `{"id":4,"command":"freeze_images"}` | Hold the last presented sample and GPU frame; ignore newer in-flight results |
 | `inspect`, `resize`, `capture`, `stop` | Existing operations; captures refer to the completed composition |
 
 Settle outstanding work with an acknowledged `image_at` before measuring paused idle. Play/pause commands are rejected while seek or resize replies are pending. `image-playback.json` records source identity and omissions. `image-timeline.json` records bounded presentation-call observations. Exact nanosecond times are decimal strings to preserve values beyond JSON's integer range. Capture readback blocks only the diagnostic command.

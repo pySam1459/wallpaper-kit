@@ -4,6 +4,8 @@ Status: implementation started, 10 October 2026. [Read-only inspection](scene-in
 
 ## Current implementation priority
 
+The next compatibility task is [puppet animation](#next-compatibility-task-puppet-animation) for Workshop item `3013169753`. This is the requested integration detour; the original scene's MVP acceptance criteria remain open.
+
 Build the complete target scene before further performance tuning. [Selected image playback](image-playback.md) combines all seven image layers and both sprite sequences in the native viewer. Follow with the required effects, particles and parallax, comparing the complete output with Wallpaper Engine.
 
 Reuse the existing renderer, extraction, prefetch and resource bounds. Keep decoding off the host UI thread and retain explicit unsupported-feature reports. Add scheduling and lifecycle behavior needed for correct playback; defer cache redesign, scene-wide memory tuning and broader performance experiments until the visual scene works. General content support and production adapters remain later milestones.
@@ -11,6 +13,22 @@ Reuse the existing renderer, extraction, prefetch and resource bounds. Keep deco
 Image discovery now belongs to `ImagePlayback::open_scene_images`; the viewer supplies source roots rather than a target-specific ID list. [Gaussian blur](gaussian-blur.md) supports premultiplied sigma filtering and masks. The separate [precise-blur profile](precise-blur.md) loads the target's unmasked default kernel and authored scales, with generated pixels and approximate Wallpaper Engine impulse references. [Cloud motion](cloud-motion.md) now loads authored time, noise and mask parameters through the same data-driven path. Light shafts and the composition effect remain next effect milestones. Keep full scene fidelity open until the combined output is compared with Wallpaper Engine.
 
 Once the complete scene plays correctly, measure and optimize that workload against the specification's resource and host-latency targets. Functional completion establishes the baseline for this work; final MVP acceptance still requires the performance and lifecycle gates below.
+
+## Next compatibility task: puppet animation
+
+Status: planned, not implemented. Test case: [Satoru Gojo | Jujutsu Kaisen, Workshop item 3013169753](https://steamcommunity.com/sharedfiles/filedetails/?id=3013169753). Its locally installed package has signature `PKGV0018`, 25 entries and a version-1 scene. The package index now loads through the checked reader. Image playback then rejects object `101`'s `animationlayers`; package support does not establish scene compatibility.
+
+Object `101`, “gojo chopped”, references `models/gojo chopped.json`. Its `puppet` points to `models/gojo chopped_puppet.mdl` with signature `MDLV0016`. Visible additive layers `177` and `32` reference animations `173` and `54` at rates `0.93000001` and `1`. Layer `152`, animation `136`, is hidden. These are observations of scene data, not implemented animation semantics.
+
+The work should:
+
+1. Inventory the mesh, bones, weights, animation tracks and material dependencies. Establish the binary layout from compatible public references and generated probes. Keep Workshop originals read-only.
+2. Parse bounded mesh/skeleton/animation data, validating ranges, bone references and finite transforms before allocation. Preserve contextual errors for unsupported behavior.
+3. Evaluate authored layer rates, additive blending and visibility on the existing playback clock. Render the deformed mesh in the core D3D11 renderer, preserving UVs, placement, material state and scene order.
+4. Verify generated deformation and timing fixtures, then compare this wallpaper's pose and motion against Wallpaper Engine. Exercise seek/rewind, animation-off, freeze-last-frame, resume, resize, resource bounds and shutdown through the public API.
+5. Rebuild the Codex adapter and load the URL through Settings > Appearance. Verify character motion, the retained conversation frame and New chat resume, with package/build identities and remaining omissions.
+
+Completion requires puppet motion in the real consumer and a reference comparison. An undeformed texture or silently dropped animation layers are insufficient. Clock/date scripts, water waves and pulse are separate unsupported features in this scene and must remain reported.
 
 ## Target and assumptions
 
@@ -20,7 +38,7 @@ The [package inventory](research/example-scene-inventory.md) identifies ten visu
 
 Read the package and installed engine assets from explicit local paths. Do not modify the originals, invoke Wallpaper Engine to render our output, import cached shader blobs, or commit third-party artwork. Engine assets are an initial external dependency, recorded by path and hash.
 
-General photo/video playback, arbitrary custom shaders, SceneScript, puppet animation, and production framework adapters follow this scene milestone. The existing specification also requires a small GPUI embedding feasibility experiment. That experiment establishes a possible import path, without adding GPUI to the core or promising a finished adapter.
+General photo/video playback, arbitrary custom shaders, SceneScript, and production framework adapters follow this scene milestone. Puppet animation is the next compatibility detour described above. The existing specification also requires a small GPUI embedding feasibility experiment. That experiment establishes a possible import path, without adding GPUI to the core or promising a finished adapter.
 
 ## Consumer contract
 

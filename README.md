@@ -1,14 +1,24 @@
+<div align="center">
+
 # wallpaper-kit
 
 An open source renderer for high-quality photos, videos, and animated Wallpaper Engine scenes, designed for application backgrounds and other embedded content.
 
 The project starts on Windows. The consuming application's responsiveness takes priority over background animation.
 
+<img src="docs/assets/codex-example.png" alt="Wallpaper Kit integrated into OpenAI Codex" width="1200" />
+
+</div>
+
 ## Status
 
-The Rust library renders blank Direct3D 11 textures, controlled-time diagnostic motion and decoded TEX pages through a bounded reusable output pool. It also inspects local scene packages and their asset dependencies through a read-only public API. A native Windows viewer and headless verification runners consume its public API. [TEX page verification](docs/texture-pages.md) covers PNG/LZ4 decoding and RGBA8/R8/BC3 drawing. Authored scene rendering, production animation, photo/video playback, and framework adapters remain unimplemented.
+The Rust library renders blank Direct3D 11 textures, controlled-time diagnostic motion and decoded TEX pages through a bounded reusable output pool. It also inspects local scene packages and their asset dependencies through a read-only public API. A native Windows viewer and headless verification runners consume its public API. [TEX page verification](docs/texture-pages.md) covers PNG/LZ4 decoding and RGBA8/R8/BC3 drawing. [Image playback](docs/image-playback.md) supports selected scene images with precise blur/cloud motion, and [scene particles](docs/scene-particles.md) adds Gojo's stars, shooting-star trail and fireworks. [Consumer settings](docs/playback-settings.md) select sampling quality, animation, VFX, reduced flashing and freeze-last-frame behavior. Complete scene compatibility, production lifecycle and photo/video playback remain open.
 
 The [renderer specification](docs/spec/wallpaper-kit.md) defines the architecture, dependency choices, delivery gates, and measurable MVP acceptance criteria.
+
+Output supports 3840 × 2160 (4K) through `Size::new(3840, 2160)` with no intermediate 720p rendering. A generated one-pixel-detail test verifies full-resolution PNG decoding, GPU output and resize. The local Codex demo also receives 4K video; see [resolution and verification](docs/playback-settings.md#output-resolution).
+
+The next compatibility task is [puppet animation for Workshop item 3013169753](docs/scene-rendering-plan.md#next-compatibility-task-puppet-animation). Its package index is supported; mesh deformation and animation layers remain unsupported.
 
 ## Build and run
 
@@ -33,6 +43,8 @@ For a machine without an interactive desktop:
 ```powershell
 pwsh -File ./scripts/verify.ps1 -Software -SkipNative
 ```
+
+For the prepared local Codex wallpaper demo, double-click [Launch Codex Wallpaper.cmd](Launch%20Codex%20Wallpaper.cmd), or run `pwsh -File integrations/launch-codex.ps1`. The launcher prepares a missing runtime copy, builds a missing or stale adapter, restores saved wallpaper settings and waits for the wallpaper to connect. Repeated launches bring the existing demo forward. See [the local launch guide](docs/research/codex-wallpaper-demo.md#run-and-stop).
 
 Evidence is retained under `artifacts/`, which Git ignores. The [blank renderer verification guide](docs/blank-renderer.md) explains the API, control protocol, evidence, and limits. The Windows CI workflow runs the software/headless route; the workflow itself has not yet run on GitHub.
 
@@ -63,6 +75,24 @@ Completion requires the following evidence:
 The [initial package inventory](docs/research/example-scene-inventory.md) identifies two sprite sequences, particles, parallax, and four effect types. Their large texture pages make bounded streaming part of the MVP. Completing the transitive asset inventory and validating behavior against Wallpaper Engine remain implementation gates.
 
 General photo and video support, more scene formats and features, and additional framework adapters follow this milestone. Embedding feasibility should be tested early to avoid building a renderer that only works in its own window.
+
+## Next phase: product integrations
+
+After the core requirements and MVP acceptance criteria are met, build demonstration forks with the renderer integrated into these products:
+
+- OpenAI's Codex desktop app, with [openai/codex](https://github.com/openai/codex) as the supplied reference. That repository describes Codex CLI; desktop app source availability and the integration route still need verification.
+- [Zed](https://github.com/zed-industries/zed).
+- [T3 Code](https://github.com/pingdotgg/t3code).
+- [OpenCode](https://github.com/anomalyco/opencode).
+
+These integrations should demonstrate the renderer's utility across different products and technologies, and provide working examples for marketing. Each fork must preserve the host's product quality and performance.
+
+The intended chat background has two states:
+
+1. In an empty session, show the full, clear animated background with the chat composer above it.
+2. When the user starts the session, blur the background while keeping its animation visible, as though viewed through translucent glass. Keep the conversation and composer readable above the background.
+
+Validate both states and the transition in each host. Compare normal host workflows with rendering disabled and enabled, including typing, scrolling, session changes, and background animation. Record CPU, GPU, memory, and host input/scrolling latency alongside the build, hardware, resolution, quality, and frame-rate settings. A fork succeeds only when the background experience works without degrading the host's usability, visual quality, or performance under the tested settings.
 
 ## Scene inspection
 

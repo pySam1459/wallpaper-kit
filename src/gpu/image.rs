@@ -9,14 +9,28 @@ pub(super) struct ImageRenderer {
     dimensions: ID3D11Buffer,
     layer_vertex: ID3D11VertexShader,
     layer_pixel: ID3D11PixelShader,
+    particle_pixel: ID3D11PixelShader,
+    refract_pixel: ID3D11PixelShader,
+    resolve_pixel: ID3D11PixelShader,
+    bloom_down: ID3D11PixelShader,
+    bloom_up: ID3D11PixelShader,
+    scene_constants: ID3D11Buffer,
+    scene: Option<BlurTarget>,
+    background: Option<BlurTarget>,
+    bloom: Vec<BlurTarget>,
     layer_constants: ID3D11Buffer,
     blur_horizontal: ID3D11PixelShader,
     blur_vertical: ID3D11PixelShader,
     blur_constants: ID3D11Buffer,
     cloud_pixel: ID3D11PixelShader,
+    flow_pixel: ID3D11PixelShader,
+    ray_vertex: ID3D11VertexShader,
+    ray_pixel: ID3D11PixelShader,
+    ray_constants: ID3D11Buffer,
     cloud_constants: ID3D11Buffer,
     blur: Option<BlurTarget>,
     blend: ID3D11BlendState,
+    additive: ID3D11BlendState,
     textures: Vec<Uploaded>,
     pub(super) uploads: u64,
 }
@@ -29,15 +43,21 @@ struct Uploaded {
 
 struct BlurTarget {
     size: Size,
+    format: DXGI_FORMAT,
+    texture: ID3D11Texture2D,
     target: ID3D11RenderTargetView,
     source: ID3D11ShaderResourceView,
 }
 
 impl BlurTarget {
     fn new(device: &ID3D11Device, size: Size) -> Result<Self, Error> {
+        Self::with_format(device, size, DXGI_FORMAT_R16G16B16A16_FLOAT)
+    }
+
+    fn with_format(device: &ID3D11Device, size: Size, format: DXGI_FORMAT) -> Result<Self, Error> {
         let (mut texture, mut target, mut source) = (None, None, None);
-        // SAFETY: checked dimensions, default GPU-only texture, and owned COM
-        // outputs. Both views retain the resource after this local ref drops.
+        // SAFETY: checked dimensions, default GPU-only texture and owned COM
+        // outputs. Texture and views remain owned through worker submission.
         unsafe {
             device.CreateTexture2D(
                 &D3D11_TEXTURE2D_DESC {
@@ -45,7 +65,7 @@ impl BlurTarget {
                     Height: size.height(),
                     MipLevels: 1,
                     ArraySize: 1,
-                    Format: DXGI_FORMAT_R16G16B16A16_FLOAT,
+                    Format: format,
                     SampleDesc: DXGI_SAMPLE_DESC {
                         Count: 1,
                         Quality: 0,
@@ -60,12 +80,14 @@ impl BlurTarget {
             let texture = texture.expect("blur texture output");
             device.CreateRenderTargetView(&texture, None, Some(&mut target))?;
             device.CreateShaderResourceView(&texture, None, Some(&mut source))?;
+            Ok(Self {
+                size,
+                format,
+                texture,
+                target: target.expect("blur target output"),
+                source: source.expect("blur source output"),
+            })
         }
-        Ok(Self {
-            size,
-            target: target.expect("blur target output"),
-            source: source.expect("blur source output"),
-        })
     }
 }
 
@@ -76,14 +98,32 @@ impl ImageRenderer {
         let r8_code = compile(s!("r8_main"), s!("ps_5_0"))?;
         let layer_vertex_code = compile(s!("layer_vertex"), s!("vs_5_0"))?;
         let layer_pixel_code = compile(s!("layer_pixel"), s!("ps_5_0"))?;
+        let particle_pixel_code = compile(s!("particle_pixel"), s!("ps_5_0"))?;
+        let refract_code = compile(s!("refract_pixel"), s!("ps_5_0"))?;
+        let resolve_code = compile(s!("resolve_pixel"), s!("ps_5_0"))?;
+        let bloom_down_code = compile(s!("bloom_down"), s!("ps_5_0"))?;
+        let bloom_up_code = compile(s!("bloom_up"), s!("ps_5_0"))?;
+        let (
+            mut refract_pixel,
+            mut resolve_pixel,
+            mut bloom_down,
+            mut bloom_up,
+            mut scene_constants,
+        ) = (None, None, None, None, None);
         let blur_horizontal_code = compile(s!("blur_horizontal"), s!("ps_5_0"))?;
         let blur_vertical_code = compile(s!("blur_vertical"), s!("ps_5_0"))?;
         let cloud_pixel_code = compile(s!("cloud_pixel"), s!("ps_5_0"))?;
+        let flow_pixel_code = compile(s!("flow_pixel"), s!("ps_5_0"))?;
+        let ray_vertex_code = compile(s!("ray_vertex"), s!("vs_5_0"))?;
+        let ray_pixel_code = compile(s!("ray_pixel"), s!("ps_5_0"))?;
+        let (mut ray_vertex, mut ray_pixel, mut ray_constants) = (None, None, None);
         let (mut vertex, mut rgba, mut r8, mut dimensions) = (None, None, None, None);
         let (mut layer_vertex, mut layer_pixel, mut layer_constants, mut blend) =
             (None, None, None, None);
         let (mut blur_horizontal, mut blur_vertical, mut blur_constants) = (None, None, None);
         let (mut cloud_pixel, mut cloud_constants) = (None, None);
+        let mut flow_pixel = None;
+        let (mut particle_pixel, mut additive) = (None, None);
         // SAFETY: live device and bytecode buffers; outputs are owned COM refs.
         unsafe {
             device.CreateVertexShader(&vertex_code, None, Some(&mut vertex))?;
@@ -101,9 +141,37 @@ impl ImageRenderer {
             )?;
             device.CreateVertexShader(&layer_vertex_code, None, Some(&mut layer_vertex))?;
             device.CreatePixelShader(&layer_pixel_code, None, Some(&mut layer_pixel))?;
+            device.CreatePixelShader(&particle_pixel_code, None, Some(&mut particle_pixel))?;
+            device.CreatePixelShader(&refract_code, None, Some(&mut refract_pixel))?;
+            device.CreatePixelShader(&resolve_code, None, Some(&mut resolve_pixel))?;
+            device.CreatePixelShader(&bloom_down_code, None, Some(&mut bloom_down))?;
+            device.CreatePixelShader(&bloom_up_code, None, Some(&mut bloom_up))?;
+            device.CreateBuffer(
+                &D3D11_BUFFER_DESC {
+                    ByteWidth: 48,
+                    Usage: D3D11_USAGE_DEFAULT,
+                    BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as u32,
+                    ..Default::default()
+                },
+                None,
+                Some(&mut scene_constants),
+            )?;
             device.CreatePixelShader(&blur_horizontal_code, None, Some(&mut blur_horizontal))?;
             device.CreatePixelShader(&blur_vertical_code, None, Some(&mut blur_vertical))?;
             device.CreatePixelShader(&cloud_pixel_code, None, Some(&mut cloud_pixel))?;
+            device.CreatePixelShader(&flow_pixel_code, None, Some(&mut flow_pixel))?;
+            device.CreateVertexShader(&ray_vertex_code, None, Some(&mut ray_vertex))?;
+            device.CreatePixelShader(&ray_pixel_code, None, Some(&mut ray_pixel))?;
+            device.CreateBuffer(
+                &D3D11_BUFFER_DESC {
+                    ByteWidth: 128,
+                    Usage: D3D11_USAGE_DEFAULT,
+                    BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as u32,
+                    ..Default::default()
+                },
+                None,
+                Some(&mut ray_constants),
+            )?;
             device.CreateBuffer(
                 &D3D11_BUFFER_DESC {
                     ByteWidth: 64,
@@ -126,7 +194,7 @@ impl ImageRenderer {
             )?;
             device.CreateBuffer(
                 &D3D11_BUFFER_DESC {
-                    ByteWidth: 64,
+                    ByteWidth: 160,
                     Usage: D3D11_USAGE_DEFAULT,
                     BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as u32,
                     ..Default::default()
@@ -146,6 +214,8 @@ impl ImageRenderer {
                 RenderTargetWriteMask: D3D11_COLOR_WRITE_ENABLE_ALL.0 as u8,
             };
             device.CreateBlendState(&blend_desc, Some(&mut blend))?;
+            blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
+            device.CreateBlendState(&blend_desc, Some(&mut additive))?;
         }
         Ok(Self {
             vertex: vertex.expect("vertex shader output"),
@@ -154,14 +224,28 @@ impl ImageRenderer {
             dimensions: dimensions.expect("dimension buffer output"),
             layer_vertex: layer_vertex.expect("layer vertex output"),
             layer_pixel: layer_pixel.expect("layer pixel output"),
+            particle_pixel: particle_pixel.expect("particle pixel output"),
+            refract_pixel: refract_pixel.expect("refraction shader output"),
+            resolve_pixel: resolve_pixel.expect("resolve shader output"),
+            bloom_down: bloom_down.expect("bloom down shader output"),
+            bloom_up: bloom_up.expect("bloom up shader output"),
+            scene_constants: scene_constants.expect("scene constants output"),
+            scene: None,
+            background: None,
+            bloom: Vec::new(),
             layer_constants: layer_constants.expect("layer buffer output"),
             blur_horizontal: blur_horizontal.expect("horizontal shader output"),
             blur_vertical: blur_vertical.expect("vertical shader output"),
             blur_constants: blur_constants.expect("blur buffer output"),
             cloud_pixel: cloud_pixel.expect("cloud pixel output"),
+            flow_pixel: flow_pixel.expect("flow pixel output"),
+            ray_vertex: ray_vertex.expect("ray vertex output"),
+            ray_pixel: ray_pixel.expect("ray pixel output"),
+            ray_constants: ray_constants.expect("ray constants output"),
             cloud_constants: cloud_constants.expect("cloud constants output"),
             blur: None,
             blend: blend.expect("blend output"),
+            additive: additive.expect("additive blend output"),
             textures: Vec::new(),
             uploads: 0,
         })
@@ -172,14 +256,29 @@ impl ImageRenderer {
     }
 
     pub(super) fn effect_bytes(&self) -> u64 {
-        self.blur.as_ref().map_or(0, |blur| {
-            u64::from(blur.size.width()) * u64::from(blur.size.height()) * 8
-        })
+        self.blur
+            .iter()
+            .chain(self.scene.iter())
+            .chain(self.background.iter())
+            .chain(&self.bloom)
+            .map(|target| {
+                u64::from(target.size.width())
+                    * u64::from(target.size.height())
+                    * if target.format == DXGI_FORMAT_R16G16B16A16_FLOAT {
+                        8
+                    } else {
+                        4
+                    }
+            })
+            .sum()
     }
 
     pub(super) fn release_texture(&mut self) {
         self.textures.clear();
         self.blur = None;
+        self.scene = None;
+        self.background = None;
+        self.bloom.clear();
     }
 
     pub(super) fn prepare(
@@ -187,6 +286,8 @@ impl ImageRenderer {
         device: &ID3D11Device,
         pages: &[Arc<TexturePage>],
         blur_extent: Option<Size>,
+        output_size: Size,
+        composition: Option<&crate::ImageComposition>,
     ) -> Result<(), Error> {
         // Preceding queries completed and draw unbound sources. Evict obsolete
         // pages before uploading, keeping resident payloads within admission.
@@ -206,6 +307,62 @@ impl ImageRenderer {
                 .map(|extent| BlurTarget::new(device, extent))
                 .transpose()?;
         }
+        let hdr = composition.and_then(|composition| composition.hdr);
+        let refract = composition.is_some_and(|composition| {
+            composition
+                .layers()
+                .iter()
+                .any(|layer| layer.refraction.is_some())
+        });
+        let scene_size = (hdr.is_some() || refract).then_some(output_size);
+        let scene_format = if hdr.is_some() {
+            DXGI_FORMAT_R16G16B16A16_FLOAT
+        } else {
+            DXGI_FORMAT_R8G8B8A8_UNORM
+        };
+        if self
+            .scene
+            .as_ref()
+            .map(|target| (target.size, target.format))
+            != scene_size.map(|size| (size, scene_format))
+        {
+            self.scene = None;
+            self.background = None;
+            self.bloom.clear();
+            self.scene = scene_size
+                .map(|size| BlurTarget::with_format(device, size, scene_format))
+                .transpose()?;
+        }
+        let background_size = refract.then_some(output_size);
+        if self.background.as_ref().map(|target| target.size) != background_size {
+            self.background = None;
+            self.background = background_size
+                .map(|size| BlurTarget::with_format(device, size, scene_format))
+                .transpose()?;
+        }
+        let mut sizes = Vec::new();
+        if let Some(hdr) = hdr.filter(|hdr| hdr.strength > 0.) {
+            let [mut width, mut height] = [output_size.width(), output_size.height()];
+            for _ in 0..hdr.iterations {
+                width = width.div_ceil(2);
+                height = height.div_ceil(2);
+                sizes.push(Size::new(width, height)?);
+                if width == 1 && height == 1 {
+                    break;
+                }
+            }
+        }
+        if !self
+            .bloom
+            .iter()
+            .map(|target| target.size)
+            .eq(sizes.iter().copied())
+        {
+            self.bloom.clear();
+            for size in sizes {
+                self.bloom.push(BlurTarget::new(device, size)?);
+            }
+        }
         Ok(())
     }
 
@@ -222,6 +379,7 @@ impl ImageRenderer {
         let (format, pitch) = match page.format() {
             TextureFormat::Rgba8 => (DXGI_FORMAT_R8G8B8A8_UNORM, width * 4),
             TextureFormat::Bc3 => (DXGI_FORMAT_BC3_UNORM, width.div_ceil(4) * 16),
+            TextureFormat::Rg8 => (DXGI_FORMAT_R8G8_UNORM, width * 2),
             TextureFormat::R8 => (DXGI_FORMAT_R8_UNORM, width),
         };
         let mut texture = None;
@@ -326,12 +484,23 @@ impl ImageRenderer {
     ) {
         // SAFETY: exclusive worker context and output GPU key. All constants,
         // shaders and source views are owned through submission. Initialized
-        // scalar arrays match HLSL b1 (64 bytes), b2 (32) and b3 (64) layouts.
+        // scalar arrays match HLSL b1 (160 bytes), b2 (32) and b3 (64) layouts.
         unsafe {
             context.IASetInputLayout(None);
             context.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             context.VSSetConstantBuffers(1, Some(&[Some(self.layer_constants.clone())]));
             context.PSSetConstantBuffers(1, Some(&[Some(self.layer_constants.clone())]));
+            context.PSSetConstantBuffers(4, Some(&[Some(self.scene_constants.clone())]));
+            if let Some(scene) = &self.scene {
+                context.ClearRenderTargetView(
+                    &scene.target,
+                    &crate::BLANK_RGBA.map(|v| f32::from(v) / 255.),
+                );
+            }
+            let target = self
+                .scene
+                .as_ref()
+                .map_or(&output.view, |scene| &scene.target);
             for layer in composition.layers() {
                 let region = layer.region();
                 let source = Arc::downgrade(region.page());
@@ -342,6 +511,14 @@ impl ImageRenderer {
                     .expect("admitted source uploaded");
                 let axes = layer.axes();
                 let canvas = composition.canvas();
+                let (color, additive) = layer.particle_color.unwrap_or(([1.; 3], false));
+                let uv = layer.particle_uv.unwrap_or([0., 0., 1., 0., 0., 1.]);
+                let (next_region, next_uv, frame_blend) = layer
+                    .particle_next
+                    .as_ref()
+                    .map_or((region, uv, 0.), |(region, uv, blend)| {
+                        (region, *uv, *blend)
+                    });
                 let constants = [
                     (canvas.width() as f32).to_bits(),
                     (canvas.height() as f32).to_bits(),
@@ -358,7 +535,31 @@ impl ImageRenderer {
                     layer.opacity().to_bits(),
                     layer.brightness().to_bits(),
                     u32::from(region.page().format() == TextureFormat::R8),
+                    u32::from(layer.image_quality() == crate::ImageQuality::Linear),
+                    color[0].to_bits(),
+                    color[1].to_bits(),
+                    color[2].to_bits(),
                     0,
+                    uv[0].to_bits(),
+                    uv[1].to_bits(),
+                    uv[2].to_bits(),
+                    uv[3].to_bits(),
+                    uv[4].to_bits(),
+                    uv[5].to_bits(),
+                    0,
+                    0,
+                    next_uv[0].to_bits(),
+                    next_uv[1].to_bits(),
+                    next_uv[2].to_bits(),
+                    next_uv[3].to_bits(),
+                    next_uv[4].to_bits(),
+                    next_uv[5].to_bits(),
+                    frame_blend.to_bits(),
+                    u32::from(next_region.page().format() == TextureFormat::R8),
+                    next_region.origin()[0],
+                    next_region.origin()[1],
+                    next_region.extent()[0],
+                    next_region.extent()[1],
                 ];
                 context.UpdateSubresource(
                     &self.layer_constants,
@@ -368,8 +569,152 @@ impl ImageRenderer {
                     0,
                     0,
                 );
-                let mut sources = [Some(texture.view.clone()), None, None, None, None];
-                if let Some((motion, time)) = layer.cloud_motion() {
+                let mut sources = [
+                    Some(texture.view.clone()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    layer.particle_next.as_ref().map(|(region, _, _)| {
+                        self.textures
+                            .iter()
+                            .find(|texture| texture.source.ptr_eq(&Arc::downgrade(region.page())))
+                            .expect("next particle page uploaded")
+                            .view
+                            .clone()
+                    }),
+                ];
+                if let Some((normal, amount)) = &layer.refraction {
+                    let scene = self.scene.as_ref().expect("refraction scene admitted");
+                    let background = self.background.as_ref().expect("background admitted");
+                    context.OMSetRenderTargets(None, None);
+                    context.CopyResource(&background.texture, &scene.texture);
+                    self.scene_parameters(
+                        context,
+                        output.size,
+                        normal.extent(),
+                        *amount,
+                        composition.hdr,
+                        false,
+                    );
+                    sources[5] = Some(background.source.clone());
+                    sources[6] = Some(
+                        self.textures
+                            .iter()
+                            .find(|texture| texture.source.ptr_eq(&Arc::downgrade(normal.page())))
+                            .expect("normal uploaded")
+                            .view
+                            .clone(),
+                    );
+                    context.PSSetShader(&self.refract_pixel, None);
+                } else if let Some((rays, time)) = &layer.rays {
+                    let noise = rays.noise.extent();
+                    let gradient = rays.gradient.extent();
+                    let h = rays.homography;
+                    let constants = [
+                        h[0].to_bits(),
+                        h[1].to_bits(),
+                        h[2].to_bits(),
+                        h[3].to_bits(),
+                        h[4].to_bits(),
+                        h[5].to_bits(),
+                        h[6].to_bits(),
+                        h[7].to_bits(),
+                        rays.start_color[0].to_bits(),
+                        rays.start_color[1].to_bits(),
+                        rays.start_color[2].to_bits(),
+                        rays.exponent.to_bits(),
+                        rays.end_color[0].to_bits(),
+                        rays.end_color[1].to_bits(),
+                        rays.end_color[2].to_bits(),
+                        rays.intensity.to_bits(),
+                        rays.feather[0].to_bits(),
+                        rays.feather[1].to_bits(),
+                        rays.radius.to_bits(),
+                        rays.smoothness.to_bits(),
+                        rays.scale[0].to_bits(),
+                        rays.scale[1].to_bits(),
+                        rays.noise_amount.to_bits(),
+                        rays.noise_scale.to_bits(),
+                        ((time.as_secs_f64() * f64::from(rays.speed)).rem_euclid(1.) as f32)
+                            .to_bits(),
+                        0,
+                        noise[0],
+                        noise[1],
+                        gradient[0],
+                        gradient[1],
+                        0,
+                        0,
+                    ];
+                    context.UpdateSubresource(
+                        &self.ray_constants,
+                        0,
+                        None,
+                        constants.as_ptr().cast(),
+                        0,
+                        0,
+                    );
+                    context.VSSetConstantBuffers(6, Some(&[Some(self.ray_constants.clone())]));
+                    context.PSSetConstantBuffers(6, Some(&[Some(self.ray_constants.clone())]));
+                    for (slot, region) in [(3, &rays.noise), (4, &rays.gradient)] {
+                        sources[slot] = Some(
+                            self.textures
+                                .iter()
+                                .find(|t| t.source.ptr_eq(&Arc::downgrade(region.page())))
+                                .expect("ray input uploaded")
+                                .view
+                                .clone(),
+                        );
+                    }
+                    context.PSSetShader(&self.ray_pixel, None);
+                } else if let Some((motion, time)) = layer.flow_motion() {
+                    let p = &motion.profile;
+                    let mask = motion.mask.extent();
+                    let phase = motion.phase.extent();
+                    let constants = [
+                        p.strength.to_bits(),
+                        p.feather.to_bits(),
+                        ((time.as_secs_f64() * f64::from(p.speed) * 0.1).rem_euclid(1.) as f32)
+                            .to_bits(),
+                        p.phase_scale.to_bits(),
+                        mask[0],
+                        mask[1],
+                        phase[0],
+                        phase[1],
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                    ];
+                    context.UpdateSubresource(
+                        &self.cloud_constants,
+                        0,
+                        None,
+                        constants.as_ptr().cast(),
+                        0,
+                        0,
+                    );
+                    context.PSSetConstantBuffers(5, Some(&[Some(self.cloud_constants.clone())]));
+                    for (slot, region) in [(3, &motion.mask), (4, &motion.phase)] {
+                        sources[slot] = Some(
+                            self.textures
+                                .iter()
+                                .find(|texture| {
+                                    texture.source.ptr_eq(&Arc::downgrade(region.page()))
+                                })
+                                .expect("flow input uploaded")
+                                .view
+                                .clone(),
+                        );
+                    }
+                    context.PSSetShader(&self.flow_pixel, None);
+                } else if let Some((motion, time)) = layer.cloud_motion() {
                     let settings = motion.settings();
                     let (sin, cos) = settings.direction_radians().sin_cos();
                     let [grain, horizontal] = settings.granularity();
@@ -476,11 +821,33 @@ impl ImageRenderer {
                     });
                     context.PSSetShader(&self.blur_vertical, None);
                 } else {
-                    context.PSSetShader(&self.layer_pixel, None);
+                    context.PSSetShader(
+                        if layer.particle_color.is_some() {
+                            &self.particle_pixel
+                        } else {
+                            &self.layer_pixel
+                        },
+                        None,
+                    );
                 }
-                context.VSSetShader(&self.layer_vertex, None);
-                context.OMSetRenderTargets(Some(&[Some(output.view.clone())]), None);
-                context.OMSetBlendState(&self.blend, None, u32::MAX);
+                context.VSSetShader(
+                    if layer.rays.is_some() {
+                        &self.ray_vertex
+                    } else {
+                        &self.layer_vertex
+                    },
+                    None,
+                );
+                context.OMSetRenderTargets(Some(&[Some(target.clone())]), None);
+                context.OMSetBlendState(
+                    if additive {
+                        &self.additive
+                    } else {
+                        &self.blend
+                    },
+                    None,
+                    u32::MAX,
+                );
                 context.RSSetViewports(Some(&[D3D11_VIEWPORT {
                     Width: output.size.width() as f32,
                     Height: output.size.height() as f32,
@@ -492,8 +859,147 @@ impl ImageRenderer {
                 context.Draw(6, 0);
                 // Unbind all inputs before the next layer reuses scratch as an
                 // output, including when original and mask share a source.
-                context.PSSetShaderResources(0, Some(&[None, None, None, None, None]));
+                context.PSSetShaderResources(
+                    0,
+                    Some(&[None, None, None, None, None, None, None, None]),
+                );
             }
+            context.OMSetRenderTargets(None, None);
+            context.OMSetBlendState(None, None, u32::MAX);
+            if let Some(scene) = &self.scene {
+                for (index, bloom) in self.bloom.iter().enumerate() {
+                    let source = if index == 0 {
+                        scene
+                    } else {
+                        &self.bloom[index - 1]
+                    };
+                    self.scene_parameters(
+                        context,
+                        bloom.size,
+                        [source.size.width(), source.size.height()],
+                        0.,
+                        composition.hdr,
+                        index == 0,
+                    );
+                    self.fullscreen(
+                        context,
+                        &bloom.target,
+                        bloom.size,
+                        &self.bloom_down,
+                        &source.source,
+                        None,
+                        false,
+                    );
+                }
+                for index in (1..self.bloom.len()).rev() {
+                    let source = &self.bloom[index];
+                    let destination = &self.bloom[index - 1];
+                    self.scene_parameters(
+                        context,
+                        destination.size,
+                        [source.size.width(), source.size.height()],
+                        0.,
+                        composition.hdr,
+                        false,
+                    );
+                    self.fullscreen(
+                        context,
+                        &destination.target,
+                        destination.size,
+                        &self.bloom_up,
+                        &source.source,
+                        None,
+                        true,
+                    );
+                }
+                self.scene_parameters(
+                    context,
+                    output.size,
+                    [output.size.width(), output.size.height()],
+                    0.,
+                    composition.hdr,
+                    !self.bloom.is_empty(),
+                );
+                self.fullscreen(
+                    context,
+                    &output.view,
+                    output.size,
+                    &self.resolve_pixel,
+                    &scene.source,
+                    self.bloom.first().map(|target| &target.source),
+                    false,
+                );
+            }
+        }
+    }
+
+    fn scene_parameters(
+        &self,
+        context: &ID3D11DeviceContext,
+        size: Size,
+        source: [u32; 2],
+        amount: f32,
+        hdr: Option<crate::scene::hdr::HdrBloom>,
+        first: bool,
+    ) {
+        let constants = [
+            size.width(),
+            size.height(),
+            source[0],
+            source[1],
+            amount.to_bits(),
+            hdr.map_or(0., |hdr| hdr.threshold).to_bits(),
+            hdr.map_or(0., |hdr| hdr.feather).to_bits(),
+            hdr.map_or(0., |hdr| hdr.scatter).to_bits(),
+            hdr.map_or(0., |hdr| hdr.strength).to_bits(),
+            u32::from(first),
+            0,
+            0,
+        ];
+        // SAFETY: initialized 48-byte array matches b4 and the worker owns context.
+        unsafe {
+            context.UpdateSubresource(
+                &self.scene_constants,
+                0,
+                None,
+                constants.as_ptr().cast(),
+                0,
+                0,
+            );
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn fullscreen(
+        &self,
+        context: &ID3D11DeviceContext,
+        target: &ID3D11RenderTargetView,
+        size: Size,
+        pixel: &ID3D11PixelShader,
+        source: &ID3D11ShaderResourceView,
+        bloom: Option<&ID3D11ShaderResourceView>,
+        additive: bool,
+    ) {
+        // SAFETY: all views are owned, nonaliasing, and retained for submission.
+        unsafe {
+            context.VSSetShader(&self.vertex, None);
+            context.PSSetShader(pixel, None);
+            context.OMSetRenderTargets(Some(&[Some(target.clone())]), None);
+            context.OMSetBlendState(
+                if additive { Some(&self.additive) } else { None },
+                None,
+                u32::MAX,
+            );
+            context.RSSetViewports(Some(&[D3D11_VIEWPORT {
+                Width: size.width() as f32,
+                Height: size.height() as f32,
+                MinDepth: 0.,
+                MaxDepth: 1.,
+                ..Default::default()
+            }]));
+            context.PSSetShaderResources(5, Some(&[Some(source.clone()), bloom.cloned()]));
+            context.Draw(3, 0);
+            context.PSSetShaderResources(5, Some(&[None, None]));
             context.OMSetRenderTargets(None, None);
             context.OMSetBlendState(None, None, u32::MAX);
         }

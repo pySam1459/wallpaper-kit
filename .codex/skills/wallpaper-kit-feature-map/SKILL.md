@@ -17,9 +17,10 @@ Map behavior from the library consumer's point of view: what the capability does
 | [Image composition](features/image-composition.md) | Ordered placed crops, source reuse, selected target snapshots and combined image playback | Verified on recorded Windows build |
 | [Sprite extraction](features/sprite-extraction.md) | Fixed-time selection, bounded extraction/background preparation/prefetch, stale-result rejection and native prepared-frame capture | Verified on recorded Windows build |
 | [Workshop scene MVP](features/workshop-scene-mvp.md) | Inspect and later render Workshop item `3780699842`, including animation | Inspection and seven-image native playback verified; complete scene rendering planned |
+| [Scene particles](features/scene-particles.md) | Gojo stars, shooting-star trails and fireworks death/follow children | Generated WARP and native Gojo checks verified; engine fidelity unverified |
 | [Playback and lifecycle](features/playback-and-lifecycle.md) | Pause/resume plus production lifecycle | Fixture and selected-image play/pause/seek, frame lifetime and pool backpressure verified; full scene lifecycle planned |
 | [Performance and host impact](features/performance-and-host-impact.md) | Playback resource usage and consuming-app responsiveness | Idle and fixture readiness diagnostics implemented; scene/host performance planned |
-| [Library and adapter integration](features/library-and-adapter-integration.md) | Public consumer API and individual framework adapters | Native/headless blank consumers implemented; framework adapters planned |
+| [Library and adapter integration](features/library-and-adapter-integration.md) | Public consumer API and individual framework adapters | Native/headless consumers and local Windows Zed GPUI diagnostic composition verified; full host acceptance planned |
 
 Photos, general video playback, and additional scene compatibility remain project requirements. Add their procedures as concrete implementations arrive rather than inventing navigation or commands now.
 

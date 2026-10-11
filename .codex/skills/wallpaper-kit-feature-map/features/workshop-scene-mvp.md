@@ -14,8 +14,14 @@ For metadata, use the public `inspect_scene(&SceneSource)` API or `scene-inspect
 
 ## Drive and observe
 
+The requested next compatibility task is [puppet animation for Workshop item 3013169753](../../../../docs/scene-rendering-plan.md#next-compatibility-task-puppet-animation). Its `PKGV0018` package uses the checked index layout, but image preparation rejects object `101`'s `animationlayers` and its puppet model remains unsupported. The plan records the observed asset/layer identities and requires generated deformation tests, a Wallpaper Engine motion comparison and the actual Codex URL-loading route. This is planned compatibility work, not another verified scene.
+
+[Light-shafts reference groundwork](../../../../docs/research/light-shafts.md) adds generated local Wallpaper Engine probes and a measured receipt for geometry, noise channels, gradient RGB/alpha, masks and isolated target motion. These are reference observations; the library still omits the light-shaft shape. Ray/noise equations, general perspective interpolation and blend semantics remain unresolved.
+
 Inventory required features and dependencies first. Load the package through the public API used by the viewer. Observe explicit load completion or actionable errors, including unsupported features. Compare layers, composition, effects, and animation over multiple times against Wallpaper Engine with matching settings. Exercise interaction if the actual scene requires it.
 
 ## Evidence and limits
+
+Package indexing accepts `PKGV0016`, `PKGV0018`, `PKGV0022` and `PKGV0024`. The `PKGV0022` route was exercised through `scene-inspect` against Workshop item `3521344055`; [the inspection guide](../../../../docs/scene-inspection.md) records its receipt and separate texture/effect/text findings. Generated contracts retain malformed-index rejection for each added signature. Package acceptance does not establish scene rendering compatibility.
 
 Retain the package inventory, source identity, settings, reference output, rendered captures or recording, and logs. Account for timing and randomness instead of asserting identical frames without controlled inputs. Use small redistributable fixtures to isolate failures. Keep third-party assets out of commits unless redistribution is permitted.

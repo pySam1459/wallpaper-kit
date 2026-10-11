@@ -51,7 +51,10 @@ impl Package {
         }
         let mut reader = AssetReader::file(&path)?;
         let signature = reader.string(32)?;
-        if signature != "PKGV0024" {
+        if !matches!(
+            signature.as_str(),
+            "PKGV0016" | "PKGV0018" | "PKGV0022" | "PKGV0024"
+        ) {
             return Err(reader.invalid(format!("unsupported package signature {signature}")));
         }
         let count = reader.count(65_536, "package entries")?;

@@ -43,7 +43,16 @@ cbuffer Layer : register(b1) {
     float layer_opacity;
     float layer_brightness;
     uint layer_grayscale;
-    uint layer_padding;
+    uint layer_linear;
+    float4 particle_color;
+    float4 particle_uv_x;
+    float4 particle_uv_y;
+    float4 particle_next_uv_x;
+    float2 particle_next_uv_y;
+    float particle_frame_blend;
+    uint particle_next_grayscale;
+    uint2 particle_next_origin;
+    uint2 particle_next_extent;
 };
 
 struct LayerVertex {
@@ -60,9 +69,13 @@ LayerVertex layer_vertex(uint id : SV_VertexID) {
     return result;
 }
 
+float4 cloud_sample(Texture2D<float4> source, float2 uv, uint2 origin, uint2 extent, bool repeat);
+
 float4 layer_pixel(LayerVertex input) : SV_Target {
     uint2 texel = layer_source_origin + min(uint2(saturate(input.uv) * layer_source_extent), layer_source_extent - 1);
-    float4 color = image.Load(int3(texel,0));
+    float4 color = layer_linear != 0
+        ? cloud_sample(image, input.uv, layer_source_origin, layer_source_extent, false)
+        : image.Load(int3(texel,0));
     if (layer_grayscale != 0) { color = float4(color.rrr,1); }
     return float4(color.rgb * layer_brightness, color.a * layer_opacity);
 }
@@ -95,6 +108,166 @@ float4 cloud_sample(Texture2D<float4> source, float2 uv, uint2 origin, uint2 ext
     float4 c = source.Load(int3(int2(origin) + cloud_texel(base + int2(0,1), int2(extent), repeat), 0));
     float4 d = source.Load(int3(int2(origin) + cloud_texel(base + int2(1,1), int2(extent), repeat), 0));
     return lerp(lerp(a,b,weight.x),lerp(c,d,weight.x),weight.y);
+}
+
+Texture2D<float4> particle_next : register(t7);
+
+float4 particle_pixel(LayerVertex input) : SV_Target {
+    float2 uv = particle_uv_x.xy + input.uv.x * particle_uv_x.zw + input.uv.y * particle_uv_y.xy;
+    float4 color = cloud_sample(image, uv, layer_source_origin, layer_source_extent, false);
+    if (layer_grayscale != 0) { color = float4(color.rrr,1); }
+    if (particle_frame_blend > 0) {
+        float2 next_uv = particle_next_uv_x.xy + input.uv.x * particle_next_uv_x.zw + input.uv.y * particle_next_uv_y;
+        float4 next_color = cloud_sample(particle_next, next_uv, particle_next_origin, particle_next_extent, false);
+        if (particle_next_grayscale != 0) { next_color = float4(next_color.rrr,1); }
+        color = lerp(color, next_color, particle_frame_blend);
+    }
+    return float4(color.rgb * particle_color.rgb * layer_brightness, color.a * layer_opacity);
+}
+
+cbuffer Flow : register(b5) {
+    float flow_strength;
+    float flow_feather;
+    float flow_time;
+    float flow_phase_scale;
+    uint2 flow_mask_extent;
+    uint2 flow_phase_extent;
+};
+
+cbuffer Rays : register(b6) {
+    float4 ray_h0;
+    float4 ray_h1;
+    float3 ray_start_color;
+    float ray_exponent;
+    float3 ray_end_color;
+    float ray_intensity;
+    float2 ray_feather;
+    float ray_radius;
+    float ray_smoothness;
+    float2 ray_scale;
+    float ray_noise_amount;
+    float ray_noise_scale;
+    float ray_time;
+    uint ray_padding;
+    uint2 ray_noise_extent;
+    uint2 ray_gradient_extent;
+    uint2 ray_padding2;
+};
+
+LayerVertex ray_vertex(uint id : SV_VertexID) {
+    const float2 corners[6] = { float2(0,0),float2(1,0),float2(0,1),float2(0,1),float2(1,0),float2(1,1) };
+    LayerVertex result;
+    result.uv=corners[id];
+    float w=1+ray_h1.z*result.uv.x+ray_h1.w*result.uv.y;
+    float2 projected=float2(dot(ray_h0.xyz,float3(result.uv,1)),ray_h0.w*result.uv.x+ray_h1.x*result.uv.y+ray_h1.y)/w;
+    float2 position=layer_center+layer_axis_x*(projected.x-0.5)+layer_axis_y*(projected.y-0.5);
+    result.position=float4((position/canvas_extent*2-1)*w,0,w);
+    return result;
+}
+
+float4 ray_pixel(LayerVertex input) : SV_Target {
+    float2 from_corner=float2(1-input.uv.x,input.uv.y);
+    float distance=length(from_corner);
+    float angle=atan2(from_corner.y,max(from_corner.x,0.00001))*0.636619772;
+    float distortion=cloud_sample(cloud_noise,input.uv*ray_noise_scale+ray_time,uint2(0,0),ray_noise_extent,true).r*2-1;
+    float2 noise_uv=float2(angle/ray_scale.x+distortion*ray_noise_amount,distance/ray_scale.y+ray_time);
+    float noise=0;
+    for(int i=-1;i<=1;++i) { noise+=cloud_sample(cloud_noise,noise_uv+float2(i*ray_radius*ray_smoothness,0),uint2(0,0),ray_noise_extent,true).r/3; }
+    float signal=pow(saturate(noise),max(ray_exponent,0.01)*6)*ray_intensity;
+    float2 feather=saturate((1-input.uv)/max(ray_feather,0.00001));
+    signal*=feather.x*feather.y;
+    float3 gradient=cloud_sample(cloud_mask,float2(angle,0.5),uint2(0,0),ray_gradient_extent,false).rgb;
+    float3 color=lerp(ray_start_color,ray_end_color,saturate(distance))*gradient;
+    return float4(color,saturate(signal));
+}
+
+float4 flow_pixel(LayerVertex input) : SV_Target {
+    float2 field = (cloud_sample(cloud_noise, input.uv, uint2(0,0), flow_mask_extent, false).rg * 255 - 127) / 128;
+    // Two advection phases conceal each other's reset. The painted neutral
+    // value 127 produces exactly zero displacement, preserving unpainted art.
+    float phase_noise = cloud_sample(cloud_mask, input.uv * layer_source_extent * flow_phase_scale, uint2(0,0), flow_phase_extent, true).r;
+    float phase = frac(flow_time + phase_noise);
+    float second = frac(phase + 0.5);
+    float2 displacement = field * flow_strength * 0.05;
+    float4 a = cloud_sample(image, input.uv - displacement * (phase - 0.5), layer_source_origin, layer_source_extent, false);
+    float4 b = cloud_sample(image, input.uv - displacement * (second - 0.5), layer_source_origin, layer_source_extent, false);
+    float weight = abs(phase * 2 - 1);
+    weight = lerp(weight, smoothstep(0, 1, weight), flow_feather);
+    float4 color = lerp(a, b, weight);
+    return float4(color.rgb * layer_brightness, color.a * layer_opacity);
+}
+
+Texture2D<float4> scene_image : register(t5);
+Texture2D<float4> scene_aux : register(t6);
+cbuffer Scene : register(b4) {
+    uint2 scene_extent;
+    uint2 scene_source_extent;
+    float refract_amount;
+    float bloom_threshold;
+    float bloom_feather;
+    float bloom_scatter;
+    float bloom_strength;
+    uint bloom_first;
+    uint2 scene_padding;
+};
+
+float4 refract_pixel(LayerVertex input) : SV_Target {
+    float4 normal = cloud_sample(scene_aux, input.uv, uint2(0,0), scene_source_extent, false);
+    float2 offset = normal.xy * 2 - 1;
+    float2 axis_x = normalize(layer_axis_x);
+    float2 axis_y = normalize(layer_axis_y);
+    offset = float2(axis_x.x * offset.x + axis_y.x * offset.y,
+                  -axis_x.y * offset.x - axis_y.y * offset.y);
+    float4 albedo = cloud_sample(image, input.uv, layer_source_origin, layer_source_extent, false);
+    float2 uv = input.position.xy / scene_extent + offset * refract_amount;
+    float4 color = cloud_sample(scene_image, uv, uint2(0,0), scene_extent, false);
+    return float4(color.rgb, albedo.a * layer_opacity);
+}
+
+float3 bloom_prefilter(float3 color) {
+    float brightness = max(color.r, max(color.g, color.b));
+    float knee = bloom_threshold * bloom_feather;
+    float soft = clamp(brightness - bloom_threshold + knee, 0, 2 * knee);
+    soft = soft * soft / max(4 * knee, 0.00001);
+    float contribution = max(soft, brightness - bloom_threshold) / max(brightness, 0.00001);
+    return color * max(contribution, 0);
+}
+
+float4 bloom_down(Vertex input) : SV_Target {
+    float2 uv = input.position.xy / scene_extent;
+    float2 texel = 1.0 / scene_source_extent;
+    float3 color = 0;
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+            float weight = (x == 0 ? 2 : 1) * (y == 0 ? 2 : 1) / 16.0;
+            float3 sample_color = cloud_sample(scene_image, uv + float2(x,y) * texel, uint2(0,0), scene_source_extent, false).rgb;
+            color += (bloom_first != 0 ? bloom_prefilter(sample_color) : sample_color) * weight;
+        }
+    }
+    return float4(color,1);
+}
+
+float4 bloom_up(Vertex input) : SV_Target {
+    float2 uv = input.position.xy / scene_extent;
+    float2 texel = 1.0 / scene_source_extent;
+    float3 color = 0;
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+            float weight = (x == 0 ? 2 : 1) * (y == 0 ? 2 : 1) / 16.0;
+            color += cloud_sample(scene_image, uv + float2(x,y) * texel, uint2(0,0), scene_source_extent, false).rgb * weight;
+        }
+    }
+    return float4(color * bloom_scatter,1);
+}
+
+float4 resolve_pixel(Vertex input) : SV_Target {
+    float3 color = scene_image.Load(int3(uint2(input.position.xy),0)).rgb;
+    if (bloom_first != 0) {
+        uint width, height;
+        scene_aux.GetDimensions(width,height);
+        color += cloud_sample(scene_aux, input.position.xy / scene_extent, uint2(0,0), uint2(width,height), false).rgb * bloom_strength;
+    }
+    return float4(color,1);
 }
 
 // Independently derived from generated reference gradients and timed probes.

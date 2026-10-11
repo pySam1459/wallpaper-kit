@@ -3,14 +3,21 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, path::PathBuf};
 
 mod cloud;
+mod flow;
+pub(crate) mod hdr;
 mod inspect;
 mod layers;
+mod particles;
 mod playback;
 mod precise;
+mod rays;
+mod settings;
 pub(crate) mod snapshot;
+mod text;
 pub use cloud::{CloudMotion, CloudMotionReport, CloudMotionSettings};
 pub use layers::{GaussianBlur, ImageComposition, ImageLayer, PreciseBlur};
 pub use playback::{ImagePlayback, ImagePlaybackReport, ImagePlaybackSample};
+pub use settings::{ImageQuality, PlaybackSettings};
 pub use snapshot::ImageSnapshot;
 
 /// Explicit read-only package and engine roots for inspection or TEX decoding.

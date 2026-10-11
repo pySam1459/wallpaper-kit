@@ -20,8 +20,8 @@ use std::{
 };
 use wallpaper_kit::{
     CloudMotion, CloudMotionSettings, DeviceMode, Frame, GaussianBlur, ImageComposition,
-    ImageLayer, ImagePlayback, ImagePlaybackSample, OutputStats, PreciseBlur, Renderer,
-    SceneSource, Size, TextureDecoder, TextureRegion,
+    ImageLayer, ImagePlayback, ImagePlaybackSample, ImageQuality, OutputStats, PlaybackSettings,
+    PreciseBlur, Renderer, SceneSource, Size, TextureDecoder, TextureRegion,
 };
 
 static RUN: AtomicU64 = AtomicU64::new(0);
@@ -86,6 +86,762 @@ fn stats(renderer: &Renderer, sequence: u64) -> OutputStats {
         assert!(Instant::now() < deadline, "composition stats timed out");
         std::thread::sleep(Duration::from_millis(1));
     }
+}
+
+#[test]
+fn consumer_policy_skips_particle_assets_and_disabled_image_effects() {
+    // An invalid particle definition must never be opened by either policy.
+    let package = particle_package(json!({"maxcount":5000}), None, json!(true));
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    assert!(ImagePlayback::open_scene_images(&source).is_err());
+    for settings in [
+        PlaybackSettings {
+            visual_effects: false,
+            ..Default::default()
+        },
+        PlaybackSettings {
+            reduce_flashing: true,
+            ..Default::default()
+        },
+    ] {
+        let playback = ImagePlayback::open_scene_images_with_settings(&source, settings).unwrap();
+        assert_eq!(playback.report().settings, settings);
+        assert!(playback.report().particle_objects.is_empty());
+        assert_eq!(playback_sample(&playback).composition.layers().len(), 1);
+        assert!(
+            playback
+                .report()
+                .omissions
+                .iter()
+                .any(|line| line.contains("consumer"))
+        );
+        playback.shutdown().unwrap();
+    }
+    let tex = texture_checks::tex(0, [1, 1], &[255; 4], false, false);
+    let mut image = object(1);
+    image["effects"] = json!([{"file":"effects/cloudmotion/effect.json"}]);
+    let package = snapshot_package(json!([image]), model(), material(false), &tex);
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    assert!(ImagePlayback::open_scene_images(&source).is_err());
+    let settings = PlaybackSettings {
+        visual_effects: false,
+        image_quality: ImageQuality::Linear,
+        ..Default::default()
+    };
+    let playback = ImagePlayback::open_with_settings(&source, &[1], settings).unwrap();
+    let sample = playback_sample(&playback);
+    assert!(sample.composition.layers()[0].cloud_motion().is_none());
+    assert_eq!(
+        sample.composition.layers()[0].image_quality(),
+        ImageQuality::Linear
+    );
+    assert!(playback.report().cloud_motions.is_empty());
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn disabled_animation_holds_sprite_time_but_allows_explicit_stills() {
+    let package = Package::new(&[]);
+    fs::write(package.root.join("scene.pkg"), playback_checks::package()).unwrap();
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    let settings = PlaybackSettings {
+        animation: false,
+        ..Default::default()
+    };
+    let mut playback = ImagePlayback::open_scene_images_with_settings(&source, settings).unwrap();
+    playback.play();
+    assert!(!playback.playing());
+    let initial = playback_sample(&playback);
+    std::thread::sleep(Duration::from_millis(10));
+    assert_eq!(playback.time(), Duration::ZERO);
+    assert_eq!(initial.frame_indices, [0, 0]);
+    playback.seek(Duration::from_millis(250));
+    assert_eq!(playback_sample(&playback).frame_indices, [1, 1]);
+    playback.play();
+    assert!(!playback.playing());
+    assert_eq!(playback.time(), Duration::from_millis(250));
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn freeze_retains_the_presented_sample_despite_newer_work_and_resumes_from_it() {
+    let package = Package::new(&[]);
+    fs::write(package.root.join("scene.pkg"), playback_checks::package()).unwrap();
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    let mut playback = ImagePlayback::open_scene_images(&source).unwrap();
+    playback.seek(Duration::from_millis(125));
+    let presented_sample = playback_sample(&playback);
+    let (renderer, events) =
+        Renderer::new(Size::new(320, 180).unwrap(), DeviceMode::Software).unwrap();
+    let id = renderer
+        .render_images(presented_sample.composition.clone())
+        .unwrap();
+    let held_frame = wait(&renderer, &events, id);
+    let pixels = held_frame.readback().unwrap().rgba;
+    playback.seek(Duration::from_millis(250));
+    let newer = playback_sample(&playback);
+    let id = renderer.render_images(newer.composition).unwrap();
+    playback.freeze(&presented_sample);
+    drop(wait(&renderer, &events, id)); // Consumer discards this newer completion.
+    std::thread::sleep(Duration::from_millis(10));
+    assert_eq!(playback.time(), presented_sample.time);
+    assert!(!playback.playing());
+    let frozen = playback_sample(&playback);
+    assert!(Arc::ptr_eq(
+        &frozen.composition,
+        &presented_sample.composition
+    ));
+    assert_eq!(held_frame.readback().unwrap().rgba, pixels);
+    let resumed_at = Instant::now();
+    playback.play();
+    assert!(playback.playing());
+    assert!(playback.time() >= presented_sample.time);
+    assert!(playback.time() - presented_sample.time <= resumed_at.elapsed());
+    playback.pause();
+    assert!(!Arc::ptr_eq(
+        &playback_sample(&playback).composition,
+        &frozen.composition
+    ));
+    playback.shutdown().unwrap();
+    renderer.shutdown().unwrap();
+    assert_eq!(held_frame.readback().unwrap().rgba, pixels);
+}
+
+#[test]
+fn linear_quality_scales_without_reading_neighboring_atlas_texels() {
+    let tex = texture_checks::tex(
+        0,
+        [4, 1],
+        &[
+            255, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255, 255, 0, 255, 0, 255,
+        ],
+        false,
+        false,
+    );
+    let package = Package::new(&[("image.tex", &tex)]);
+    let page = Arc::new(package.decoder().decode_page("image.tex", 0).unwrap());
+    let region = Arc::new(TextureRegion::new(page, [1, 0], [2, 1]).unwrap());
+    let (renderer, events) = Renderer::new(Size::new(4, 1).unwrap(), DeviceMode::Software).unwrap();
+    for (quality, expected) in [
+        (ImageQuality::Nearest, [0, 0, 255, 255]),
+        (ImageQuality::Linear, [0, 64, 191, 255]),
+    ] {
+        let layer = ImageLayer::new(region.clone(), [2., 0.5], [4., 1.], 0., 1., 1.)
+            .unwrap()
+            .with_image_quality(quality);
+        let composition =
+            Arc::new(ImageComposition::new(Size::new(4, 1).unwrap(), vec![layer]).unwrap());
+        let id = renderer.render_images(composition).unwrap();
+        let pixels = wait(&renderer, &events, id).readback().unwrap();
+        for (pixel, expected) in pixels.rgba.chunks_exact(4).zip(expected) {
+            assert_eq!(pixel, [expected, expected, expected, 255]);
+        }
+    }
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn authored_particles_survive_seek_and_image_layer_order() {
+    let scene = serde_json::to_vec(&json!({"version":5,"general":{"orthogonalprojection":{"width":64,"height":64}},"objects":[
+        {"id":1,"image":"models/base.json","origin":"32 32 0","size":"64 64"},
+        {"id":2,"particle":"particles/stars.json","origin":"32 32 0","visible":{"user":"stars","value":true}},
+        {"id":3,"image":"models/base.json","origin":"32 32 0","size":"8 8"}
+    ]})).unwrap();
+    let stars = br#"{"maxcount":100,"material":"materials/star.json","emitter":[{"name":"boxrandom","rate":20,"distancemax":"30 30 0"}],"initializer":[{"name":"lifetimerandom","min":4,"max":4},{"name":"sizerandom","min":2,"max":2}],"operator":[{"name":"alphafade","fadeintime":0.1,"fadeouttime":0.9}],"renderer":[{"name":"sprite"}]}"#;
+    let tex = texture_checks::tex(0, [1, 1], &[255, 255, 255, 255], false, false);
+    let package = Package::new(&[
+        ("scene.json", &scene), ("particles/stars.json", stars),
+        ("models/base.json", br#"{"material":"materials/base.json"}"#),
+        ("materials/base.json", br#"{"passes":[{"shader":"genericimage4","blending":"translucent","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","combos":{},"textures":["white"]}]}"#),
+        ("materials/star.json", br#"{"passes":[{"shader":"genericparticle","blending":"additive","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","textures":["white"]}]}"#),
+        ("materials/white.tex", &tex),
+    ]);
+    let mut playback = ImagePlayback::open_scene_images(&SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    })
+    .unwrap();
+    playback.seek(Duration::from_secs(3));
+    let first = playback.try_sample().unwrap().unwrap();
+    // The particle born at exactly three seconds has zero fade-in alpha.
+    assert_eq!(first.composition.layers().len(), 61);
+    assert_eq!(
+        first.composition.layers().first().unwrap().size(),
+        [64., 64.]
+    );
+    assert_eq!(first.composition.layers().last().unwrap().size(), [8., 8.]);
+    let positions: Vec<_> = first
+        .composition
+        .layers()
+        .iter()
+        .map(|layer| layer.center())
+        .collect();
+    playback.seek(Duration::from_secs(30));
+    assert!(
+        playback
+            .try_sample()
+            .unwrap()
+            .unwrap()
+            .composition
+            .layers()
+            .len()
+            <= 102
+    );
+    playback.seek(Duration::from_secs(3));
+    let repeated = playback.try_sample().unwrap().unwrap();
+    assert_eq!(
+        positions,
+        repeated
+            .composition
+            .layers()
+            .iter()
+            .map(|layer| layer.center())
+            .collect::<Vec<_>>()
+    );
+    playback.shutdown().unwrap();
+}
+
+fn particle_package(root: Value, child: Option<Value>, visible: Value) -> Package {
+    let scene=serde_json::to_vec(&json!({"version":1,"general":{"orthogonalprojection":{"width":64,"height":64}},"objects":[
+        {"id":1,"image":"models/base.json","origin":"32 32 0","size":"64 64","color":"1 1 1","alignment":"center","perspective":false},
+        {"id":2,"particle":"particles/root.json","origin":"32 32 0","visible":visible}
+    ]})).unwrap();
+    let root = serde_json::to_vec(&root).unwrap();
+    let child = serde_json::to_vec(&child).unwrap();
+    let dark = texture_checks::tex(0, [1, 1], &[32, 32, 32, 255], false, false);
+    let white = texture_checks::tex(0, [1, 1], &[255, 255, 255, 255], false, false);
+    let mut package_bytes=texture_checks::package(&[
+        ("scene.json",&scene),("particles/root.json",&root),("particles/child.json",&child),
+        ("models/base.json",br#"{"material":"materials/base.json"}"#),
+        ("materials/base.json",br#"{"passes":[{"shader":"genericimage2","blending":"translucent","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","combos":{"VERSION":2},"textures":["dark"]}]}"#),
+        ("materials/star.json",br#"{"passes":[{"shader":"genericparticle","blending":"additive","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","textures":["white"]}]}"#),
+        ("materials/dark.tex",&dark),("materials/white.tex",&white)
+    ]);
+    package_bytes[4..12].copy_from_slice(b"PKGV0016");
+    let package = Package::new(&[]);
+    fs::write(package.root.join("scene.pkg"), package_bytes).unwrap();
+    package
+}
+
+fn burst() -> Value {
+    json!({"maxcount":4,"material":"materials/star.json","emitter":[{"name":"sphererandom","instantaneous":2}],"initializer":[
+        {"name":"lifetimerandom","min":2,"max":2},{"name":"sizerandom","min":8,"max":8},
+        {"name":"colorrandom","min":"255 64 0","max":"255 64 0"},{"name":"alpharandom","min":0.5,"max":0.5}
+    ],"renderer":[{"name":"sprite"}]})
+}
+
+#[test]
+fn particle_sprite_size_matches_the_engine_reference() {
+    // Generated engine probe: size 64 spans 64 output pixels at 2x canvas scale.
+    let package = particle_package(burst(), None, json!(true));
+    let playback = ImagePlayback::open_scene_images(&SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    })
+    .unwrap();
+    let sample = playback.try_sample().unwrap().unwrap();
+    assert_eq!(sample.composition.layers()[1].size(), [4., 4.]);
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn particle_trail_scales_the_sprite_by_speed_even_without_movement() {
+    // Engine probes: length 2, speed 2 stretches a size-64 sprite to 128x32;
+    // missing length gives 0.05, with no minimum stretch at low speed.
+    for (renderer, speed, expected) in [
+        (
+            json!({"name":"spritetrail","length":2,"minlength":0,"maxlength":200}),
+            2,
+            [4., 16.],
+        ),
+        (json!({"name":"spritetrail"}), 2, [4., 0.4]),
+        (json!({"name":"spritetrail"}), 1000, [4., 40.]),
+        (
+            json!({"name":"spritetrail","length":1,"minlength":1,"maxlength":1}),
+            2,
+            [4., 4.],
+        ),
+    ] {
+        let mut root = burst();
+        root["initializer"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"name":"velocityrandom","min":format!("{speed} 0 0"),"max":format!("{speed} 0 0")}));
+        root["renderer"] = json!([renderer]);
+        let package = particle_package(root, None, json!(true));
+        let mut playback = ImagePlayback::open_scene_images(&SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        })
+        .unwrap();
+        playback.seek(Duration::from_secs(1));
+        let sample = playback.try_sample().unwrap().unwrap();
+        let layer = &sample.composition.layers()[1];
+        assert_eq!(layer.center(), [32., 32.]);
+        for (actual, expected) in layer.size().into_iter().zip(expected) {
+            assert!(
+                (actual - expected).abs() < 0.001,
+                "{} != {expected}",
+                actual
+            );
+        }
+        assert_eq!(layer.angle_degrees(), 270.);
+        playback.shutdown().unwrap();
+    }
+}
+
+#[test]
+fn particle_sprite_sequence_uses_lifetime_and_blends_frames() {
+    check_particle_sequence(false);
+}
+
+#[test]
+fn particle_frame_blending_retains_distinct_pages_and_mirrored_uvs() {
+    check_particle_sequence(true);
+}
+
+fn check_particle_sequence(separate_pages: bool) {
+    let mut root = burst();
+    root["emitter"][0]["instantaneous"] = json!(1);
+    root["initializer"] = json!([
+        {"name":"lifetimerandom","min":12,"max":12},
+        {"name":"sizerandom","min":16,"max":16}
+    ]);
+    root["sequencemultiplier"] = json!(1);
+    let package = Package::new(&[]);
+    // Install a generated 2-frame atlas in the package instead of white.
+    let scene = serde_json::to_vec(
+        &json!({"version":5,"general":{"orthogonalprojection":{"width":64,"height":64}},"objects":[
+            {"id":1,"image":"models/base.json","origin":"32 32 0","size":"64 64"},
+            {"id":2,"particle":"particles/root.json","origin":"32 32 0","scale":if separate_pages {"-1 -1 1"} else {"1 1 1"}}
+        ]}),
+    )
+    .unwrap();
+    let pixels: Vec<_> = (0..4)
+        .flat_map(|_| {
+            (0..8).flat_map(|x| {
+                if x < 4 {
+                    [255, 0, 0, 255]
+                } else {
+                    [0, 255, 0, 255]
+                }
+            })
+        })
+        .collect();
+    let atlas = if separate_pages {
+        let mut red = texture_checks::tex(0, [4, 4], &[255, 0, 0, 255].repeat(16), false, false);
+        let green = texture_checks::tex(0, [4, 4], &[0, 255, 0, 255].repeat(16), false, false);
+        red[55..59].copy_from_slice(&2_u32.to_le_bytes());
+        red.extend_from_slice(&green[67..]);
+        texture_checks::sprite(
+            red,
+            &[
+                (0, 0.25, [0., 0., 4., 0., 0., 4.]),
+                (1, 0.25, [0., 0., 4., 0., 0., 4.]),
+            ],
+        )
+    } else {
+        texture_checks::sprite(
+            texture_checks::tex(0, [8, 4], &pixels, false, false),
+            &[
+                (0, 0.25, [0., 0., 4., 0., 0., 4.]),
+                (0, 0.25, [4., 0., 4., 0., 0., 4.]),
+            ],
+        )
+    };
+    let root = serde_json::to_vec(&root).unwrap();
+    let black = texture_checks::tex(0, [1, 1], &[0, 0, 0, 255], false, false);
+    let mut bytes = texture_checks::package(&[
+        ("scene.json", &scene), ("particles/root.json", &root), ("materials/white.tex", &atlas),
+        ("materials/black.tex", &black),
+        ("models/base.json", br#"{"material":"materials/base.json"}"#),
+        ("materials/base.json", br#"{"passes":[{"shader":"genericimage4","blending":"translucent","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","combos":{},"textures":["black"]}]}"#),
+        ("materials/star.json", br#"{"passes":[{"shader":"genericparticle","blending":"additive","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","textures":["white"]}]}"#),
+    ]);
+    bytes[4..12].copy_from_slice(b"PKGV0016");
+    fs::write(package.root.join("scene.pkg"), bytes).unwrap();
+    let mut playback = ImagePlayback::open_scene_images(&SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    })
+    .unwrap();
+    let (renderer, events) =
+        Renderer::new(Size::new(64, 64).unwrap(), DeviceMode::Software).unwrap();
+    for (time, expected) in [
+        (0, [255, 0, 0]),
+        (3000, [128, 128, 0]),
+        (6000, [0, 255, 0]),
+        (9000, [128, 128, 0]),
+        (3000, [128, 128, 0]),
+    ] {
+        playback.seek(Duration::from_millis(time));
+        let sample = playback.try_sample().unwrap().unwrap();
+        let id = renderer.render_images(sample.composition).unwrap();
+        let pixels = wait(&renderer, &events, id).readback().unwrap();
+        // Sample near the sprite's left edge to avoid atlas-border interpolation.
+        let pixel = &pixels.rgba[(32 * 64 + 29) * 4..(32 * 64 + 29) * 4 + 3];
+        for (actual, expected) in pixel.iter().zip(expected) {
+            assert!(
+                (i32::from(*actual) - expected).abs() <= 2,
+                "{time}: {pixel:?} != {expected}"
+            );
+        }
+    }
+    renderer.shutdown().unwrap();
+    playback.shutdown().unwrap();
+}
+
+fn render_profile(
+    general: Value,
+    refract: Option<(f32, [u8; 4])>,
+    alpha: f32,
+    angle: f32,
+    overlay: bool,
+) -> Package {
+    let mut objects = vec![
+        json!({"id":1,"image":"models/base.json","origin":"32 32 0","size":"64 64"}),
+        json!({"id":2,"particle":"particles/root.json","origin":"32 32 0","angles":format!("0 0 {angle}")}),
+    ];
+    if overlay {
+        objects.push(json!({"id":3,"image":"models/base.json","origin":"32 32 0","size":"64 64","alpha":0.75}));
+    }
+    let mut general = general;
+    general["orthogonalprojection"] = json!({"width":64,"height":64});
+    let scene =
+        serde_json::to_vec(&json!({"version":5,"general":general,"objects":objects})).unwrap();
+    let mut root = burst();
+    root["emitter"][0]["instantaneous"] = json!(1);
+    root["initializer"][1] = json!({"name":"sizerandom","min":32,"max":32});
+    root["initializer"][2] = json!({"name":"colorrandom","min":"255 255 255","max":"255 255 255"});
+    root["initializer"][3] = json!({"name":"alpharandom","min":alpha,"max":alpha});
+    let root = serde_json::to_vec(&root).unwrap();
+    let mut pass = json!({"shader":"genericparticle","blending":"additive","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","textures":["white"],"constantshadervalues":{"ui_editor_properties_overbright":4}});
+    if let Some((amount, _)) = refract {
+        pass["blending"] = json!("translucent");
+        pass["textures"] = json!(["white", "normal"]);
+        pass["combos"] = json!({"REFRACT":1});
+        pass["constantshadervalues"] = json!({"ui_editor_properties_refract_amount":amount});
+    }
+    let material = serde_json::to_vec(&json!({"passes":[pass]})).unwrap();
+    let pixels: Vec<_> = (0..64)
+        .flat_map(|y| {
+            (0..64).flat_map(move |x| {
+                if refract.is_some() {
+                    [x * 4, y * 4, 0, 255]
+                } else {
+                    [0, 0, 0, 255]
+                }
+            })
+        })
+        .collect();
+    let base = texture_checks::tex(0, [64, 64], &pixels, false, false);
+    let normal = texture_checks::tex(
+        0,
+        [1, 1],
+        &refract.map_or([128, 128, 255, 255], |(_, normal)| normal),
+        false,
+        false,
+    );
+    let white = texture_checks::tex(0, [1, 1], &[255; 4], false, false);
+    Package::new(&[("scene.json",&scene),("models/base.json",br#"{"material":"materials/base.json"}"#),
+        ("materials/base.json",br#"{"passes":[{"shader":"genericimage4","blending":"translucent","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","combos":{},"textures":["base"]}]}"#),
+        ("particles/root.json",&root),("materials/star.json",&material),("materials/base.tex",&base),("materials/white.tex",&white),("materials/normal.tex",&normal)])
+}
+
+#[test]
+fn refraction_displaces_the_prior_scene_with_alpha_rotation_and_resize() {
+    let (renderer, events) =
+        Renderer::new(Size::new(64, 64).unwrap(), DeviceMode::Software).unwrap();
+    for (amount, alpha, angle, normal, size) in [
+        (0., 1., 0., [255, 128, 255, 255], [64, 64]),
+        (0.125, 1., 0., [255, 128, 255, 255], [64, 64]),
+        (0.125, 0.5, 0., [255, 128, 255, 255], [64, 64]),
+        (0.125, 1., 90., [255, 128, 255, 255], [128, 96]),
+        (0.125, 1., 0., [128, 255, 255, 255], [64, 64]),
+    ] {
+        let package = render_profile(json!({}), Some((amount, normal)), alpha, angle, false);
+        let playback = ImagePlayback::open_scene_images(&SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        })
+        .unwrap();
+        assert!(
+            !playback
+                .report()
+                .omissions
+                .iter()
+                .any(|v| v.contains("material combination"))
+        );
+        let sample = playback.try_sample().unwrap().unwrap();
+        let _resize = renderer
+            .resize(Size::new(size[0], size[1]).unwrap())
+            .unwrap();
+        let frame = wait(
+            &renderer,
+            &events,
+            renderer.render_images(sample.composition.clone()).unwrap(),
+        );
+        let capture = frame.readback().unwrap();
+        let (sin, cos) = angle.to_radians().sin_cos();
+        let nx = f32::from(normal[0]) / 255. * 2. - 1.;
+        let ny = f32::from(normal[1]) / 255. * 2. - 1.;
+        let offset = [cos * nx + sin * ny, -sin * nx + cos * ny];
+        for y in size[1] / 2 - 4..size[1] / 2 + 4 {
+            for x in size[0] / 2 - 4..size[0] / 2 + 4 {
+                let source = [
+                    (x as f32 + 0.5) * 64. / size[0] as f32 - 0.5,
+                    (y as f32 + 0.5) * 64. / size[1] as f32 - 0.5,
+                ];
+                let original = [source[0].round() * 4., source[1].round() * 4.];
+                // Refraction bilinearly samples the rasterized background, which
+                // itself uses ordinary image sampling at this output resolution.
+                if size == [64, 64] {
+                    for channel in 0..2 {
+                        let expected =
+                            original[channel] + offset[channel] * amount * 64. * 4. * alpha;
+                        let actual = capture.rgba[((y * size[0] + x) * 4) as usize + channel];
+                        assert!(
+                            (f32::from(actual) - expected).abs() <= 1.5,
+                            "{angle} {alpha} {channel}: {actual} != {expected}"
+                        );
+                    }
+                } else {
+                    let pixel = &capture.rgba[((y * size[0] + x) * 4) as usize..][..4];
+                    assert!(
+                        pixel[1] < 112 && pixel[0] > 112,
+                        "rotated normal must move upward: {pixel:?}"
+                    );
+                }
+            }
+        }
+        assert_eq!(capture.rgba[0], 0);
+        playback.shutdown().unwrap();
+    }
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn hdr_retains_overbright_until_resolve_and_blooms_only_admitted_highlights() {
+    let (renderer, events) =
+        Renderer::new(Size::new(64, 64).unwrap(), DeviceMode::Software).unwrap();
+    for (general, overlay, center, glow) in [
+        (json!({"hdr":false}), true, 64, false),
+        (json!({"hdr":true,"bloomhdrstrength":0}), true, 255, false),
+        // Disabling bloom must retain HDR accumulation without a halo.
+        (
+            json!({"hdr":true,"bloom":false,"bloomhdrstrength":2}),
+            true,
+            255,
+            false,
+        ),
+        (
+            json!({"hdr":true,"bloom":false,"bloomhdrstrength":2}),
+            false,
+            255,
+            false,
+        ),
+        (
+            json!({"hdr":true,"bloomhdrstrength":1,"bloomhdrthreshold":1,"bloomhdrfeather":0,"bloomhdrscatter":0.7,"bloomhdriterations":3}),
+            false,
+            255,
+            true,
+        ),
+        (
+            json!({"hdr":true,"bloomhdrstrength":1,"bloomhdrthreshold":8,"bloomhdrfeather":0}),
+            false,
+            255,
+            false,
+        ),
+    ] {
+        let package = render_profile(general.clone(), None, 1., 0., overlay);
+        let playback = ImagePlayback::open_scene_images(&SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        })
+        .unwrap();
+        assert_eq!(playback.report().hdr_bloom, general["hdr"] == true);
+        let sample = playback.try_sample().unwrap().unwrap();
+        let frame = wait(
+            &renderer,
+            &events,
+            renderer.render_images(sample.composition.clone()).unwrap(),
+        );
+        let capture = frame.readback().unwrap();
+        assert!((i32::from(capture.rgba[(32 * 64 + 32) * 4]) - center).abs() <= 1);
+        let halo = capture.rgba[(32 * 64 + 50) * 4];
+        assert_eq!(halo > 0, glow, "threshold/strength halo {halo}");
+        if general["bloom"] == false {
+            assert_eq!(
+                stats(&renderer, frame.sequence()).effect_texture_bytes,
+                64 * 64 * 8,
+                "disabled bloom retains only the float accumulation target"
+            );
+        }
+        playback.shutdown().unwrap();
+    }
+    for general in [
+        json!({"hdr":"true"}),
+        json!({"hdr":true,"bloom":"false"}),
+        json!({"hdr":true,"bloomhdriterations":1.5}),
+        json!({"hdr":true,"bloomhdriterations":17}),
+        json!({"hdr":true,"bloomhdrstrength":-1}),
+    ] {
+        let package = render_profile(general, None, 1., 0., false);
+        assert!(
+            ImagePlayback::open_scene_images(&SceneSource {
+                package: package.root.join("scene.pkg"),
+                engine_assets: package.root.join("engine")
+            })
+            .is_err()
+        );
+    }
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn death_event_spawns_tinted_additive_children_at_the_rocket_endpoint() {
+    let mut root = burst();
+    root["emitter"][0]["instantaneous"] = json!(1);
+    root["initializer"][0] = json!({"name":"lifetimerandom","min":1,"max":1});
+    root["initializer"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"name":"velocityrandom","min":"8 0 0","max":"8 0 0"}));
+    root["operator"] = json!([{"name":"movement","gravity":"0 0 0"}]);
+    root["renderer"] = json!([{"name":"spritetrail","length":2,"maxlength":20}]);
+    root["children"] = json!([{"type":"eventdeath","name":"particles/child.json"}]);
+    let package = particle_package(
+        root,
+        Some(burst()),
+        json!({"user":"fireworks","value":true}),
+    );
+    let mut playback = ImagePlayback::open_scene_images(&SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    })
+    .unwrap();
+    assert_eq!(playback.report().particle_objects, [2]);
+    playback.seek(Duration::from_millis(500));
+    let rocket = playback.try_sample().unwrap().unwrap();
+    assert_eq!(rocket.composition.layers().len(), 2);
+    assert_eq!(rocket.composition.layers()[1].center(), [36., 32.]);
+    assert!((rocket.composition.layers()[1].size()[1] - 64.).abs() < 0.001);
+    playback.seek(Duration::from_secs(2));
+    let hit = playback.try_sample().unwrap().unwrap();
+    assert_eq!(hit.composition.layers().len(), 3);
+    for spark in &hit.composition.layers()[1..] {
+        assert_eq!(spark.center(), [40., 32.]);
+    }
+    let (renderer, events) =
+        Renderer::new(Size::new(64, 64).unwrap(), DeviceMode::Software).unwrap();
+    let id = renderer.render_images(hit.composition.clone()).unwrap();
+    let pixels = wait(&renderer, &events, id).readback().unwrap();
+    let offset = (32 * 64 + 40) * 4;
+    for (actual, expected) in pixels.rgba[offset..offset + 4]
+        .iter()
+        .zip([255, 96, 32, 255])
+    {
+        assert!((*actual as i32 - expected).abs() <= 1);
+    }
+    let first_stats = stats(&renderer, 1);
+    assert_eq!(first_stats.texture_uploads, 2);
+    playback.seek(Duration::from_secs(4));
+    let empty = playback.try_sample().unwrap().unwrap();
+    assert_eq!(empty.composition.layers().len(), 1);
+    let id = renderer.render_images(empty.composition).unwrap();
+    let idle = wait(&renderer, &events, id);
+    assert_eq!(stats(&renderer, idle.sequence()).texture_uploads, 2);
+    playback.seek(Duration::from_secs(2));
+    let id = renderer
+        .render_images(playback.try_sample().unwrap().unwrap().composition)
+        .unwrap();
+    let repeated = wait(&renderer, &events, id);
+    assert_eq!(pixels.rgba, repeated.readback().unwrap().rgba);
+    assert_eq!(stats(&renderer, repeated.sequence()).texture_uploads, 2);
+    renderer.shutdown().unwrap();
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn particles_reject_cycles_invalid_counts_and_skip_hidden_assets() {
+    let open = |package: &Package| {
+        ImagePlayback::open_scene_images(&SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        })
+    };
+    let mut cycle = burst();
+    cycle["children"] = json!([{"name":"particles/root.json","type":"eventdeath"}]);
+    assert!(
+        open(&particle_package(cycle, None, json!(true)))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("cyclic")
+    );
+    let mut count = burst();
+    count["maxcount"] = json!(5000);
+    assert!(open(&particle_package(count, None, json!(true))).is_err());
+    let hidden = particle_package(
+        json!({"malformed":true}),
+        None,
+        json!({"user":"stars","value":false}),
+    );
+    let playback = open(&hidden).unwrap();
+    assert!(playback.report().particle_objects.is_empty());
+    assert_eq!(
+        playback
+            .try_sample()
+            .unwrap()
+            .unwrap()
+            .composition
+            .layers()
+            .len(),
+        1
+    );
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn prewarmed_rope_and_follow_child_share_the_current_particle_position() {
+    let mut root = burst();
+    root["starttime"] = json!(0.5);
+    root["emitter"][0]["instantaneous"] = json!(1);
+    root["initializer"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"name":"velocityrandom","min":"8 0 0","max":"8 0 0"}));
+    root["operator"] = json!([{"name":"movement","gravity":"0 0 0"}]);
+    root["renderer"] = json!([{"name":"ropetrail","length":0.2,"segments":4}]);
+    root["children"] = json!([{"type":"eventfollow","name":"particles/child.json"}]);
+    let mut child = burst();
+    child["emitter"][0]["instantaneous"] = json!(1);
+    let package = particle_package(root, Some(child), json!(true));
+    let playback = ImagePlayback::open_scene_images(&SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    })
+    .unwrap();
+    let sample = playback.try_sample().unwrap().unwrap();
+    assert_eq!(sample.composition.layers().len(), 6);
+    assert_eq!(sample.composition.layers()[5].center(), [36., 32.]);
+    for strip in &sample.composition.layers()[1..5] {
+        assert!((34.4..36.).contains(&strip.center()[0]));
+        assert!((strip.size()[1] - 0.4).abs() < 0.001);
+    }
+    playback.shutdown().unwrap();
 }
 
 #[test]
@@ -851,6 +1607,10 @@ fn automatic_images_discover_authored_ids_and_report_other_content() {
             "models/composition.json",
             br#"{"projectlayer":true,"material":"missing-composition.json"}"#,
         ),
+        (
+            "particles/test.json",
+            br#"{"unsupported_system_field":true}"#,
+        ),
         ("materials/image.json", &material),
         ("materials/image.tex", &texture),
     ]);
@@ -860,7 +1620,7 @@ fn automatic_images_discover_authored_ids_and_report_other_content() {
     })
     .unwrap();
     assert_eq!(playback.report().object_ids, [901, 55]);
-    for omission in ["Object 6", "Object 7", "Object 8"] {
+    for omission in ["particles/test.json", "Object 7", "Object 8"] {
         assert!(
             playback
                 .report()

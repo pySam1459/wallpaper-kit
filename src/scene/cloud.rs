@@ -300,7 +300,10 @@ pub(super) fn load(
     }
     for asset in std::iter::once(&profile.noise_asset).chain(profile.mask_asset.as_ref()) {
         let mut reader = package.reader(asset)?.ok_or_else(|| invalid(asset))?;
-        let metadata = crate::assets::texture::inspect(&mut reader)?;
+        let metadata = crate::assets::texture::inspect(
+            &mut reader,
+            crate::assets::texture::SpriteSampling::InPage,
+        )?;
         if metadata.frames != 0
             || metadata.pages.len() != 1
             || metadata.extent != metadata.pages[0].extent

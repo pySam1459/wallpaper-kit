@@ -218,6 +218,7 @@ Each scenario records build identity and local changes, asset identities, OS, GP
 | 5. Complete visual behavior | Required effects, particles, parallax and composition | Motion and native-resolution appearance reviewed; unsupported visual feature count is zero |
 | 6. Validate MVP | Lifecycle scenarios and host performance evidence | All acceptance checks pass or the specification is explicitly revised with evidence |
 | 7. Expand the product | General photos/video, production GPUI adapter, C ABI and other adapters | Separate content/host acceptance suites; expand scene support from new inventories |
+| 8. Demonstrate product integrations | After the core requirements and MVP are complete, demonstration forks targeting Codex desktop, Zed, T3 Code, and OpenCode | Clear animated background in empty sessions; animated blur after session start; host quality and performance preserved with enabled/disabled measurements. See the [product integration goals](../../README.md#next-phase-product-integrations) for targets and the Codex source-availability question. |
 
 Do not start the broad adapter or content matrix before the presentation and example-scene gates. Conversely, do not postpone embedding proof until a standalone renderer is complete.
 

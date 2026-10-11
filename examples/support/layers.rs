@@ -265,6 +265,11 @@ fn region_rgba(region: &TextureRegion) -> Vec<u8> {
     let rgba = match page.format() {
         TextureFormat::Rgba8 => page.data().to_vec(),
         TextureFormat::R8 => page.data().iter().flat_map(|&v| [v, v, v, 255]).collect(),
+        TextureFormat::Rg8 => page
+            .data()
+            .chunks_exact(2)
+            .flat_map(|v| [v[0], v[1], 0, 255])
+            .collect(),
         TextureFormat::Bc3 => {
             assert_eq!(page.data(), texture_checks::bc3());
             texture_checks::cases()

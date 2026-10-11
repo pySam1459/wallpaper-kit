@@ -282,6 +282,11 @@ impl Gpu {
                         Content::Images(composition) => composition.blur_extent(),
                         _ => None,
                     },
+                    request.size,
+                    match &request.content {
+                        Content::Images(composition) => Some(composition),
+                        _ => None,
+                    },
                 )?;
             if !acquire(&self.slots[index].output.mutex)? {
                 return Ok(Submission::Busy);

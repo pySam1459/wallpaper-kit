@@ -5,10 +5,10 @@ use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 use wallpaper_kit::{Frame, ImagePlayback, ImagePlaybackSample};
 
+#[derive(Clone)]
 struct Selection {
     id: u64,
-    time: Duration,
-    indices: Vec<usize>,
+    sample: ImagePlaybackSample,
 }
 
 pub struct Images {
@@ -17,6 +17,7 @@ pub struct Images {
     next_tick: Option<Instant>,
     requested: Option<Selection>,
     latest: Option<Selection>,
+    held: bool,
     origin: Instant,
     observations: Vec<Value>,
     omitted: u64,
@@ -30,6 +31,7 @@ impl Images {
             next_tick: Some(Instant::now()),
             requested: None,
             latest: None,
+            held: false,
             origin: Instant::now(),
             observations: Vec::new(),
             omitted: 0,
@@ -37,6 +39,7 @@ impl Images {
         }
     }
     pub fn play(&mut self) {
+        self.held = false;
         self.playback.play();
         self.next_tick = Some(Instant::now());
     }
@@ -50,9 +53,25 @@ impl Images {
         }
     }
     pub fn seek(&mut self, time: Duration) {
+        self.held = false;
         self.playback.seek(time);
         self.pending = true;
         self.next_tick = Some(Instant::now());
+    }
+    pub fn freeze(&mut self) -> Result<()> {
+        let latest = self.latest.as_ref().ok_or("no presented image sample")?;
+        self.playback.freeze(&latest.sample);
+        self.requested = Some(latest.clone());
+        self.held = true;
+        self.pending = false;
+        self.next_tick = None;
+        Ok(())
+    }
+    pub fn frozen_sample(&self) -> Option<&ImagePlaybackSample> {
+        self.latest
+            .as_ref()
+            .filter(|_| self.held)
+            .map(|selection| &selection.sample)
     }
     pub fn tick(&mut self) -> Result<Option<ImagePlaybackSample>> {
         if self
@@ -75,8 +94,7 @@ impl Images {
     pub fn requested(&mut self, id: u64, sample: &ImagePlaybackSample) {
         self.requested = Some(Selection {
             id,
-            time: sample.time,
-            indices: sample.frame_indices.clone(),
+            sample: sample.clone(),
         });
     }
     pub fn resized(&mut self, id: u64) {
@@ -88,13 +106,9 @@ impl Images {
         if let Some(request) = &self.requested
             && request.id == frame.id()
         {
-            self.latest = Some(Selection {
-                id: request.id,
-                time: request.time,
-                indices: request.indices.clone(),
-            });
+            self.latest = Some(request.clone());
             if self.observations.len() < 2048 {
-                self.observations.push(json!({"time_ns":request.time.as_nanos().to_string(),"frame_indices":request.indices,"frame_id":frame.id(),"sequence":frame.sequence(),"present_call_return_ms":self.origin.elapsed().as_secs_f64()*1000.}));
+                self.observations.push(json!({"time_ns":request.sample.time.as_nanos().to_string(),"frame_indices":request.sample.frame_indices,"frame_id":frame.id(),"sequence":frame.sequence(),"present_call_return_ms":self.origin.elapsed().as_secs_f64()*1000.}));
             } else {
                 self.omitted += 1;
             }
@@ -105,13 +119,14 @@ impl Images {
             && self
                 .latest
                 .as_ref()
-                .is_some_and(|sample| sample.time == time)
+                .is_some_and(|selection| selection.sample.time == time)
     }
     pub fn capture_time_ms(&self) -> Result<u64> {
         Ok(u64::try_from(
             self.latest
                 .as_ref()
                 .ok_or("no presented image sample")?
+                .sample
                 .time
                 .as_millis(),
         )?)
@@ -120,7 +135,7 @@ impl Images {
         self.next_tick
     }
     pub fn inspect(&self) -> Value {
-        json!({"playing":self.playback.playing(),"clock_ms":self.playback.time().as_secs_f64()*1000.,"pending_sample":self.pending,"report":self.playback.report(),"presented_sample":self.latest.as_ref().map(|sample|json!({"time_ns":sample.time.as_nanos().to_string(),"frame_indices":sample.indices,"frame_id":sample.id}))})
+        json!({"playing":self.playback.playing(),"frozen":self.held,"clock_ms":self.playback.time().as_secs_f64()*1000.,"pending_sample":self.pending,"report":self.playback.report(),"presented_sample":self.latest.as_ref().map(|selection|json!({"time_ns":selection.sample.time.as_nanos().to_string(),"frame_indices":selection.sample.frame_indices,"frame_id":selection.id}))})
     }
     pub fn report(&self) -> Value {
         json!({"observations":self.observations,"omitted":self.omitted,"limits":["Presentation-call return times, not GPU duration or displayed-frame timing.","Selected image playback only; omissions are recorded in image-playback.json."]})

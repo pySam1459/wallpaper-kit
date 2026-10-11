@@ -146,9 +146,24 @@ try {
     # Live interval has no capture/readback. Fixture covers two combined loops;
     # the actual target crosses several sprite page boundaries, not two loops.
     Start-Sleep -Milliseconds 4200
-    $paused = Send-Command @{command='pause_images'}
+    $paused = Send-Command @{command='freeze_images'}
     $clockNs = [decimal]$paused.state.image_playback.presented_sample.time_ns
     if ($clockNs -lt 4000000000) { throw 'Live image playback did not advance for the observed interval' }
+    if (-not $paused.state.image_playback.frozen -or $paused.state.continuous_rendering) { throw 'Freeze did not stop scheduling' }
+    $null = Capture 'frozen-before.png'
+    Start-Sleep -Milliseconds 500
+    $held = Send-Command @{command='inspect'}
+    if ($held.state.frame.frame_id -ne $paused.state.frame.frame_id -or
+        $held.state.image_playback.presented_sample.time_ns -ne $paused.state.image_playback.presented_sample.time_ns -or
+        $held.state.image_playback.clock_ms -ne $paused.state.image_playback.clock_ms) { throw 'Freeze changed the last presented sample or clock' }
+    $null = Capture 'frozen-after.png'
+    if ((Get-FileHash -LiteralPath (Join-Path $outputPath 'frozen-before.png')).Hash -ne
+        (Get-FileHash -LiteralPath (Join-Path $outputPath 'frozen-after.png')).Hash) { throw 'Frozen pixels changed' }
+    $frozenResize = Send-Command @{command='resize'; width=320; height=180}
+    if ($frozenResize.state.image_playback.presented_sample.time_ns -ne $paused.state.image_playback.presented_sample.time_ns) { throw 'Frozen resize used newer content' }
+    $null = Capture 'frozen-resized.png'
+    $resumed = Send-Command @{command='play_images'}
+    if (-not $resumed.state.continuous_rendering -or $resumed.state.image_playback.frozen) { throw 'Frozen playback did not resume' }
     $null = Send-Command @{command='image_at'; time_ms=1500}
     $null = Capture 'paused.png'
     $null = Send-Command @{command='stop'}
@@ -159,7 +174,7 @@ try {
     if ($live.Count -lt 2) { throw 'Missing live image presentation observations' }
     [ordered]@{status='passed'; pid=$process.Id; scene=[bool]$ScenePath; image_layers=$expectedLayers;
         controlled_indices='passed'; pixel_oracle=$(if ($ScenePath) {'not available'} else {'passed'}); cloud_changed_pixels=$cloudChangedPixels;
-        paused_idle='passed'; resize='passed'; live_interval_ms=4200; live_samples=$live.Count; latest_live_time_ns=$clockNs.ToString();
+        paused_idle='passed'; resize='passed'; freeze_last_frame='passed'; frozen_resize='passed'; freeze_resume='passed'; live_interval_ms=4200; live_samples=$live.Count; latest_live_time_ns=$clockNs.ToString();
         actions=$transcript; cleanup='Owned process exited';
         limits=@('Selected images only. Omissions are recorded in image-playback.json.', 'Presentation-call return times do not establish display cadence or GPU duration.', 'Target captures need comparison against Wallpaper Engine. Host impact is unmeasured.');
     } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $outputPath 'report.json') -Encoding utf8

@@ -17,6 +17,131 @@ use wallpaper_kit::{SceneSource, SpritePager, TextureDecoder, TextureFormat, Tex
 
 static RUN: AtomicU64 = AtomicU64::new(0);
 
+#[test]
+fn jpeg_tex_decodes_rgb_grayscale_lz4_and_rejects_invalid_layouts() {
+    // Generated constant images; expectations are independent of this decoder.
+    for (jpeg, expected) in [
+        (
+            include_bytes!("fixtures/solid-rgb.jpg").as_slice(),
+            [64, 128, 192, 255],
+        ),
+        (
+            include_bytes!("fixtures/solid-gray.jpg").as_slice(),
+            [73, 73, 73, 255],
+        ),
+    ] {
+        for compressed in [false, true] {
+            let mut texture = fixture::tex(0, [2, 1], jpeg, compressed, true);
+            texture[59..63].copy_from_slice(&2_u32.to_le_bytes());
+            let package = Package::new(&texture);
+            let page = TextureDecoder::open(&package.source())
+                .unwrap()
+                .decode_page("image.tex", 0)
+                .unwrap();
+            assert_eq!(page.format(), TextureFormat::Rgba8);
+            for pixel in page.data().chunks_exact(4) {
+                assert!(pixel.iter().zip(expected).all(|(a, b)| a.abs_diff(b) <= 1));
+            }
+        }
+        for (extent, format, payload) in [
+            ([1, 2], 0, jpeg),
+            ([2, 1], 8, jpeg),
+            ([2, 1], 0, &jpeg[..20]),
+        ] {
+            let mut texture = fixture::tex(format, extent, payload, false, true);
+            texture[59..63].copy_from_slice(&2_u32.to_le_bytes());
+            let package = Package::new(&texture);
+            assert!(
+                TextureDecoder::open(&package.source())
+                    .unwrap()
+                    .decode_page("image.tex", 0)
+                    .is_err()
+            );
+        }
+    }
+}
+
+#[test]
+fn rg8_preserves_both_channels_through_lz4_and_gpu_sampling() {
+    let bytes = [17, 29, 181, 207];
+    for compressed in [false, true] {
+        let package = Package::new(&fixture::tex(8, [2, 1], &bytes, compressed, false));
+        let page = Arc::new(
+            TextureDecoder::open(&package.source())
+                .unwrap()
+                .decode_page("image.tex", 0)
+                .unwrap(),
+        );
+        assert_eq!(page.format(), TextureFormat::Rg8);
+        assert_eq!(page.data(), bytes);
+        let (renderer, events) =
+            Renderer::new(Size::new(2, 1).unwrap(), DeviceMode::Software).unwrap();
+        let id = renderer.render_texture_page(page).unwrap();
+        let frame = wait_frame(&renderer, &events, id);
+        fixture::check(
+            &frame.readback().unwrap(),
+            [2, 1],
+            &[17, 29, 0, 255, 181, 207, 0, 255],
+        )
+        .unwrap();
+        renderer.shutdown().unwrap();
+    }
+    let invalid = Package::new(&fixture::tex(8, [2, 1], &[0; 3], false, false));
+    assert!(
+        TextureDecoder::open(&invalid.source())
+            .unwrap()
+            .decode_page("image.tex", 0)
+            .is_err()
+    );
+}
+
+#[test]
+fn native_4k_png_preserves_single_pixel_detail_through_decode_render_and_resize() {
+    let extent = [3840, 2160];
+    let rgba: Vec<u8> = (0..extent[1])
+        .flat_map(|y| {
+            (0..extent[0]).flat_map(move |x| {
+                [
+                    ((x % 2) * 255) as u8,
+                    ((y % 2) * 255) as u8,
+                    (x % 251) as u8,
+                    255,
+                ]
+            })
+        })
+        .collect();
+    let png = fixture::png(extent, png::ColorType::Rgba, &rgba);
+    let package = Package::new(&fixture::tex(0, extent, &png, false, true));
+    let page = Arc::new(
+        TextureDecoder::open(&package.source())
+            .unwrap()
+            .decode_page("image.tex", 0)
+            .unwrap(),
+    );
+    assert_eq!(page.extent(), extent);
+    let size = Size::new(extent[0], extent[1]).unwrap();
+    let (renderer, events) = Renderer::new(size, DeviceMode::Software).unwrap();
+    let id = renderer.render_texture_page(page).unwrap();
+    let first = wait_frame(&renderer, &events, id);
+    assert_eq!(first.size(), size);
+    fixture::check(&first.readback().unwrap(), extent, &rgba).unwrap();
+    let uploads = wait_stats(&renderer, &first).texture_uploads;
+    let id = renderer.resize(Size::new(1920, 1080).unwrap()).unwrap();
+    drop(wait_frame(&renderer, &events, id));
+    let id = renderer.resize(size).unwrap();
+    let restored = wait_frame(&renderer, &events, id);
+    fixture::check(&restored.readback().unwrap(), extent, &rgba).unwrap();
+    fixture::check(&first.readback().unwrap(), extent, &rgba).unwrap();
+    let stats = wait_stats(&renderer, &restored);
+    assert_eq!(stats.texture_uploads, uploads);
+    assert_eq!(
+        stats.source_texture_bytes,
+        u64::from(extent[0]) * u64::from(extent[1]) * 4
+    );
+    assert!(stats.resident_textures <= 3);
+    renderer.shutdown().unwrap();
+}
+
 struct Package {
     root: PathBuf,
 }
@@ -58,6 +183,29 @@ impl Drop for Package {
         );
         fs::remove_dir_all(&self.root).unwrap();
     }
+}
+
+#[test]
+fn legacy_png_keeps_unpadded_content_and_rejects_larger_mips() {
+    let rgba = fixture::rgba();
+    let png = fixture::png([2, 2], png::ColorType::Rgba, &rgba);
+    let mut texture = fixture::tex(0, [2, 2], &png, false, true);
+    texture[26..34].copy_from_slice(&[4_u32.to_le_bytes(), 4_u32.to_le_bytes()].concat());
+    texture[46..54].copy_from_slice(b"TEXB0003");
+    texture.drain(63..67);
+    let package = Package::new(&texture);
+    let decoder = TextureDecoder::open(&package.source()).unwrap();
+    let page = decoder.decode_page("image.tex", 0).unwrap();
+    assert_eq!(page.extent(), [2, 2]);
+    assert_eq!(page.data(), rgba);
+    texture[26..30].copy_from_slice(&1_u32.to_le_bytes());
+    let invalid = Package::new(&texture);
+    assert!(
+        TextureDecoder::open(&invalid.source())
+            .unwrap()
+            .decode_page("image.tex", 0)
+            .is_err()
+    );
 }
 
 #[test]

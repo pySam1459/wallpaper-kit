@@ -10,6 +10,12 @@ pub use worker::{SpriteResult, SpriteWorker};
 mod pager;
 pub use pager::{SpritePager, SpritePagingStats};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SpriteSampling {
+    InPage,
+    Clamped,
+}
+
 /// Storage delivered to the GPU after container decompression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextureFormat {
@@ -17,6 +23,8 @@ pub enum TextureFormat {
     Rgba8,
     /// BC3 blocks, preserved compressed for GPU sampling.
     Bc3,
+    /// Two unsigned normalized bytes per pixel, red then green.
+    Rg8,
     /// One unsigned normalized byte per pixel.
     R8,
 }
@@ -33,6 +41,22 @@ pub struct TexturePage {
 }
 
 impl TexturePage {
+    pub(crate) fn rgba(extent: [u32; 2], data: Vec<u8>) -> Result<Self, InspectionError> {
+        if extent.iter().any(|v| *v == 0 || *v > 16384)
+            || data.len() as u64 != layout_bytes(0, extent)
+            || data.len() as u64 > MAX_PAGE_BYTES
+        {
+            return Err(InspectionError::invalid(
+                "generated texture",
+                "invalid RGBA page extent or storage",
+            ));
+        }
+        Ok(Self {
+            extent,
+            format: TextureFormat::Rgba8,
+            data,
+        })
+    }
     /// Width and height of the page in pixels.
     pub fn extent(&self) -> [u32; 2] {
         self.extent
@@ -43,7 +67,7 @@ impl TexturePage {
         self.format
     }
 
-    /// Packed rows for RGBA8/R8, or row-major 4 × 4 BC3 blocks.
+    /// Packed rows for RGBA8/RG8/R8, or row-major 4 × 4 BC3 blocks.
     pub fn data(&self) -> &[u8] {
         &self.data
     }
@@ -134,6 +158,12 @@ struct FrameLocation {
     rectangle: [f32; 6],
 }
 
+pub(crate) struct ParticleSpriteFrame {
+    pub page: u32,
+    pub duration: f32,
+    pub rectangle: [f32; 6],
+}
+
 struct PageLocation {
     offset: u64,
     stored: u64,
@@ -144,8 +174,15 @@ struct PageLocation {
 struct Index {
     summary: TextureSummary,
     locations: Vec<PageLocation>,
-    png: bool,
+    codec: Codec,
     frames: Vec<FrameLocation>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Codec {
+    Raw,
+    Png,
+    Jpeg,
 }
 
 const MAX_PAGE_BYTES: u64 = 256 * 1024 * 1024;
@@ -162,6 +199,25 @@ pub struct TextureDecoder {
 }
 
 impl TextureDecoder {
+    pub(crate) fn particle_sprite_frames(
+        &self,
+        asset: &str,
+    ) -> Result<Vec<ParticleSpriteFrame>, InspectionError> {
+        let mut reader = self
+            .package
+            .reader(asset)?
+            .ok_or_else(|| InspectionError::invalid(asset, "texture asset is missing"))?;
+        let indexed = index_sampling(&mut reader, SpriteSampling::Clamped)?;
+        Ok(indexed
+            .frames
+            .into_iter()
+            .map(|frame| ParticleSpriteFrame {
+                page: frame.page,
+                duration: frame.duration,
+                rectangle: frame.rectangle,
+            })
+            .collect())
+    }
     /// Open a metadata-indexed, read-locked sprite extraction stream.
     /// Blocks on I/O and validation, but decodes no pixels. The stream owns its
     /// asset handle independently of this decoder and excludes writes/replacement
@@ -218,7 +274,8 @@ impl TextureDecoder {
     /// Decode a base mip after validating the entire TEX metadata structure.
     ///
     /// Package-local assets take precedence over the installed engine root.
-    /// Raw/LZ4 RGBA8/R8/BC3 and PNG are supported. Other pages/mips are skipped,
+    /// Raw/LZ4 RGBA8/RG8/R8/BC3, PNG and eight-bit RGB/grayscale JPEG are supported.
+    /// Other pages/mips are skipped,
     /// not allocated. Malformed payloads, missing assets/pages and allocation
     /// limits return an asset-named error. Encoded payloads are limited to
     /// 64 MiB and decoded storage to 256 MiB. PNG conversion preserves code
@@ -237,7 +294,7 @@ impl TextureDecoder {
             .package
             .reader(asset)?
             .ok_or_else(|| InspectionError::invalid(asset, "texture asset is missing"))?;
-        let index = index(&mut reader)?;
+        let index = index_sampling(&mut reader, SpriteSampling::Clamped)?;
         decoded_page(&mut reader, &index, page, remaining)
     }
 }
@@ -312,7 +369,7 @@ fn decoded_page(
         ));
     }
     if location.compressed {
-        let limit = if index.png {
+        let limit = if index.codec != Codec::Raw {
             MAX_ENCODED_BYTES
         } else {
             MAX_PAGE_BYTES
@@ -321,7 +378,7 @@ fn decoded_page(
             return Err(reader.invalid("LZ4 decoded length exceeds allocation limit"));
         }
     }
-    let encoded = index.png || location.compressed;
+    let encoded = index.codec != Codec::Raw || location.compressed;
     reader.seek_to(location.offset)?;
     let payload = reader.bytes(
         location.stored,
@@ -342,10 +399,10 @@ fn decoded_page(
     } else {
         payload
     };
-    let data = if index.png {
-        decode_png(reader, &payload, summary.extent)?
-    } else {
-        payload
+    let data = match index.codec {
+        Codec::Png => decode_png(reader, &payload, summary.extent)?,
+        Codec::Jpeg => decode_jpeg(reader, &payload, summary.extent)?,
+        Codec::Raw => payload,
     };
     if data.len() as u64 != summary.decoded_bytes {
         return Err(reader.invalid("decoded payload disagrees with page layout"));
@@ -355,11 +412,50 @@ fn decoded_page(
         format: match index.summary.format {
             0 => TextureFormat::Rgba8,
             4 => TextureFormat::Bc3,
+            8 => TextureFormat::Rg8,
             9 => TextureFormat::R8,
             _ => unreachable!("index validated the pixel format"),
         },
         data,
     })
+}
+
+fn decode_jpeg(
+    reader: &AssetReader,
+    payload: &[u8],
+    extent: [u32; 2],
+) -> Result<Vec<u8>, InspectionError> {
+    let failure = |error| reader.invalid(format!("invalid JPEG payload: {error}"));
+    let mut decoder = jpeg_decoder::Decoder::new(std::io::Cursor::new(payload));
+    decoder.set_max_decoding_buffer_size(layout_bytes(0, extent) as usize);
+    decoder.read_info().map_err(failure)?;
+    let info = decoder
+        .info()
+        .ok_or_else(|| reader.invalid("missing JPEG metadata"))?;
+    if [u32::from(info.width), u32::from(info.height)] != extent {
+        return Err(reader.invalid("JPEG dimensions disagree with TEX page"));
+    }
+    let channels = match info.pixel_format {
+        jpeg_decoder::PixelFormat::RGB24 => 3,
+        jpeg_decoder::PixelFormat::L8 => 1,
+        _ => return Err(reader.invalid("unsupported JPEG pixel format")),
+    };
+    let mut pixels = decoder.decode().map_err(failure)?;
+    if pixels.len() != (extent[0] as usize * extent[1] as usize) * channels {
+        return Err(reader.invalid("JPEG output disagrees with page layout"));
+    }
+    // Expand in the returned allocation, avoiding a second full output page.
+    pixels.resize(layout_bytes(0, extent) as usize, 0);
+    for index in (0..pixels.len() / 4).rev() {
+        let input = &pixels[index * channels..(index + 1) * channels];
+        let rgb = if channels == 1 {
+            [input[0]; 3]
+        } else {
+            [input[0], input[1], input[2]]
+        };
+        pixels[index * 4..(index + 1) * 4].copy_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
+    }
+    Ok(pixels)
 }
 
 fn decode_png(
@@ -412,17 +508,27 @@ fn decode_png(
     Ok(pixels)
 }
 
-pub(crate) fn inspect(reader: &mut AssetReader) -> Result<TextureSummary, InspectionError> {
-    Ok(index(reader)?.summary)
+pub(crate) fn inspect(
+    reader: &mut AssetReader,
+    sampling: SpriteSampling,
+) -> Result<TextureSummary, InspectionError> {
+    Ok(index_sampling(reader, sampling)?.summary)
 }
 
 fn index(reader: &mut AssetReader) -> Result<Index, InspectionError> {
+    index_sampling(reader, SpriteSampling::InPage)
+}
+
+fn index_sampling(
+    reader: &mut AssetReader,
+    sampling: SpriteSampling,
+) -> Result<Index, InspectionError> {
     let mut signatures = vec![reader.signature()?, reader.signature()?];
     if signatures != ["TEXV0005", "TEXI0001"] {
         return Err(reader.invalid("unsupported TEX header signatures"));
     }
     let format = reader.u32()?;
-    if !matches!(format, 0 | 4 | 9) {
+    if !matches!(format, 0 | 4 | 8 | 9) {
         return Err(reader.invalid(format!("unsupported TEX pixel format {format}")));
     }
     let flags = reader.u32()?;
@@ -430,7 +536,7 @@ fn index(reader: &mut AssetReader) -> Result<Index, InspectionError> {
         return Err(reader.invalid(format!("unsupported TEX flags {flags}")));
     }
     let extent = dimensions(reader)?;
-    dimensions(reader)?;
+    let content_extent = dimensions(reader)?;
     reader.u32()?; // Authored average color, unrelated to storage lengths.
     let container = reader.signature()?;
     let version = match container.as_str() {
@@ -450,11 +556,14 @@ fn index(reader: &mut AssetReader) -> Result<Index, InspectionError> {
     } else {
         u32::MAX
     };
-    if !matches!(codec, u32::MAX | 13) {
-        return Err(reader.invalid(format!("unsupported TEX image codec {codec}")));
-    }
-    if codec == 13 && format != 0 {
-        return Err(reader.invalid("PNG payload requires RGBA format"));
+    let codec = match codec {
+        u32::MAX => Codec::Raw,
+        13 => Codec::Png,
+        2 => Codec::Jpeg,
+        _ => return Err(reader.invalid(format!("unsupported TEX image codec {codec}"))),
+    };
+    if codec != Codec::Raw && format != 0 {
+        return Err(reader.invalid("encoded image payload requires RGBA format"));
     }
     if version == 4 && reader.u32()? != 0 {
         return Err(reader.invalid("unsupported embedded TEX video"));
@@ -475,7 +584,13 @@ fn index(reader: &mut AssetReader) -> Result<Index, InspectionError> {
             {
                 return Err(reader.invalid("invalid mip dimensions"));
             }
-            if page == 0 && level == 0 && mip_extent != extent {
+            // Older PNG containers reserve a padded GPU extent in the header
+            // while each mip stores the unpadded content rectangle.
+            let legacy_png = codec != Codec::Raw
+                && version == 3
+                && mip_extent == content_extent
+                && (0..2).all(|axis| content_extent[axis] <= extent[axis]);
+            if page == 0 && level == 0 && mip_extent != extent && !legacy_png {
                 return Err(reader.invalid("first page differs from header extent"));
             }
             previous = Some(mip_extent);
@@ -493,7 +608,7 @@ fn index(reader: &mut AssetReader) -> Result<Index, InspectionError> {
             if stored == 0 {
                 return Err(reader.invalid("empty mip payload"));
             }
-            if codec == u32::MAX
+            if codec == Codec::Raw
                 && ((compression == 1 && declared != decoded)
                     || (compression == 0 && stored != decoded))
             {
@@ -560,18 +675,27 @@ fn index(reader: &mut AssetReader) -> Result<Index, InspectionError> {
             {
                 return Err(reader.invalid(format!("frame {frame} has an invalid rectangle basis")));
             }
+            // Particle atlases contain fractional cells and can deliberately
+            // sample past the edge with clamp addressing. This is metadata,
+            // not permission to construct an out-of-page integer pixel crop.
             for (px, py) in [
                 (x, y),
                 (x + wx, y + wy),
                 (x + hx, y + hy),
                 (x + wx + hx, y + wy + hy),
             ] {
-                if px < 0.
-                    || py < 0.
-                    || px > page.extent[0] as f32 + 0.001
-                    || py > page.extent[1] as f32 + 0.001
+                if px.abs() > 16_384. || py.abs() > 16_384. {
+                    return Err(
+                        reader.invalid(format!("frame {frame} sampling coordinates exceed bounds"))
+                    );
+                }
+                if sampling == SpriteSampling::InPage
+                    && (px < 0.
+                        || py < 0.
+                        || px > page.extent[0] as f32 + 0.001
+                        || py > page.extent[1] as f32 + 0.001)
                 {
-                    return Err(reader.invalid(format!("frame {frame} extends beyond its page")));
+                    return Err(reader.invalid(format!("frame {frame} rectangle exceeds its page")));
                 }
             }
             duration_seconds += f64::from(duration);
@@ -596,7 +720,7 @@ fn index(reader: &mut AssetReader) -> Result<Index, InspectionError> {
             duration_seconds,
         },
         locations,
-        png: codec == 13,
+        codec,
         frames: frame_locations,
     })
 }
@@ -614,6 +738,7 @@ fn layout_bytes(format: u32, [width, height]: [u32; 2]) -> u64 {
     match format {
         0 => width * height * 4,
         4 => width.div_ceil(4) * height.div_ceil(4) * 16,
+        8 => width * height * 2,
         9 => width * height,
         _ => unreachable!("format checked before layout"),
     }

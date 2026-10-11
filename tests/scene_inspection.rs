@@ -78,6 +78,25 @@ impl Drop for Fixture {
 const EMPTY: &[u8] = br#"{"version":5,"general":{"orthogonalprojection":{"width":3840,"height":2160}},"objects":[]}"#;
 
 #[test]
+fn legacy_package_preserves_index_validation() {
+    for signature in ["PKGV0016", "PKGV0018", "PKGV0022"] {
+        let fixture = Fixture::new(&[("scene.json", EMPTY)]);
+        let path = fixture.root.join("scene.pkg");
+        let mut bytes = fs::read(&path).unwrap();
+        bytes[4..12].copy_from_slice(signature.as_bytes());
+        fs::write(&path, &bytes).unwrap();
+        assert_eq!(
+            inspect_scene(&fixture.source()).unwrap().package.signature,
+            signature
+        );
+        // The payload length must still stay inside the package.
+        bytes[34..38].copy_from_slice(&u32::MAX.to_le_bytes());
+        fs::write(&path, bytes).unwrap();
+        assert!(inspect_scene(&fixture.source()).is_err());
+    }
+}
+
+#[test]
 fn inspects_a_scene_without_a_gpu_or_extracted_assets() {
     let fixture = Fixture::new(&[("scene.json", EMPTY)]);
     let report = inspect_scene(&fixture.source()).unwrap();
@@ -285,6 +304,76 @@ fn rejects_invalid_sprite_timing_pages_and_rectangles() {
         );
         assert!(report.textures.is_empty());
     }
+}
+
+#[test]
+fn particle_sampling_accepts_fractional_clamped_cells_but_image_crops_do_not() {
+    let mut texture = sprite_texture();
+    let end = texture.len();
+    // First frame starts at the page edge and extends by a fractional cell.
+    texture[end - 56..end - 52].copy_from_slice(&4_f32.to_le_bytes());
+    texture[end - 48..end - 44].copy_from_slice(&0.5_f32.to_le_bytes());
+    let particle = br#"{"passes":[{"shader":"genericparticle","textures":["sprite"]}]}"#;
+    let image = br#"{"passes":[{"shader":"genericimage4","textures":["sprite"]}]}"#;
+    let fixture = Fixture::new(&[
+        ("scene.json", br#"{"version":5,"general":{"orthogonalprojection":{"width":8,"height":8}},"objects":[{"id":7,"image":"models/sprite.json"}]}"#),
+        ("models/sprite.json", br#"{"material":"materials/sprite.json"}"#),
+        ("materials/sprite.json", particle),
+        ("materials/sprite.tex", &texture),
+        ("shaders/genericparticle.vert", b""),
+        ("shaders/genericparticle.frag", br#"uniform sampler2D g_Texture0; // {"default":"sprite"}"#),
+    ]);
+    let report = inspect_scene(&fixture.source()).unwrap();
+    assert!(
+        !report
+            .diagnostics
+            .iter()
+            .any(|finding| finding.code == "invalid-asset")
+    );
+    assert_eq!(report.textures.len(), 1);
+    let decoder = wallpaper_kit::TextureDecoder::open(&fixture.source()).unwrap();
+    assert!(decoder.decode_page("materials/sprite.tex", 0).is_ok());
+    assert!(decoder.sprite_frames("materials/sprite.tex").is_err());
+    assert!(decoder.sprite_stream("materials/sprite.tex").is_err());
+
+    // A texture shared by both materials must receive image validation even
+    // when the particle reference reaches it first.
+    for materials in [
+        [particle.as_slice(), image.as_slice()],
+        [image.as_slice(), particle.as_slice()],
+    ] {
+        let fixture = Fixture::new(&[
+            ("scene.json", br#"{"version":5,"general":{"orthogonalprojection":{"width":8,"height":8}},"objects":[{"id":7,"image":"models/a.json"},{"id":8,"image":"models/b.json"}]}"#),
+            ("models/a.json", br#"{"material":"materials/a.json"}"#),
+            ("models/b.json", br#"{"material":"materials/b.json"}"#),
+            ("materials/a.json", materials[0]),
+            ("materials/b.json", materials[1]),
+            ("materials/sprite.tex", &texture),
+            ("shaders/genericparticle.vert", b""),
+            ("shaders/genericparticle.frag", b""),
+            ("shaders/genericimage4.vert", b""),
+            ("shaders/genericimage4.frag", b""),
+        ]);
+        let report = inspect_scene(&fixture.source()).unwrap();
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|finding| finding.code == "invalid-asset"
+                    && finding.asset == "materials/sprite.tex")
+        );
+        assert!(report.textures.len() <= 1);
+    }
+    texture[end - 56..end - 52].copy_from_slice(&16_385_f32.to_le_bytes());
+    let fixture = Fixture::image(particle, &texture, b"");
+    let report = inspect_scene(&fixture.source()).unwrap();
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|finding| finding.code == "invalid-asset"
+                && finding.asset == "materials/sprite.tex")
+    );
 }
 
 #[test]

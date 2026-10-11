@@ -72,6 +72,14 @@ fn parameters(effect: &RawEffect) -> Result<PreciseBlur, InspectionError> {
 }
 
 pub(super) fn load(package: &Package, effect: &RawEffect) -> Result<PreciseBlur, InspectionError> {
+    let namespace = effect
+        .file
+        .strip_prefix("effects/workshop/")
+        .and_then(|p| p.strip_suffix("/blurprecise/effect.json"));
+    let shader_name = namespace.map_or_else(
+        || "effects/blur_precise_gaussian".to_owned(),
+        |id| format!("workshop/{id}/effects/blur_precise_gaussian"),
+    );
     let blur = parameters(effect)?;
     let definition = snapshot::json(package, &effect.file)?;
     fields(
@@ -151,7 +159,7 @@ pub(super) fn load(package: &Package, effect: &RawEffect) -> Result<PreciseBlur,
             ],
             material,
         )?;
-        if material_pass["shader"] != "effects/blur_precise_gaussian"
+        if material_pass["shader"] != shader_name
             || material_pass["blending"] != "normal"
             || material_pass["depthtest"] != "disabled"
             || material_pass["depthwrite"] != "disabled"
@@ -185,6 +193,25 @@ pub(super) fn load(package: &Package, effect: &RawEffect) -> Result<PreciseBlur,
             "b594e72584c3f9d2dff8ecb74cf71ac8e5b3e0ab7e57f9fd0dd1d964269cbc2e",
         ),
     ] {
+        let namespaced;
+        let asset = if namespace.is_some() && asset.starts_with("shaders/effects/") {
+            namespaced = format!(
+                "shaders/{shader_name}.{}",
+                if asset.ends_with(".frag") {
+                    "frag"
+                } else {
+                    "vert"
+                }
+            );
+            namespaced.as_str()
+        } else {
+            asset
+        };
+        let expected = if namespace.is_some() && asset.ends_with(".vert") {
+            "177057a90b5de94011ad967b36d25a2a51072b06638498a7ce99a9758e45ba0a"
+        } else {
+            expected
+        };
         let mut reader = package.reader(asset)?.ok_or_else(|| invalid(asset))?;
         if reader.length > 64 * 1024 || reader.hash()? != expected {
             return Err(invalid(asset));
