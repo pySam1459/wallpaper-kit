@@ -43,6 +43,10 @@ name = "scene-inspect"
 path = "examples/scene-inspect/main.rs"
 
 [[example]]
+name = "workshop-check"
+path = "examples/workshop-check/main.rs"
+
+[[example]]
 name = "texture-checks"
 path = "examples/texture-checks/main.rs"
 

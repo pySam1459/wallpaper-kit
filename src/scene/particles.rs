@@ -83,6 +83,7 @@ enum Shape {
         min: f32,
         max: f32,
         directions: [f32; 3],
+        sign: [f32; 3],
         speed: Range,
     },
 }
@@ -95,6 +96,12 @@ struct Emitter {
 enum Operator {
     Fade(f32, f32),
     Size {
+        start: f32,
+        end: f32,
+        from: f32,
+        to: f32,
+    },
+    Alpha {
         start: f32,
         end: f32,
         from: f32,
@@ -135,7 +142,7 @@ fn number(
     high: f32,
     asset: &str,
 ) -> Result<f32, InspectionError> {
-    let n = snapshot::scalar(value, default, asset)?;
+    let n = snapshot::scalar(value.filter(|v| !v.is_null()), default, asset)?;
     if !(low..=high).contains(&n) {
         return Err(InspectionError::invalid(
             asset,
@@ -162,7 +169,7 @@ fn vector(
     default: [f32; 3],
     asset: &str,
 ) -> Result<[f32; 3], InspectionError> {
-    let v = snapshot::vector(value, default, asset)?;
+    let v = snapshot::vector(value.filter(|v| !v.is_null()), default, asset)?;
     if v.iter().any(|n| n.abs() > 16384.) {
         return Err(InspectionError::invalid(
             asset,
@@ -210,6 +217,7 @@ fn fields(value: &Value, allowed: &[&str]) -> bool {
 pub(super) fn prepare(
     decoder: &TextureDecoder,
     objects: &[RawObject],
+    tolerant: bool,
     pages: &mut BTreeMap<(String, u32), Arc<TexturePage>>,
     bytes: &mut u64,
     omissions: &mut Vec<String>,
@@ -297,6 +305,7 @@ pub(super) fn prepare(
         if let Some(root) = load(
             decoder,
             &key,
+            tolerant,
             pages,
             bytes,
             omissions,
@@ -338,6 +347,7 @@ pub(super) fn prepare(
 fn load(
     decoder: &TextureDecoder,
     asset: &str,
+    tolerant: bool,
     pages: &mut BTreeMap<(String, u32), Arc<TexturePage>>,
     bytes: &mut u64,
     omissions: &mut Vec<String>,
@@ -352,7 +362,9 @@ fn load(
     }
     *nodes += 1;
     active.push(asset.into());
-    let result = load_inner(decoder, asset, pages, bytes, omissions, active, nodes);
+    let result = load_inner(
+        decoder, asset, tolerant, pages, bytes, omissions, active, nodes,
+    );
     active.pop();
     result
 }
@@ -361,6 +373,7 @@ fn load(
 fn load_inner(
     decoder: &TextureDecoder,
     asset: &str,
+    tolerant: bool,
     pages: &mut BTreeMap<(String, u32), Arc<TexturePage>>,
     bytes: &mut u64,
     omissions: &mut Vec<String>,
@@ -520,12 +533,16 @@ fn load_inner(
                         "origin",
                         "distancemin",
                         "distancemax",
+                        "directions",
                     ],
                 ) =>
             {
+                let min = vector(e.get("distancemin"), [0.; 3], asset)?;
+                let max = vector(e.get("distancemax"), [0.; 3], asset)?;
+                let directions = vector(e.get("directions"), [1.; 3], asset)?;
                 Shape::Box(
-                    vector(e.get("distancemin"), [0.; 3], asset)?,
-                    vector(e.get("distancemax"), [0.; 3], asset)?,
+                    std::array::from_fn(|i| min[i] * directions[i]),
+                    std::array::from_fn(|i| max[i] * directions[i]),
                 )
             }
             Some("sphererandom")
@@ -539,15 +556,24 @@ fn load_inner(
                         "distancemin",
                         "distancemax",
                         "directions",
+                        "sign",
                         "speedmin",
                         "speedmax",
                     ],
                 ) =>
             {
+                let sign = vector(e.get("sign"), [0.; 3], asset)?;
+                if sign.iter().any(|v| ![-1., 0., 1.].contains(v)) {
+                    return Err(InspectionError::invalid(
+                        asset,
+                        "particle sign must be -1, 0 or 1",
+                    ));
+                }
                 Shape::Sphere {
                     min: number(e.get("distancemin"), 0., 0., 16384., asset)?,
                     max: number(e.get("distancemax"), 0., 0., 16384., asset)?,
                     directions: vector(e.get("directions"), [1., 1., 0.], asset)?,
+                    sign,
                     speed: Range {
                         min: number(e.get("speedmin"), 0., 0., 16384., asset)?,
                         max: number(e.get("speedmax"), 0., 0., 16384., asset)?,
@@ -602,7 +628,33 @@ fn load_inner(
                 }
             }
             Some("velocityrandom") => velocity = vector_range(init, [0.; 3], asset)?,
-            Some("rotationrandom") => rotation = range(init, [0., 360.], -3600., 3600., asset)?,
+            Some("rotationrandom") => {
+                if ["min", "max"]
+                    .iter()
+                    .any(|key| init.get(key).is_some_and(Value::is_string))
+                {
+                    let min = vector(init.get("min"), [0.; 3], asset)?;
+                    let max = vector(init.get("max"), [0., 0., std::f32::consts::TAU], asset)?;
+                    if min[..2].iter().chain(&max[..2]).any(|v| *v != 0.) {
+                        return unsupported(omissions, "3D rotation");
+                    }
+                    rotation = Range {
+                        // Authored particle rotation is clockwise in radians;
+                        // ImageLayer uses counterclockwise degrees.
+                        min: -min[2].to_degrees(),
+                        max: -max[2].to_degrees(),
+                        exponent: number(init.get("exponent"), 1., 0.01, 32., asset)?,
+                    };
+                    if rotation.min.abs() > 3600. || rotation.max.abs() > 3600. {
+                        return Err(InspectionError::invalid(
+                            asset,
+                            "particle rotation exceeds bounds",
+                        ));
+                    }
+                } else {
+                    rotation = range(init, [0., 360.], -3600., 3600., asset)?;
+                }
+            }
             Some("angularvelocityrandom") => {
                 let values = vector_range(init, [0.; 3], asset)?;
                 if values[..2].iter().any(|v| v.min != 0. || v.max != 0.) {
@@ -673,6 +725,27 @@ fn load_inner(
                     to: number(op.get("endvalue"), 0., 0., 16., asset)?,
                 });
             }
+            Some("alphachange")
+                if fields(
+                    op,
+                    &["name", "starttime", "endtime", "startvalue", "endvalue"],
+                ) =>
+            {
+                let start = number(op.get("starttime"), 0., 0., 1., asset)?;
+                let end = number(op.get("endtime"), 1., 0., 1., asset)?;
+                if end <= start {
+                    return Err(InspectionError::invalid(
+                        asset,
+                        "alpha change requires increasing time",
+                    ));
+                }
+                operators.push(Operator::Alpha {
+                    start,
+                    end,
+                    from: number(op.get("startvalue"), 1., 0., 1., asset)?,
+                    to: number(op.get("endvalue"), 0., 0., 1., asset)?,
+                });
+            }
             Some("oscillatealpha")
                 if fields(
                     op,
@@ -711,6 +784,9 @@ fn load_inner(
                     },
                 })
             }
+            Some(name) if tolerant => omissions.push(format!(
+                "Particle {asset}: operator component {name} is omitted."
+            )),
             _ => return unsupported(omissions, "operator component"),
         }
     }
@@ -769,7 +845,9 @@ fn load_inner(
                 .as_str()
                 .ok_or_else(|| InspectionError::invalid(asset, "missing child path"))?,
         )?;
-        if let Some(system) = load(decoder, &name, pages, bytes, omissions, active, nodes)? {
+        if let Some(system) = load(
+            decoder, &name, tolerant, pages, bytes, omissions, active, nodes,
+        )? {
             horizon = horizon.max(lifetime.maximum() + system.horizon);
             children.push((event, system));
         }
@@ -864,6 +942,7 @@ impl System {
                 min,
                 max,
                 directions,
+                sign,
                 speed,
             } => {
                 let theta = rng.unit() * std::f32::consts::TAU;
@@ -873,11 +952,16 @@ impl System {
                     rng.unit() * 2. - 1.
                 };
                 let radial = (1. - z * z).sqrt();
-                let direction = [
+                let mut direction = [
                     theta.cos() * radial * directions[0],
                     theta.sin() * radial * directions[1],
                     z * directions[2],
                 ];
+                for i in 0..3 {
+                    if sign[i] != 0. {
+                        direction[i] = direction[i].abs() * sign[i];
+                    }
+                }
                 let radius = min + (max - min) * rng.unit().sqrt();
                 let speed = speed.sample(&mut rng);
                 for i in 0..3 {
@@ -965,6 +1049,14 @@ impl System {
                     to,
                 } => {
                     size *= from + (to - from) * ((progress - start) / (end - start)).clamp(0., 1.)
+                }
+                Operator::Alpha {
+                    start,
+                    end,
+                    from,
+                    to,
+                } => {
+                    alpha *= from + (to - from) * ((progress - start) / (end - start)).clamp(0., 1.)
                 }
                 Operator::Oscillate {
                     frequency,

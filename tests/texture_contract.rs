@@ -18,6 +18,44 @@ use wallpaper_kit::{SceneSource, SpritePager, TextureDecoder, TextureFormat, Tex
 static RUN: AtomicU64 = AtomicU64::new(0);
 
 #[test]
+fn legacy_integer_sprite_frames_validate_atlas_bounds_and_decode() {
+    let mut texture = fixture::tex(0, [2, 2], &fixture::rgba(), false, false);
+    texture[46..55].copy_from_slice(b"TEXB0001\0");
+    texture.drain(59..67);
+    texture.drain(71..79);
+    texture[22..26].copy_from_slice(&4_u32.to_le_bytes());
+    // Legacy headers describe the imported frame, not the larger atlas.
+    for offset in [26, 30, 34, 38] {
+        texture[offset..offset + 4].copy_from_slice(&1_u32.to_le_bytes());
+    }
+    texture.extend_from_slice(b"TEXS0001\0");
+    texture.extend_from_slice(&1_u32.to_le_bytes());
+    texture.extend_from_slice(&0_u32.to_le_bytes());
+    texture.extend_from_slice(&0.1_f32.to_le_bytes());
+    for coordinate in [0_u32, 0, 1, 0, 0, 1] {
+        texture.extend_from_slice(&coordinate.to_le_bytes());
+    }
+    let package = Package::new(&texture);
+    let decoder = TextureDecoder::open(&package.source()).unwrap();
+    let frame = decoder.sprite_frames("image.tex").unwrap()[0];
+    assert_eq!(frame.origin(), [0, 0]);
+    assert_eq!(frame.extent(), [1, 1]);
+    assert_eq!(
+        decoder.decode_page("image.tex", 0).unwrap().data(),
+        fixture::rgba()
+    );
+    let last = texture.len() - 4;
+    texture[last..].copy_from_slice(&3_u32.to_le_bytes());
+    let corrupt = Package::new(&texture);
+    assert!(
+        TextureDecoder::open(&corrupt.source())
+            .unwrap()
+            .sprite_frames("image.tex")
+            .is_err()
+    );
+}
+
+#[test]
 fn jpeg_tex_decodes_rgb_grayscale_lz4_and_rejects_invalid_layouts() {
     // Generated constant images; expectations are independent of this decoder.
     for (jpeg, expected) in [

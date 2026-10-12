@@ -18,6 +18,11 @@ try {
     Invoke-Cargo @('fmt', '--all', '--', '--check')
     Invoke-Cargo @('clippy', '--locked', '--all-targets', '--', '-D', 'warnings')
     Invoke-Cargo @('test', '--locked')
+    $videoStatus = 'skipped'
+    if ((Get-Command ffmpeg.exe -ErrorAction SilentlyContinue) -and (Get-Command ffprobe.exe -ErrorAction SilentlyContinue)) {
+        Invoke-Cargo @('test', '--locked', '--test', 'video_contract', '--', '--ignored')
+        $videoStatus = 'passed'
+    }
     Invoke-Cargo @('doc', '--locked', '--no-deps')
     Invoke-Cargo @('build', '--locked', '--examples')
     & "$PSScriptRoot/check-boundaries.ps1" -SelfTest | Tee-Object -FilePath (Join-Path $output 'boundaries.json')
@@ -79,6 +84,7 @@ try {
         precise_blur_status='passed';
         cloud_motion_status='passed';
         image_playback_status='passed';
+        video_decoder_status=$videoStatus;
         native_image_playback_status=$(if ($SkipNative) {'skipped'} else {'passed'});
         target_image_playback_status=$(if ($SkipNative -or -not $ScenePath) {'skipped'} else {'passed'});
         sprite_extraction_status='passed';

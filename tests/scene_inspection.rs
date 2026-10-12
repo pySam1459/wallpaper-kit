@@ -79,7 +79,8 @@ const EMPTY: &[u8] = br#"{"version":5,"general":{"orthogonalprojection":{"width"
 
 #[test]
 fn legacy_package_preserves_index_validation() {
-    for signature in ["PKGV0016", "PKGV0018", "PKGV0022"] {
+    for version in 1..=24 {
+        let signature = format!("PKGV{version:04}");
         let fixture = Fixture::new(&[("scene.json", EMPTY)]);
         let path = fixture.root.join("scene.pkg");
         let mut bytes = fs::read(&path).unwrap();

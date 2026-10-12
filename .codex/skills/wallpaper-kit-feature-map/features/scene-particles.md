@@ -2,6 +2,17 @@
 
 ## Status
 
+[Particle profile compatibility](../../../../docs/particle-profiles.md) supports
+box direction scaling, sphere sign, vector rotation and nullable defaults.
+Controlled engine/native geometry checks, five public contracts and the
+[software gate](../../../../artifacts/20261012-194913-6ebe399a/manifest.json) passed.
+The collection adds nine particle objects across five wallpapers and preserves
+previous objects/effects. The [Levi comparison](../../../../artifacts/levi-particle-comparison/comparison.json)
+exposed a two-channel fog colour error, corrected with an engine channel probe
+and public GPU pixels. Rain and ash remain omitted; T3 application appearance
+remains unverified. Operator omissions now
+affect 19 wallpapers, including turbulence in 16.
+
 A bounded 2D particle profile is implemented through scene discovery. Generated WARP contracts and the [HDR/refraction Gojo native receipt](../../../../artifacts/gojo-hdr-refraction/report.json) verify the recorded Windows build, including normal-map ring admission and HDR bloom. Exact engine fidelity and complete particle compatibility remain unverified. The original Yuta particle profile remains omitted.
 
 The [4K disabled-bloom receipt](../../../../artifacts/gojo-fireworks-after-4k/report.json) verifies that Gojo's authored `bloom=false` retains float HDR accumulation and the ring while removing the added halo and bloom allocations. The [required gate](../../../../artifacts/20261011-233510-3a0742cd/manifest.json) passed. Public WARP contracts independently check disabled-bloom pixels and effect-target bytes.

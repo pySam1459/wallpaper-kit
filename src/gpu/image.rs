@@ -24,6 +24,7 @@ pub(super) struct ImageRenderer {
     blur_constants: ID3D11Buffer,
     cloud_pixel: ID3D11PixelShader,
     flow_pixel: ID3D11PixelShader,
+    motion_pixel: ID3D11PixelShader,
     ray_vertex: ID3D11VertexShader,
     ray_pixel: ID3D11PixelShader,
     ray_constants: ID3D11Buffer,
@@ -114,6 +115,7 @@ impl ImageRenderer {
         let blur_vertical_code = compile(s!("blur_vertical"), s!("ps_5_0"))?;
         let cloud_pixel_code = compile(s!("cloud_pixel"), s!("ps_5_0"))?;
         let flow_pixel_code = compile(s!("flow_pixel"), s!("ps_5_0"))?;
+        let motion_pixel_code = compile(s!("motion_pixel"), s!("ps_5_0"))?;
         let ray_vertex_code = compile(s!("ray_vertex"), s!("vs_5_0"))?;
         let ray_pixel_code = compile(s!("ray_pixel"), s!("ps_5_0"))?;
         let (mut ray_vertex, mut ray_pixel, mut ray_constants) = (None, None, None);
@@ -123,6 +125,7 @@ impl ImageRenderer {
         let (mut blur_horizontal, mut blur_vertical, mut blur_constants) = (None, None, None);
         let (mut cloud_pixel, mut cloud_constants) = (None, None);
         let mut flow_pixel = None;
+        let mut motion_pixel = None;
         let (mut particle_pixel, mut additive) = (None, None);
         // SAFETY: live device and bytecode buffers; outputs are owned COM refs.
         unsafe {
@@ -160,6 +163,7 @@ impl ImageRenderer {
             device.CreatePixelShader(&blur_vertical_code, None, Some(&mut blur_vertical))?;
             device.CreatePixelShader(&cloud_pixel_code, None, Some(&mut cloud_pixel))?;
             device.CreatePixelShader(&flow_pixel_code, None, Some(&mut flow_pixel))?;
+            device.CreatePixelShader(&motion_pixel_code, None, Some(&mut motion_pixel))?;
             device.CreateVertexShader(&ray_vertex_code, None, Some(&mut ray_vertex))?;
             device.CreatePixelShader(&ray_pixel_code, None, Some(&mut ray_pixel))?;
             device.CreateBuffer(
@@ -239,6 +243,7 @@ impl ImageRenderer {
             blur_constants: blur_constants.expect("blur buffer output"),
             cloud_pixel: cloud_pixel.expect("cloud pixel output"),
             flow_pixel: flow_pixel.expect("flow pixel output"),
+            motion_pixel: motion_pixel.expect("motion pixel output"),
             ray_vertex: ray_vertex.expect("ray vertex output"),
             ray_pixel: ray_pixel.expect("ray pixel output"),
             ray_constants: ray_constants.expect("ray constants output"),
@@ -492,10 +497,7 @@ impl ImageRenderer {
             context.PSSetConstantBuffers(1, Some(&[Some(self.layer_constants.clone())]));
             context.PSSetConstantBuffers(4, Some(&[Some(self.scene_constants.clone())]));
             if let Some(scene) = &self.scene {
-                context.ClearRenderTargetView(
-                    &scene.target,
-                    &crate::BLANK_RGBA.map(|v| f32::from(v) / 255.),
-                );
+                context.ClearRenderTargetView(&scene.target, &composition.background_color());
             }
             let target = self
                 .scene
@@ -534,7 +536,11 @@ impl ImageRenderer {
                     region.extent()[1],
                     layer.opacity().to_bits(),
                     layer.brightness().to_bits(),
-                    u32::from(region.page().format() == TextureFormat::R8),
+                    match region.page().format() {
+                        TextureFormat::R8 => 1,
+                        TextureFormat::Rg8 if layer.particle_color.is_some() => 2,
+                        _ => 0,
+                    },
                     u32::from(layer.image_quality() == crate::ImageQuality::Linear),
                     color[0].to_bits(),
                     color[1].to_bits(),
@@ -555,7 +561,11 @@ impl ImageRenderer {
                     next_uv[4].to_bits(),
                     next_uv[5].to_bits(),
                     frame_blend.to_bits(),
-                    u32::from(next_region.page().format() == TextureFormat::R8),
+                    match next_region.page().format() {
+                        TextureFormat::R8 => 1,
+                        TextureFormat::Rg8 => 2,
+                        _ => 0,
+                    },
                     next_region.origin()[0],
                     next_region.origin()[1],
                     next_region.extent()[0],
@@ -585,6 +595,7 @@ impl ImageRenderer {
                             .view
                             .clone()
                     }),
+                    None,
                 ];
                 if let Some((normal, amount)) = &layer.refraction {
                     let scene = self.scene.as_ref().expect("refraction scene admitted");
@@ -669,6 +680,32 @@ impl ImageRenderer {
                         );
                     }
                     context.PSSetShader(&self.ray_pixel, None);
+                } else if let Some((motion, time)) = layer.image_motion() {
+                    let constants = motion.constants(time);
+                    context.UpdateSubresource(
+                        &self.cloud_constants,
+                        0,
+                        None,
+                        constants.as_ptr().cast(),
+                        0,
+                        0,
+                    );
+                    context.PSSetConstantBuffers(7, Some(&[Some(self.cloud_constants.clone())]));
+                    for (slot, mask) in [
+                        (4, &motion.mask),
+                        (3, &motion.phase_mask),
+                        (8, &motion.opacity_mask),
+                    ] {
+                        sources[slot] = mask.as_ref().map(|mask| {
+                            self.textures
+                                .iter()
+                                .find(|texture| texture.source.ptr_eq(&Arc::downgrade(mask.page())))
+                                .expect("motion mask uploaded")
+                                .view
+                                .clone()
+                        });
+                    }
+                    context.PSSetShader(&self.motion_pixel, None);
                 } else if let Some((motion, time)) = layer.flow_motion() {
                     let p = &motion.profile;
                     let mask = motion.mask.extent();

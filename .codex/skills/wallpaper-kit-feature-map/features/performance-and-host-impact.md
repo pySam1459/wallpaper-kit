@@ -2,6 +2,16 @@
 
 ## Status
 
+T3 delivery now follows `requestAnimationFrame`; its native worker uses absolute
+frame deadlines and a scoped Windows timer request. Source videos retain their
+rational average rate instead of being converted to 30 fps. The local Panda
+export benchmark improved from 21.43 fps with simulated old T3 polling to 59.41
+fps at a 60 fps target and 119.99 fps at a 120 fps target. Read
+[playback cadence](../../../../docs/smooth-playback.md) for commands, raw receipts,
+CPU/memory samples and the distinction between exports and display timing.
+Actual T3 and Wallpaper Engine captures establish visible motion; smooth monitor
+presentation and exact engine fidelity remain unmeasured.
+
 Blank verification reports one measured native idle interval with process CPU time, working set and handles. [Diagnostic motion](diagnostic-motion.md) records a separate warmed run's readiness percentiles, missed deadlines, skipped slots and acquisition duration, plus native presentation-call return samples. [TEX page checks](texture-pages.md) record source payload bytes, cumulative uploads and diagnostic decode times, with repeated draws/resize verifying upload reuse. Full scene metrics, GPU timing, host input latency and steady-state acceptance remain planned; proposed scene budgets are in the specification.
 
 ## Consumer outcome

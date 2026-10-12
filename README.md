@@ -12,13 +12,20 @@ The project starts on Windows. The consuming application's responsiveness takes 
 
 ## Status
 
-The Rust library renders blank Direct3D 11 textures, controlled-time diagnostic motion and decoded TEX pages through a bounded reusable output pool. It also inspects local scene packages and their asset dependencies through a read-only public API. A native Windows viewer and headless verification runners consume its public API. [TEX page verification](docs/texture-pages.md) covers PNG/LZ4 decoding and RGBA8/R8/BC3 drawing. [Image playback](docs/image-playback.md) supports selected scene images with precise blur/cloud motion, and [scene particles](docs/scene-particles.md) adds Gojo's stars, shooting-star trail and fireworks. [Consumer settings](docs/playback-settings.md) select sampling quality, animation, VFX, reduced flashing and freeze-last-frame behavior. Complete scene compatibility, production lifecycle and photo/video playback remain open.
+The Rust library renders blank Direct3D 11 textures, controlled-time diagnostic motion and decoded TEX pages through a bounded reusable output pool. It also inspects local scene packages and their asset dependencies through a read-only public API. A native Windows viewer and headless verification runners consume its public API. [TEX page verification](docs/texture-pages.md) covers PNG/LZ4 decoding and RGBA8/R8/BC3 drawing. [Image playback](docs/image-playback.md) supports selected scene images with precise blur/cloud motion, and [scene particles](docs/scene-particles.md) adds Gojo's stars, shooting-star trail and fireworks. [Consumer settings](docs/playback-settings.md) select sampling quality, animation, VFX, reduced flashing and freeze-last-frame behavior. Complete scene fidelity, production lifecycle and GPU video decoding remain open.
 
 The [renderer specification](docs/spec/wallpaper-kit.md) defines the architecture, dependency choices, delivery gates, and measurable MVP acceptance criteria.
 
 Output supports 3840 × 2160 (4K) through `Size::new(3840, 2160)` with no intermediate 720p rendering. A generated one-pixel-detail test verifies full-resolution PNG decoding, GPU output and resize. The local Codex demo also receives 4K video; see [resolution and verification](docs/playback-settings.md#output-resolution).
 
-The next compatibility task is [puppet animation for Workshop item 3013169753](docs/scene-rendering-plan.md#next-compatibility-task-puppet-animation). Its package index is supported; mesh deformation and animation layers remain unsupported.
+The [Workshop support loop](docs/workshop-support.md) measures actual GPU loading across the local downloaded collection. Tolerant playback renders base imagery while reporting unsupported effects and features. Legacy/GIF packages and standalone or embedded videos are supported through this route; videos require installed FFmpeg tools. Puppet mesh deformation and animation layers remain unsupported and are reported as omitted.
+
+The [collection fidelity audit and fix order](docs/workshop-fidelity.md) rank remaining gaps across all 65 local wallpapers by distinct affected folders. Scene discovery now honors authored background clear color; missing effects and failed optional objects remain explicitly reported.
+
+[Periodic Shake](docs/shake.md) supports painted direction, time offset and effect
+opacity, with generated Wallpaper Engine reference checks and native Gojo
+playback. Audio/noise variants, nondefault curves and ordered effect chains
+remain reported as omissions.
 
 ## Build and run
 

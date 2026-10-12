@@ -2,6 +2,43 @@
 
 ## Status
 
+[Periodic Shake](../../../../docs/shake.md) is implemented in SDR and HDR,
+including painted direction, time offset and effect opacity. The independent
+GPU pixel tests and [engine probe comparison](../../../../artifacts/shake-reference-v8/comparison.json)
+passed. Actual Gojo [native playback](../../../../artifacts/shake-native-gojo-final/report.json)
+and [T3 addon lifecycle](../../../../artifacts/shake-native-gojo-final/t3-native.json)
+passed. Nondefault curves, noise/audio and ordered chains remain omitted.
+The [actual Gojo comparison](../../../../artifacts/gojo-engine-comparison-20261012/comparison.json)
+observed both viewers at 1280×720 with the full character and animated particles.
+Foreground placement and particle arrangement differ; clocks, seeds and omitted
+camera/parallax prevent exact frame agreement. Complete scene agreement and T3
+application appearance remain unverified. Use the generator/verifier and native
+motion procedure in the guide; presentation counts do not prove displayed cadence.
+
+Basic masked UV Spin and planar single-wave Water Waves are implemented. The
+[Panda Store native check](../../../../artifacts/panda-fidelity/native-verified/report.json)
+verified six Spin and two Water Waves image objects, changed fixed-time pixels,
+exact rewind, 241 completed frames over an eight-second live interval, paused idle,
+1280×720 and 3840×2160 output, and cleanup. The
+[hardware/native gate](../../../../artifacts/20261012-151513-229484f0/manifest.json)
+passed the generated mask/cardinal-rotation GPU test and existing contracts.
+The final [software gate](../../../../artifacts/20261012-153210-1618f7ac/manifest.json)
+also passed invalid-profile and mixed-effect-order regressions; native presentation
+was skipped in that run. Mixed layers preserve previously supported effects and
+explicitly omit the additional motion until ordered chains are implemented.
+See [image playback](../../../../docs/image-playback.md) for the command and limits.
+Wallpaper Engine's Panda Store window was observed; grain was visible in its
+artwork too. Exact effect phase/amplitude and complete scene fidelity remain
+unverified. The T3 visual comparison was interrupted by Computer Use's Escape stop.
+
+Scene discovery now honors enabled authored background clear color. Generated
+SDR/HDR public GPU tests verify transparent/uncovered pixels, alpha blending,
+resize and retained samples in the [12 October hardware/native
+gate](../../../../artifacts/20261012-143444-c036087f/manifest.json). Selected-image
+and manual compositions retain the diagnostic background. The engine reference
+comparison was interrupted; exact engine alpha/color agreement is unverified.
+See the [collection fidelity priorities](../../../../docs/workshop-fidelity.md).
+
 Implemented and verified through generated public tests and the native composition scenario on Windows x64. The latest [hardware/native gate](../../../../artifacts/20261010-192159-423f0c4a/manifest.json) and [WARP/headless gate](../../../../artifacts/20261010-192142-e7d47694/manifest.json) passed 65 tests, including mixed Gaussian blur, precise blur and cloud motion. Procedures and limits are recorded in [the guide](../../../../docs/image-layers.md). Full Workshop fidelity remains unverified.
 
 ## Consumer outcome

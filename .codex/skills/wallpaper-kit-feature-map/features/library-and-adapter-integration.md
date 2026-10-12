@@ -2,9 +2,36 @@
 
 ## Status
 
+The rebuilt T3 adapter requests completed GPU textures through renderer animation
+frames, with one transfer in flight and a three-lease native pool. Panda windmills
+visibly moved in the actual T3 window while an unsent draft remained editable.
+Two host captures and two Wallpaper Engine reference captures are retained under
+`artifacts/smooth-playback`. Typecheck, targeted lint, bundle, native Clippy and
+Panda/Tram lifecycle checks passed. See [cadence evidence](../../../../docs/smooth-playback.md)
+for numeric export measurements and display-timing limits. Relaunch existing
+instances to load the replacement addon and bundle.
+
 The public blank/motion/page API and native/headless consumers are implemented; use [blank verification](blank-renderer.md), [diagnostic motion](diagnostic-motion.md) and [TEX page drawing](texture-pages.md). A native consumer imports immutable frames on a separate same-adapter D3D11 device. Local Windows Zed/GPUI diagnostic and T3/Electron scene-image adapters have verified host composition. T3 displays clear new-chat and blurred conversation backgrounds; full scene fidelity and host performance acceptance remain unverified. C ABI and WebView2 adapters remain planned.
 
 ## Consumer outcome
+
+Japanese Summer Tram (`2630394084`) now produces live T3 GPU exports. Its embedded
+video previously loaded successfully but never completed a live sample because
+the clock changed selections before decode finished. The core now retains one
+pending selection time, shared by all layers, without blocking the caller. The
+[addon receipt](../../../../artifacts/tram-playback/t3-native-receipt.json) passed
+three bounded leases, release/resume, hidden pause and still/remount. Close and
+relaunch T3 with `integrations/launch-t3.ps1 -Scene '<scene.pkg>'` to use the rebuilt
+addon. This checks the native adapter; current T3 UI presentation is unverified.
+
+T3 now selects linear sampling and a display-height-derived 16:9 output capped at
+3840×2160 when creating its background. Desktop typechecking and bundling passed.
+The shared native adapter defaults to linear sampling when options are absent;
+explicit options still select either filter. The Panda native lease/lifecycle
+regression passed in `artifacts/panda-fidelity/t3-native-receipt.json`. The core
+native scene check verified 4K and animation. The temporary T3 windows were closed
+after Computer Use's Escape stop; current host presentation and moving between
+displays remain unverified.
 
 An application embeds the renderer through a small contract without acquiring a dependency on the example viewer. Each adapter displays frames and handles ownership, synchronization, resizing, visibility, and shutdown correctly.
 
@@ -19,6 +46,8 @@ The ignored local Zed experiment is documented in [integrations/zed.md](../../..
 ## Drive and observe
 
 The ignored local T3 experiment is documented in [integrations/t3code.md](../../../../integrations/t3code.md), pinned to `f92afe79c921dd7de20204e83d62fed0491b4e54`. Build with `pwsh -File integrations/build-t3.ps1`, check the native adapter with `pwsh -File integrations/verify-t3.ps1`, and open the isolated desktop profile with `pwsh -File integrations/launch-t3.ps1`. Enable Settings > Appearance > Animated chat background. A new draft shows clear scene images; a started thread shows the same background blurred and darkened. The local fixture route verifies appearance without contacting a provider.
+
+The T3 launcher and verifier now build the adapter incrementally and select a DLL-hash-named `.node` file, allowing a new build while an open instance locks its previous addon. Close and relaunch an existing T3 instance to load the replacement. Both the default constructor used by T3 and the explicit-options constructor enable tolerant scene loading and report unsupported features. On 2026-10-12, `pwsh -File integrations/verify-t3.ps1 -Scene 'C:/Program Files (x86)/Steam/steamapps/workshop/content/431960/2288914800/scene.pkg'` passed native exports, lease bounds, pause, release/resume, reduced-motion remount and four draft-state tests. Before the fix, the default constructor failed with `scene.json object 582: unsupported visibility binding`; afterward it produced a 1920×1080 GPU frame and included object 582 in the text report. See `artifacts/t3-visibility/default-report.json`, `options-report.json` and `artifacts/integrations/t3-native-receipt.json`. These checks exercise the real native adapter; the running T3 window was left open and its presentation was not reverified for this fix.
 
 Load the scene, present its frames behind host content, and exercise the affected adapter's size, DPI, playback, visibility, and shutdown behavior. Keep host input working while animation runs. Verify texture synchronization and release with graphics diagnostics where available. Evaluate CPU frame copies or GPU transfers through measurements rather than assuming that a handle implies efficient sharing.
 

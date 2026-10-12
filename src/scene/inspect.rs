@@ -6,13 +6,13 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 pub(super) fn run(source: &SceneSource) -> Result<SceneInspection, InspectionError> {
     let package = Package::open(source)?;
     let mut reader = package
-        .reader("scene.json")?
+        .reader(package.scene_key())?
         .ok_or_else(|| InspectionError::invalid("scene.json", "missing scene definition"))?;
     let hash = reader.hash()?;
     let bytes = reader.bytes(reader.length, 4 * 1024 * 1024)?;
     let raw: RawScene =
         serde_json::from_slice(&bytes).map_err(|error| reader.invalid(error.to_string()))?;
-    if !matches!(raw.version, 1 | 5) {
+    if raw.version > 5 {
         return Err(reader.invalid(format!("unsupported scene version {}", raw.version)));
     }
     let canvas = [

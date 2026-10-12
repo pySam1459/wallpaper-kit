@@ -102,6 +102,10 @@ enum LayerEffect {
         motion: Arc<super::flow::FlowMotion>,
         time: Duration,
     },
+    Motion {
+        motion: Arc<super::motion::ImageMotion>,
+        time: Duration,
+    },
 }
 
 /// A cropped image placed on a two-dimensional orthographic canvas.
@@ -116,6 +120,7 @@ pub struct ImageLayer {
     region: Arc<TextureRegion>,
     center: [f32; 2],
     size: [f32; 2],
+    coordinate_scale: [f32; 2],
     angle: f32,
     opacity: f32,
     brightness: f32,
@@ -129,6 +134,20 @@ pub struct ImageLayer {
 }
 
 impl ImageLayer {
+    pub(crate) fn with_motion(
+        mut self,
+        motion: Arc<super::motion::ImageMotion>,
+        time: Duration,
+    ) -> Self {
+        self.effect = Some(LayerEffect::Motion { motion, time });
+        self
+    }
+    pub(crate) fn image_motion(&self) -> Option<(&Arc<super::motion::ImageMotion>, Duration)> {
+        match &self.effect {
+            Some(LayerEffect::Motion { motion, time }) => Some((motion, *time)),
+            _ => None,
+        }
+    }
     pub(crate) fn with_flow(
         mut self,
         motion: Arc<super::flow::FlowMotion>,
@@ -161,6 +180,7 @@ impl ImageLayer {
             region,
             center,
             size,
+            coordinate_scale: [1.; 2],
             angle: angle.rem_euclid(360.),
             opacity,
             brightness,
@@ -232,6 +252,14 @@ impl ImageLayer {
         self.brightness
     }
 
+    pub(super) fn scale_coordinates(&mut self, scale: [f32; 2]) {
+        for (axis, scale) in scale.into_iter().enumerate() {
+            self.center[axis] *= scale;
+            self.size[axis] *= scale;
+            self.coordinate_scale[axis] *= scale;
+        }
+    }
+
     /// Replace any prior effect with checked Gaussian blur before blending. The
     /// source and mask join the composition's existing unique-page budget.
     pub fn with_blur(mut self, blur: GaussianBlur) -> Self {
@@ -287,8 +315,14 @@ impl ImageLayer {
             _ => self.angle.to_radians().sin_cos(),
         };
         [
-            [self.size[0] * cos, self.size[0] * sin],
-            [self.size[1] * sin, -self.size[1] * cos],
+            [
+                self.size[0] * cos,
+                self.size[0] * sin * self.coordinate_scale[1] / self.coordinate_scale[0],
+            ],
+            [
+                self.size[1] * sin * self.coordinate_scale[0] / self.coordinate_scale[1],
+                -self.size[1] * cos,
+            ],
         ]
     }
 }
@@ -306,6 +340,7 @@ impl ImageLayer {
 #[derive(Debug)]
 pub struct ImageComposition {
     canvas: Size,
+    pub(crate) background: [f32; 4],
     layers: Vec<ImageLayer>,
     pages: Vec<Arc<TexturePage>>,
     blur_extent: Option<Size>,
@@ -354,6 +389,7 @@ impl ImageComposition {
             .flat_map(|layer| {
                 let cloud = layer.cloud_motion().map(|(motion, _)| motion);
                 let flow = layer.flow_motion().map(|(motion, _)| motion);
+                let motion = layer.image_motion().map(|(motion, _)| motion);
                 [
                     Some(layer.region.page()),
                     layer
@@ -369,6 +405,15 @@ impl ImageComposition {
                     layer.refraction.as_ref().map(|(normal, _)| normal.page()),
                     flow.map(|motion| motion.mask.page()),
                     flow.map(|motion| motion.phase.page()),
+                    motion
+                        .and_then(|motion| motion.mask.as_ref())
+                        .map(|mask| mask.page()),
+                    motion
+                        .and_then(|motion| motion.phase_mask.as_ref())
+                        .map(|mask| mask.page()),
+                    motion
+                        .and_then(|motion| motion.opacity_mask.as_ref())
+                        .map(|mask| mask.page()),
                     layer.rays.as_ref().map(|(rays, _)| rays.noise.page()),
                     layer.rays.as_ref().map(|(rays, _)| rays.gradient.page()),
                 ]
@@ -402,6 +447,7 @@ impl ImageComposition {
         };
         Ok(Self {
             canvas,
+            background: crate::BLANK_RGBA.map(|v| f32::from(v) / 255.),
             layers,
             pages,
             blur_extent,
@@ -411,6 +457,12 @@ impl ImageComposition {
     /// Logical canvas dimensions, independent of output resolution.
     pub fn canvas(&self) -> Size {
         self.canvas
+    }
+    /// Opaque SDR clear color in normalized RGBA code values. Manual
+    /// compositions use [`crate::BLANK_RGBA`]; scene discovery applies the
+    /// authored `general.clearcolor` when clearing is enabled.
+    pub fn background_color(&self) -> [f32; 4] {
+        self.background
     }
     /// Checked image draws in submission order.
     pub fn layers(&self) -> &[ImageLayer] {

@@ -6,6 +6,7 @@ Initialize selected images or scene discovery with `PlaybackSettings`:
 use wallpaper_kit::{ImagePlayback, ImageQuality, PlaybackSettings};
 
 let settings = PlaybackSettings {
+    allow_unsupported_features: true,
     image_quality: ImageQuality::Linear,
     animation: true,
     visual_effects: true,
@@ -19,6 +20,7 @@ Opening hashes, validates and prepares assets, so run it on an asset thread or b
 
 | Setting | Default | Behavior |
 | --- | --- | --- |
+| `allow_unsupported_features` | `false` | Scene discovery draws base imagery and reports unsupported optional features instead of failing. Corrupt primary assets still fail. Explicit selected-image APIs remain strict. The native viewer enables this on real scene routes. See [Workshop support](workshop-support.md). |
 | `image_quality` | `Nearest` | `Linear` uses bilinear interpolation for smoother image scaling, including placed blur output. Sampling clamps inside each atlas crop. Cloud effects and particles already use bilinear sampling. |
 | `animation` | `true` | Allows `play` to advance the clock. With `false`, `play` does nothing and time starts at zero. Explicit seeks can select a different still. |
 | `visual_effects` | `true` | With `false`, image effects and particles are omitted before loading their assets. Base images and sprites remain. |

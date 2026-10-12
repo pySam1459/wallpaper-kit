@@ -23,6 +23,8 @@ pub struct ImageSnapshot {
 
 pub(crate) struct ImagePlan {
     pub canvas: Size,
+    pub background: [f32; 4],
+    pub coordinate_scale: [f32; 2],
     pub layers: Vec<LayerDescription>,
     pub object_ids: Vec<u64>,
     pub draw_order: Vec<u64>,
@@ -48,6 +50,32 @@ pub(super) enum EffectDescription {
     Precise(PreciseBlur),
     Cloud(CloudMotionReport),
     Flow(super::flow::FlowProfile),
+    Motion(super::motion::MotionDescription),
+}
+
+pub(super) fn video_plan(size: Size) -> ImagePlan {
+    ImagePlan {
+        canvas: size,
+        background: crate::BLANK_RGBA.map(|v| f32::from(v) / 255.),
+        coordinate_scale: [1.; 2],
+        layers: vec![LayerDescription {
+            asset: String::new(),
+            sprite: false,
+            center: [size.width() as f32 / 2., size.height() as f32 / 2.],
+            size: [size.width() as f32, size.height() as f32],
+            angle: 0.,
+            opacity: 1.,
+            brightness: 1.,
+            effect: None,
+        }],
+        object_ids: vec![0],
+        draw_order: vec![0],
+        particles: Vec::new(),
+        ray_objects: Vec::new(),
+        text_objects: Vec::new(),
+        hdr: None,
+        omissions: Vec::new(),
+    }
 }
 
 impl LayerDescription {
@@ -71,7 +99,7 @@ impl LayerDescription {
             Some(EffectDescription::Cloud(_)) => {
                 layer.with_cloud_motion(cloud.expect("cloud inputs prepared").clone(), time)
             }
-            Some(EffectDescription::Flow(_)) => layer,
+            Some(EffectDescription::Flow(_) | EffectDescription::Motion(_)) => layer,
             None => layer,
         })
     }
@@ -89,6 +117,35 @@ pub(super) fn json(package: &Package, asset: &str) -> Result<Value, InspectionEr
         .ok_or_else(|| InspectionError::invalid(asset, "missing JSON asset"))?;
     let bytes = reader.bytes(reader.length, 4 * 1024 * 1024)?;
     serde_json::from_slice(&bytes).map_err(|error| reader.invalid(error.to_string()))
+}
+
+fn imported_extent(decoder: &TextureDecoder, model: &Value) -> Result<[u32; 2], InspectionError> {
+    let material = model["material"]
+        .as_str()
+        .ok_or_else(|| InspectionError::invalid("image model", "missing material"))?;
+    let material = json(&decoder.package, material)?;
+    let texture = material["passes"][0]["textures"][0]
+        .as_str()
+        .ok_or_else(|| InspectionError::invalid("image material", "missing source texture"))?;
+    let asset = asset_key(&format!("materials/{texture}.tex"))?;
+    let mut reader = decoder
+        .package
+        .reader(&asset)?
+        .ok_or_else(|| InspectionError::invalid(&asset, "missing texture"))?;
+    if reader.signature()? != "TEXV0005" || reader.signature()? != "TEXI0001" {
+        return Err(InspectionError::invalid(
+            &asset,
+            "unsupported TEX header signatures",
+        ));
+    }
+    for _ in 0..4 {
+        reader.u32()?;
+    }
+    let extent = [reader.u32()?, reader.u32()?];
+    if extent.iter().any(|value| *value == 0 || *value > 16384) {
+        return Err(InspectionError::invalid(&asset, "invalid content extent"));
+    }
+    Ok(extent)
 }
 
 pub(super) fn vector<const N: usize>(
@@ -160,6 +217,7 @@ pub(crate) fn plan(
     selection: Option<&[u64]>,
     settings: super::PlaybackSettings,
 ) -> Result<ImagePlan, InspectionError> {
+    let tolerant = selection.is_none() && settings.allow_unsupported_features;
     let selected: Option<BTreeSet<_>> = selection.map(|ids| ids.iter().copied().collect());
     if let (Some(ids), Some(selected)) = (selection, &selected)
         && (selected.is_empty() || selected.len() != ids.len() || selected.len() > 32)
@@ -169,19 +227,47 @@ pub(crate) fn plan(
             "select 1..=32 distinct image objects",
         ));
     }
-    let raw: RawScene = serde_json::from_value(json(&decoder.package, "scene.json")?)
+    let mut definition = json(&decoder.package, decoder.package.scene_key())?;
+    if tolerant && definition["general"]["orthogonalprojection"]["auto"] == true {
+        let model = definition["objects"][0]["image"].as_str().ok_or_else(|| {
+            InspectionError::invalid("scene", "automatic projection needs an image model")
+        })?;
+        let extent = imported_extent(decoder, &json(&decoder.package, model)?)?;
+        definition["general"]["orthogonalprojection"]["width"] = extent[0].into();
+        definition["general"]["orthogonalprojection"]["height"] = extent[1].into();
+    }
+    let raw: RawScene = serde_json::from_value(definition)
         .map_err(|error| InspectionError::invalid("scene.json", error.to_string()))?;
-    if !matches!(raw.version, 1 | 5) || raw.objects.len() > 4096 {
+    if raw.version > 5 || raw.objects.len() > 4096 {
         return Err(InspectionError::invalid(
             "scene.json",
             "unsupported scene version or object count",
         ));
     }
-    let canvas = Size::new(
+    let extent = [
         raw.general.orthogonalprojection.width,
         raw.general.orthogonalprojection.height,
-    )
-    .map_err(|error| InspectionError::invalid("scene.json", error.to_string()))?;
+    ];
+    if extent
+        .iter()
+        .any(|dimension| *dimension == 0 || *dimension > 16384)
+    {
+        return Err(InspectionError::invalid(
+            "scene.json",
+            "logical canvas dimensions must be between 1 and 16384",
+        ));
+    }
+    let mut admitted = extent;
+    let canvas = loop {
+        match Size::new(admitted[0], admitted[1]) {
+            Ok(canvas) => break canvas,
+            Err(error) if !tolerant => {
+                return Err(InspectionError::invalid("scene.json", error.to_string()));
+            }
+            Err(_) => admitted = admitted.map(|dimension| dimension.div_ceil(2)),
+        }
+    };
+    let coordinate_scale = std::array::from_fn(|axis| admitted[axis] as f32 / extent[axis] as f32);
     let hdr = if selection.is_none() && settings.visual_effects {
         super::hdr::HdrBloom::load(&raw.general.properties)?
     } else {
@@ -194,11 +280,49 @@ pub(crate) fn plan(
     let mut particles = Vec::new();
     let mut ray_objects = Vec::new();
     let mut text_objects = Vec::new();
-    let mut omissions=vec!["General scene camera, color and other postprocessing settings are omitted; the diagnostic canvas fills the output over BLANK_RGBA.".into()];
+    let mut background = crate::BLANK_RGBA.map(|v| f32::from(v) / 255.);
+    let mut omissions = vec![
+        "General scene camera, lighting and other postprocessing settings are omitted.".into(),
+    ];
+    if selection.is_none() {
+        if !matches!(
+            raw.general.properties.get("clearenabled"),
+            None | Some(Value::Bool(_))
+        ) {
+            return Err(InspectionError::invalid(
+                "scene.json general.clearenabled",
+                "expected Boolean",
+            ));
+        }
+        if raw.general.properties.get("clearenabled") == Some(&Value::Bool(false)) {
+            omissions.push(
+                "Disabled scene clearing is unsupported; the diagnostic background is retained."
+                    .into(),
+            );
+        } else {
+            let color = vector(
+                raw.general.properties.get("clearcolor"),
+                [background[0], background[1], background[2]],
+                "scene.json general.clearcolor",
+            )?;
+            if color.iter().any(|v| !(0. ..=1.).contains(v)) {
+                return Err(InspectionError::invalid(
+                    "scene.json general.clearcolor",
+                    "expected SDR color components in 0..=1",
+                ));
+            }
+            background = [color[0], color[1], color[2], 1.];
+        }
+    } else {
+        omissions.push("Selected-image playback omits scene background color.".into());
+    }
+    if admitted != extent {
+        omissions.push(format!("Large logical canvas {extent:?} is normalized to {admitted:?} coordinates; source pixels and consumer output resolution are retained."));
+    }
     if hdr.is_some() {
         omissions.push("HDR bloom uses a bounded floating-point filter pyramid; exact Wallpaper Engine bloom filtering is unverified.".into());
     }
-    for object in raw.objects {
+    for mut object in raw.objects {
         if !seen.insert(object.id) {
             return Err(InspectionError::invalid(
                 "scene.json",
@@ -216,6 +340,21 @@ pub(crate) fn plan(
             continue;
         }
         let context = format!("scene.json object {}", object.id);
+        if tolerant {
+            for (key, value) in &mut object.properties {
+                if let Some(default) = value.get("value").cloned() {
+                    omissions.push(format!("{context}: {key} binding uses its authored default; interactive/script updates are omitted."));
+                    *value = default;
+                }
+            }
+            for effect in &mut object.effects {
+                for value in effect.properties.values_mut() {
+                    if let Some(default) = value.get("value").cloned() {
+                        *value = default;
+                    }
+                }
+            }
+        }
         let discovered_model = if selected.is_none() {
             if !visible(object.properties.get("visible"), &context)? {
                 omissions.push(format!("Object {} is invisible.", object.id));
@@ -280,7 +419,16 @@ pub(crate) fn plan(
                     "projectlayer must be Boolean",
                 ));
             }
-            if model_json.get("projectlayer") == Some(&Value::Bool(true)) {
+            if model_json.get("projectlayer") == Some(&Value::Bool(true))
+                || model_json.get("fullscreen") == Some(&Value::Bool(true))
+                || model.eq_ignore_ascii_case("models/util/fullscreenlayer.json")
+                || model_json
+                    .get("material")
+                    .and_then(Value::as_str)
+                    .is_some_and(|material| {
+                        material.eq_ignore_ascii_case("materials/util/composelayer.json")
+                    })
+            {
                 omissions.push(format!(
                     "Object {} ({}): composition layer and its effects are omitted.",
                     object.id, object.name
@@ -316,7 +464,7 @@ pub(crate) fn plan(
             ]
             .contains(&key.as_str())
             {
-                if raw.version == 1
+                if raw.version <= 1
                     && [
                         "alignment",
                         "color",
@@ -331,13 +479,19 @@ pub(crate) fn plan(
                 {
                     continue;
                 }
+                if tolerant {
+                    omissions.push(format!(
+                        "{context}: unsupported image property {key} is omitted."
+                    ));
+                    continue;
+                }
                 return Err(InspectionError::invalid(
                     &context,
                     format!("unsupported selected image property {key}"),
                 ));
             }
         }
-        if raw.version == 1
+        if raw.version <= 1
             && (object
                 .properties
                 .get("alignment")
@@ -352,9 +506,14 @@ pub(crate) fn plan(
                     .get("perspective")
                     .is_some_and(|v| v != false))
         {
-            return Err(InspectionError::invalid(
-                &context,
-                "unsupported legacy image appearance or perspective",
+            if !tolerant {
+                return Err(InspectionError::invalid(
+                    &context,
+                    "unsupported legacy image appearance or perspective",
+                ));
+            }
+            omissions.push(format!(
+                "{context}: legacy tint/alignment/perspective is omitted."
             ));
         }
         for flag in ["disablepropagation", "locktransforms", "castshadow"] {
@@ -370,10 +529,13 @@ pub(crate) fn plan(
             }
         }
         if object.properties.get("castshadow") == Some(&Value::Bool(true)) {
-            return Err(InspectionError::invalid(
-                &context,
-                "image shadow casting is unsupported",
-            ));
+            if !tolerant {
+                return Err(InspectionError::invalid(
+                    &context,
+                    "image shadow casting is unsupported",
+                ));
+            }
+            omissions.push(format!("{context}: shadow casting is omitted."));
         }
         if !visible(object.properties.get("visible"), &context)? {
             omissions.push(format!("Object {} is invisible.", object.id));
@@ -385,10 +547,13 @@ pub(crate) fn plan(
             .and_then(Value::as_bool)
             == Some(true)
         {
-            return Err(InspectionError::invalid(
-                &context,
-                "disablepropagation is unsupported",
-            ));
+            if !tolerant {
+                return Err(InspectionError::invalid(
+                    &context,
+                    "disablepropagation is unsupported",
+                ));
+            }
+            omissions.push(format!("{context}: disablepropagation is omitted."));
         }
         let mut applied_effect = None;
         for effect in &object.effects {
@@ -410,36 +575,80 @@ pub(crate) fn plan(
                 continue;
             }
             let key = asset_key(&effect.file)?;
+            let motion_effect = key.eq_ignore_ascii_case("effects/spin/effect.json")
+                || key.eq_ignore_ascii_case("effects/waterwaves/effect.json")
+                || key.eq_ignore_ascii_case("effects/shake/effect.json");
             if key.eq_ignore_ascii_case("effects/blurprecise/effect.json")
                 || key.eq_ignore_ascii_case("effects/cloudmotion/effect.json")
                 || key.eq_ignore_ascii_case("effects/waterflow/effect.json")
+                || key.eq_ignore_ascii_case("effects/spin/effect.json")
+                || key.eq_ignore_ascii_case("effects/waterwaves/effect.json")
+                || key.eq_ignore_ascii_case("effects/shake/effect.json")
             {
                 if raw
                     .general
                     .properties
                     .get("hdr")
                     .is_some_and(|value| value != false)
+                    && !key.eq_ignore_ascii_case("effects/shake/effect.json")
                 {
+                    if tolerant {
+                        omissions.push(format!(
+                            "{context}: SDR-only effect {key} is omitted in HDR."
+                        ));
+                        continue;
+                    }
                     return Err(InspectionError::invalid(
                         &context,
                         "supported image effects require SDR scene settings",
                     ));
                 }
-                if applied_effect.is_some() {
+                // Preserve established effects when adding Shake to a mixed
+                // layer. Ordered chains still require intermediate passes.
+                let replace_motion = matches!(&applied_effect, Some(EffectDescription::Motion(previous))
+                    if !motion_effect || (previous.profile.name() == "shake"
+                        && !key.eq_ignore_ascii_case("effects/shake/effect.json")));
+                if applied_effect.is_some() && !replace_motion {
+                    if tolerant
+                        || key.eq_ignore_ascii_case("effects/shake/effect.json")
+                        || (motion_effect
+                            && !matches!(applied_effect, Some(EffectDescription::Motion(_))))
+                    {
+                        omissions.push(format!("{context}: additional effect {key} is omitted."));
+                        continue;
+                    }
                     return Err(InspectionError::invalid(
                         &context,
                         "multiple supported image effects on one layer are unsupported",
                     ));
                 }
-                applied_effect = Some(
-                    if key.eq_ignore_ascii_case("effects/blurprecise/effect.json") {
-                        EffectDescription::Precise(super::precise::load(&decoder.package, effect)?)
-                    } else if key.eq_ignore_ascii_case("effects/waterflow/effect.json") {
-                        EffectDescription::Flow(super::flow::load(decoder, effect)?)
-                    } else {
-                        EffectDescription::Cloud(super::cloud::load(decoder, effect)?)
-                    },
-                );
+                let loaded = if key.eq_ignore_ascii_case("effects/blurprecise/effect.json") {
+                    super::precise::load(&decoder.package, effect).map(EffectDescription::Precise)
+                } else if key.eq_ignore_ascii_case("effects/waterflow/effect.json") {
+                    super::flow::load(decoder, effect).map(EffectDescription::Flow)
+                } else if key.eq_ignore_ascii_case("effects/spin/effect.json")
+                    || key.eq_ignore_ascii_case("effects/waterwaves/effect.json")
+                    || key.eq_ignore_ascii_case("effects/shake/effect.json")
+                {
+                    super::motion::load(decoder, effect).map(EffectDescription::Motion)
+                } else {
+                    super::cloud::load(decoder, effect).map(EffectDescription::Cloud)
+                };
+                match loaded {
+                    Ok(effect) => {
+                        if let Some(EffectDescription::Motion(previous)) = &applied_effect {
+                            omissions.push(format!(
+                                "{context}: additional effect effects/{}/effect.json is omitted.",
+                                previous.profile.name()
+                            ));
+                        }
+                        applied_effect = Some(effect);
+                    }
+                    Err(error) if tolerant => {
+                        omissions.push(format!("{context}: effect {key} is omitted: {error}"))
+                    }
+                    Err(error) => return Err(error),
+                }
             } else {
                 omissions.push(format!(
                     "Object {}: effect {} is omitted.",
@@ -459,14 +668,28 @@ pub(crate) fn plan(
                 "only 2D origin/rotation are supported",
             ));
         }
-        let size = vector(object.properties.get("size"), [0.; 2], &context)?;
+        let size = if tolerant && !object.properties.contains_key("size") {
+            let model = match &discovered_model {
+                Some(model) => model.clone(),
+                None => json(&decoder.package, model)?,
+            };
+            imported_extent(decoder, &model)?.map(|dimension| dimension as f32)
+        } else {
+            vector(object.properties.get("size"), [0.; 2], &context)?
+        };
         if size.iter().chain(&scale[..2]).any(|value| *value <= 0.) {
             return Err(InspectionError::invalid(
                 &context,
                 "size and XY scale must be positive",
             ));
         }
-        let opacity = scalar(object.properties.get("alpha"), 1., &context)?;
+        let mut opacity = scalar(object.properties.get("alpha"), 1., &context)?;
+        if tolerant && opacity > 1. {
+            omissions.push(format!(
+                "{context}: alpha {opacity} is clamped to the SDR range."
+            ));
+            opacity = 1.;
+        }
         let brightness = scalar(object.properties.get("brightness"), 1., &context)?;
         let center = [origin[0], origin[1]];
         let displayed_size = [size[0] * scale[0], size[1] * scale[1]];
@@ -484,14 +707,18 @@ pub(crate) fn plan(
             .keys()
             .any(|key| !["autosize", "material", "cropoffset"].contains(&key.as_str()))
         {
-            return Err(InspectionError::invalid(
-                &model,
-                "unsupported image model field",
-            ));
+            if !tolerant {
+                return Err(InspectionError::invalid(
+                    &model,
+                    "unsupported image model field",
+                ));
+            }
+            omissions.push(format!("{context}: extra model fields, including mesh/puppet deformation, are omitted; drawing the base material."));
         }
-        if model_json
-            .get("autosize")
-            .is_some_and(|value| value != true)
+        if !tolerant
+            && model_json
+                .get("autosize")
+                .is_some_and(|value| value != true)
         {
             return Err(InspectionError::invalid(
                 &model,
@@ -536,31 +763,43 @@ pub(crate) fn plan(
             ]
             .contains(&key.as_str())
         }) || !(pass["shader"] == "genericimage4"
-            || (raw.version == 1 && pass["shader"] == "genericimage2"))
+            || (raw.version <= 1 && pass["shader"] == "genericimage2"))
             || pass["blending"] != "translucent"
             || pass["cullmode"] != "nocull"
             || pass["depthtest"] != "disabled"
             || pass["depthwrite"] != "disabled"
         {
-            return Err(InspectionError::invalid(
-                &material,
-                "unsupported image material pass/state",
-            ));
+            if !tolerant {
+                return Err(InspectionError::invalid(
+                    &material,
+                    "unsupported image material pass/state",
+                ));
+            }
+            omissions.push(format!("{context}: material {material} uses base-image translucent rendering; custom shader/state is omitted."));
         }
+        let empty_combos = serde_json::Map::new();
         let combos = pass["combos"]
             .as_object()
+            .or_else(|| (tolerant && pass.get("combos").is_none()).then_some(&empty_combos))
             .ok_or_else(|| InspectionError::invalid(&material, "expected combos object"))?;
-        let legacy = raw.version == 1 && pass["shader"] == "genericimage2";
+        let legacy = raw.version <= 1 && pass["shader"] == "genericimage2";
         if combos.iter().any(|(key, value)| {
             !(key == "SPRITESHEET" && value.as_u64() == Some(1)
-                || legacy && key == "VERSION" && value.as_u64() == Some(2))
+                || legacy && key.eq_ignore_ascii_case("VERSION") && value.as_u64() == Some(2))
         }) {
-            return Err(InspectionError::invalid(
-                &material,
-                "unsupported material combination",
+            if !tolerant {
+                return Err(InspectionError::invalid(
+                    &material,
+                    "unsupported material combination",
+                ));
+            }
+            omissions.push(format!(
+                "{context}: unsupported material combinations are omitted."
             ));
         }
-        let sprite = combos.contains_key("SPRITESHEET");
+        let sprite = combos
+            .keys()
+            .any(|key| key.eq_ignore_ascii_case("SPRITESHEET"));
         if sprite && offset != [0.; 2] {
             return Err(InspectionError::invalid(
                 &model,
@@ -569,8 +808,14 @@ pub(crate) fn plan(
         }
         let textures = pass["textures"]
             .as_array()
-            .filter(|values| values.len() == 1)
+            .filter(|values| values.len() == 1 || tolerant)
             .ok_or_else(|| InspectionError::invalid(&material, "one source texture required"))?;
+        if textures.is_empty() && tolerant {
+            omissions.push(format!(
+                "{context}: procedural material without a source image is omitted."
+            ));
+            continue;
+        }
         let reference = textures[0]
             .as_str()
             .ok_or_else(|| InspectionError::invalid(&material, "expected texture name"))?;
@@ -601,6 +846,8 @@ pub(crate) fn plan(
     }
     Ok(ImagePlan {
         canvas,
+        background,
+        coordinate_scale,
         layers,
         object_ids,
         draw_order,
@@ -648,6 +895,12 @@ pub(crate) fn prepare(
         let mut layer = description.layer(region, cloud.as_ref(), Duration::ZERO)?;
         if let Some(EffectDescription::Flow(profile)) = &description.effect {
             layer = layer.with_flow(
+                profile.prepare(decoder, &mut pages, &mut bytes)?,
+                Duration::ZERO,
+            );
+        }
+        if let Some(EffectDescription::Motion(profile)) = &description.effect {
+            layer = layer.with_motion(
                 profile.prepare(decoder, &mut pages, &mut bytes)?,
                 Duration::ZERO,
             );

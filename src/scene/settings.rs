@@ -18,6 +18,12 @@ pub enum ImageQuality {
 /// [`super::ImagePlayback::play`] to animate when `animation` is enabled.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct PlaybackSettings {
+    /// Report unsupported scene features and render their base imagery where
+    /// possible. Optional particles, text and effects that cannot be prepared
+    /// are omitted. Unknown particle operators are reported and skipped while
+    /// supported components are retained. Invalid source imagery still fails. Selected-image APIs
+    /// remain strict. False preserves the checked diagnostic profile.
+    pub allow_unsupported_features: bool,
     /// Sampling for ordinary images, including the output of image blur effects.
     pub image_quality: ImageQuality,
     /// Allow the clock to advance. False holds time zero; explicit seeks still work.
@@ -33,6 +39,7 @@ pub struct PlaybackSettings {
 impl Default for PlaybackSettings {
     fn default() -> Self {
         Self {
+            allow_unsupported_features: false,
             image_quality: ImageQuality::Nearest,
             animation: true,
             visual_effects: true,

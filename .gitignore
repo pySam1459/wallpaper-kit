@@ -1,4 +1,6 @@
 /target/
 /artifacts/
 /integrations/
+/.local/
+/loop.sh
 /Launch Codex Wallpaper.cmd

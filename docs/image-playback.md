@@ -1,5 +1,35 @@
 # Selected image playback
 
+Scene discovery supports basic masked UV Spin, planar single-wave Water Waves
+and [periodic Shake](shake.md). Their masks decode once, share asset identity, and are sampled on
+the GPU at the common playback time. `ImagePlaybackReport::image_motions` records
+the applied profile per object. Seeking and pausing use the same clock as sprites.
+Perspective, dual waves, elliptical/vertex spin, additional constants and chained
+effects remain unsupported and explicitly reported. The independent sine-wave
+and rotation implementations have not been calibrated for exact Wallpaper Engine
+phase, speed or displacement agreement.
+
+Until ordered effect chains are implemented, an existing Precise Blur, Cloud
+Motion or Water Flow profile takes priority over a new motion profile on the
+same layer. The additional motion is reported as omitted in either authored
+order. Tolerant loading retains a valid motion if the other profile fails.
+Existing Spin and Water Waves also take priority over Shake. The checked Shake
+profile has separate reference evidence; its unsupported variants remain reported.
+
+Run `pwsh -File scripts/verify-image-motion.ps1 -ScenePath '<scene.pkg>'
+-EngineAssets '<engine assets>'` after building the native viewer. It checks real
+scene pixel changes, exact rewind, an eight-second live interval without readback,
+paused idle, 4K output and owned-process exit. Panda Store's eight applied profiles
+passed in [the native receipt](../artifacts/panda-fidelity/native-verified/report.json).
+Generated GPU tests also check masked pixels and an independent cardinal rotation
+oracle. Live frame observations establish rendering progress, not display cadence.
+
+Scene discovery applies enabled authored `general.clearcolor` to uncovered and
+transparent pixels. The composition exposes it through `background_color()`;
+the playback report records the applied input. Selected-image playback retains
+the diagnostic background. See [collection fidelity priorities](workshop-fidelity.md)
+for verification and the remaining reference limits.
+
 `ImagePlayback` combines the checked selected-image profile with sprite prefetch and a library-owned clock. The native viewer can play all seven image objects from Workshop item `3780699842` together. Full scene rendering remains incomplete.
 
 ## Public consumer path
@@ -10,9 +40,18 @@ Open `ImagePlayback::open(&SceneSource, &[object_ids])` on an asset thread or be
 
 Playback starts paused at zero. `play`, `pause` and `seek(Duration)` control its monotonic clock. Seek pauses at the exact requested time; play resumes from there. Repeated play calls preserve the start instant. Time saturates at `Duration::MAX`.
 
+[Tolerant Workshop discovery](workshop-support.md) uses `allow_unsupported_features` to retain base imagery and report optional feature failures. The native scene route enables it; explicit selected-image APIs keep their checked profile. `open_video` supplies standalone video through the same clock, composition and control API using a bounded FFmpeg worker. Embedded TEX videos use that worker during tolerant scene preparation. `set_calendar_time(SystemTime)` fixes calendar text for repeatable captures.
+
 [Consumer initialization settings](playback-settings.md) select image sampling, animation, VFX and reduced flashing. `freeze(&last_presented_sample)` retains the displayed composition at its exact time; the host retains its GPU frame and discards later in-flight completions.
 
 The host schedules `try_sample` through its event loop. One call captures a common time, polls every animated source without waiting, and constructs ordered layer descriptors. It returns `None` until all sources for that time are ready. Keep the previous completed GPU frame while retrying. Errors identify invalid assets or compositions. Submit a ready sample's composition to `Renderer::render_images`, then consume `Renderer::try_frame` as usual. Retained samples and frames remain valid after shutdown.
+
+Retries keep one pending selection time while decoding finishes. A successful
+sample releases that selection; the next call captures the current clock and
+can skip elapsed frames. This prevents live video from starving when decode
+takes longer than a host update. All layers use the selected sample time, which
+can lag the clock. Seek, transition to pause, and freeze discard the selection.
+Repeated paused polls preserve it so an unfinished still can complete.
 
 Static images, noise and masks decode once. Cloud effects use the same sample time as sprites. Sprite decoding runs on the existing pager workers. Sampling allocates descriptors and Arc references, without copying pixels, decoding, shader compilation or file I/O. GPU uploads and drawing run on the renderer worker. Drop and `shutdown` join pagers, so they belong outside latency-critical UI updates.
 
@@ -43,7 +82,7 @@ The existing line-delimited JSON protocol adds these commands:
 | Command | Result |
 | --- | --- |
 | `{"id":1,"command":"image_at","time_ms":1500}` | Pause, seek and reply only after that exact complete sample is presented |
-| `{"id":2,"command":"play_images"}` | Resume the library clock and host sampling at a requested 30 Hz |
+| `{"id":2,"command":"play_images"}` | Resume the library clock and host sampling at the initial monitor refresh rate (60 Hz fallback, 240 Hz maximum) |
 | `{"id":3,"command":"pause_images"}` | Freeze the clock; an outstanding GPU request may still finish |
 | `{"id":4,"command":"freeze_images"}` | Hold the last presented sample and GPU frame; ignore newer in-flight results |
 | `inspect`, `resize`, `capture`, `stop` | Existing operations; captures refer to the completed composition |

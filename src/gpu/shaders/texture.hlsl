@@ -115,11 +115,13 @@ Texture2D<float4> particle_next : register(t7);
 float4 particle_pixel(LayerVertex input) : SV_Target {
     float2 uv = particle_uv_x.xy + input.uv.x * particle_uv_x.zw + input.uv.y * particle_uv_y.xy;
     float4 color = cloud_sample(image, uv, layer_source_origin, layer_source_extent, false);
-    if (layer_grayscale != 0) { color = float4(color.rrr,1); }
+    if (layer_grayscale == 1) { color = float4(color.rrr,1); }
+    if (layer_grayscale == 2) { color = float4(color.rrr,color.g); }
     if (particle_frame_blend > 0) {
         float2 next_uv = particle_next_uv_x.xy + input.uv.x * particle_next_uv_x.zw + input.uv.y * particle_next_uv_y;
         float4 next_color = cloud_sample(particle_next, next_uv, particle_next_origin, particle_next_extent, false);
-        if (particle_next_grayscale != 0) { next_color = float4(next_color.rrr,1); }
+        if (particle_next_grayscale == 1) { next_color = float4(next_color.rrr,1); }
+        if (particle_next_grayscale == 2) { next_color = float4(next_color.rrr,next_color.g); }
         color = lerp(color, next_color, particle_frame_blend);
     }
     return float4(color.rgb * particle_color.rgb * layer_brightness, color.a * layer_opacity);
@@ -133,6 +135,48 @@ cbuffer Flow : register(b5) {
     uint2 flow_mask_extent;
     uint2 flow_phase_extent;
 };
+
+cbuffer Motion : register(b7) {
+    uint motion_kind;
+    uint motion_has_mask;
+    float motion_phase;
+    uint motion_mask_flags;
+    float4 motion_parameters;
+    uint2 motion_mask_extent;
+    uint2 motion_phase_extent;
+    uint2 motion_opacity_extent;
+    uint2 motion_padding;
+};
+Texture2D<float4> motion_opacity : register(t8);
+
+// Independent crop-local UV rotation and directional sine-wave displacement.
+float4 motion_pixel(LayerVertex input) : SV_Target {
+    float mask = motion_has_mask != 0
+        ? cloud_sample(cloud_mask, input.uv, uint2(0,0), motion_mask_extent, false).r : 1;
+    float2 uv = input.uv;
+    if (motion_kind == 0) {
+        float2 delta = uv - motion_parameters.xy;
+        float sine = sin(motion_phase), cosine = cos(motion_phase);
+        float2 rotated = float2(delta.x*cosine+delta.y*sine,-delta.x*sine+delta.y*cosine);
+        uv = lerp(uv, motion_parameters.xy + rotated, mask);
+    } else if (motion_kind == 1) {
+        float2 direction = motion_parameters.xy;
+        float phase = dot(uv, direction) * motion_parameters.z * 6.28318530718 + motion_phase;
+        uv += float2(-direction.y, direction.x) * sin(phase) * motion_parameters.w * 0.05 * mask;
+    } else {
+        float2 direction = (cloud_sample(cloud_mask, uv, uint2(0,0), motion_mask_extent, false).rg * 255 - 127) / 128;
+        float phase_offset = (motion_mask_flags & 1) != 0
+            ? cloud_sample(cloud_noise, uv, uint2(0,0), motion_phase_extent, false).r * 6.28318530718 : 0;
+        uv += direction * sin(motion_phase + phase_offset) * motion_parameters.x;
+    }
+    float4 color = cloud_sample(image, uv, layer_source_origin, layer_source_extent, false);
+    if (motion_kind == 2 && (motion_mask_flags & 2) != 0) {
+        float opacity = cloud_sample(motion_opacity, input.uv, uint2(0,0), motion_opacity_extent, false).r;
+        color = lerp(cloud_sample(image, input.uv, layer_source_origin, layer_source_extent, false), color, opacity);
+    }
+    if (layer_grayscale != 0) { color = float4(color.rrr,1); }
+    return float4(color.rgb * layer_brightness, color.a * layer_opacity);
+}
 
 cbuffer Rays : register(b6) {
     float4 ray_h0;

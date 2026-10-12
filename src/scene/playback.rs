@@ -6,16 +6,17 @@ use crate::{SpritePager, TextureDecoder, TexturePage, TextureRegion};
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
-    sync::Arc,
-    time::{Duration, Instant},
+    path::Path,
+    sync::{Arc, Mutex, TryLockError},
+    time::{Duration, Instant, SystemTime},
 };
 
 /// Identity and explicit omissions of image playback.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 pub struct ImagePlaybackReport {
     /// Consumer policy used to prepare this playback.
     pub settings: PlaybackSettings,
-    /// Hash of the package used to prepare image descriptions and static assets.
+    /// Hash of the scene package or standalone video source.
     pub package_sha256: String,
     /// Loaded visible images in authored draw order.
     pub object_ids: Vec<u64>,
@@ -33,8 +34,15 @@ pub struct ImagePlaybackReport {
     /// Remains true when authored bloom is disabled or its strength is zero.
     /// The output remains an eight-bit SDR consumer texture.
     pub hdr_bloom: bool,
+    /// Opaque background clear color in normalized RGBA code values.
+    /// Scene discovery honors enabled `general.clearcolor`; manual selected
+    /// playback and standalone video retain [`crate::BLANK_RGBA`].
+    pub background_color: [f32; 4],
     /// Image objects with the checked two-phase water-flow profile.
     pub water_flow_objects: Vec<u64>,
+    /// Applied basic masked UV animation profiles, keyed by image object ID.
+    /// Values are `spin`, `waterwaves` or `shake`; additional effect passes remain omitted.
+    pub image_motions: BTreeMap<u64, String>,
     /// Standalone corner light-shaft objects prepared in authored draw order.
     pub shape_objects: Vec<u64>,
     /// Prepared static or recognized calendar/clock text objects, in authored order.
@@ -57,6 +65,33 @@ pub struct ImagePlaybackSample {
 enum Source {
     Static(Arc<TextureRegion>),
     Animated(SpritePager),
+    Video(crate::assets::video::VideoPager),
+}
+
+fn optional_objects<T>(
+    objects: &[super::RawObject],
+    tolerant: bool,
+    omissions: &mut Vec<String>,
+    mut prepare: impl FnMut(&[super::RawObject], &mut Vec<String>) -> Result<Vec<T>, InspectionError>,
+) -> Result<Vec<T>, InspectionError> {
+    if !tolerant {
+        return prepare(objects, omissions);
+    }
+    let mut prepared = Vec::new();
+    for object in objects.iter().take(32) {
+        match prepare(std::slice::from_ref(object), omissions) {
+            Ok(objects) => prepared.extend(objects),
+            Err(error) => omissions.push(format!(
+                "Object {}: optional content omitted: {error}",
+                object.id
+            )),
+        }
+    }
+    if objects.len() > 32 {
+        omissions
+            .push("Optional objects beyond the 32-object preparation limit are omitted.".into());
+    }
+    Ok(prepared)
 }
 
 /// Prepared selected-image composition with a shared monotonic playback clock.
@@ -65,7 +100,7 @@ enum Source {
 /// The host schedules sampling/presentation from its event loop. Sampling never
 /// waits for codecs and returns `None` until every source for that time is ready.
 /// Default unmasked precise blur, cloud motion and a bounded 2D particle profile
-/// are supported by scene discovery. Other effects,
+/// and basic masked Spin/Water Waves/periodic Shake animation are supported by scene discovery. Other effects,
 /// parallax, camera/color settings and animated crop offsets are unsupported,
 /// as reported or rejected by [`Self::open`]. Existing per-
 /// pager and composition bounds apply; aggregate scene memory is not budgeted.
@@ -73,12 +108,13 @@ enum Source {
 pub struct ImagePlayback {
     // Keep the package read guard across asynchronous pager opening so all
     // sources use the reported package version, including static-only loads.
-    _decoder: TextureDecoder,
+    _decoder: Option<TextureDecoder>,
     plan: snapshot::ImagePlan,
     layer_sources: Vec<usize>,
     sources: Vec<Source>,
     cloud_motions: Vec<Option<Arc<CloudMotion>>>,
     flow_motions: Vec<Option<Arc<super::flow::FlowMotion>>>,
+    image_motions: Vec<Option<Arc<super::motion::ImageMotion>>>,
     particles: Vec<particles::Particles>,
     particle_pages: Vec<Arc<TexturePage>>,
     rays: Vec<super::rays::RayLayer>,
@@ -87,9 +123,64 @@ pub struct ImagePlayback {
     base: Duration,
     started: Option<Instant>,
     frozen: Option<ImagePlaybackSample>,
+    pending_time: Mutex<Option<Duration>>,
+    calendar_time: Option<SystemTime>,
 }
 
 impl ImagePlayback {
+    /// Open a local video using installed `ffmpeg.exe` and `ffprobe.exe` on PATH.
+    /// Metadata and source hashing block during opening. Decode runs on a
+    /// dedicated worker; sampling never waits for it. Playback is silent and
+    /// loops at the source's rational average frame rate (up to 240 fps), scaled
+    /// to `size` before GPU upload. Variable-rate media uses that average cadence;
+    /// no intermediate video frames are synthesized. One
+    /// ready frame, one active decode and one pending request are retained.
+    /// Consumer-held samples and FFmpeg internal buffers are outside this bound.
+    /// Missing tools, unsupported media and decode failures are reported.
+    /// Shutdown joins and cancels the owned codec process outside UI updates.
+    pub fn open_video(
+        path: &Path,
+        size: crate::Size,
+        settings: PlaybackSettings,
+    ) -> Result<Self, InspectionError> {
+        let (pager, hash) = crate::assets::video::VideoPager::open(path, size)?;
+        Ok(Self {
+            _decoder: None,
+            plan: snapshot::video_plan(size),
+            layer_sources: vec![0],
+            sources: vec![Source::Video(pager)],
+            cloud_motions: vec![None],
+            flow_motions: vec![None],
+            image_motions: vec![None],
+            particles: Vec::new(),
+            particle_pages: Vec::new(),
+            rays: Vec::new(),
+            texts: Vec::new(),
+            report: ImagePlaybackReport {
+                settings,
+                package_sha256: hash,
+                object_ids: vec![0],
+                background_color: crate::BLANK_RGBA.map(|v| f32::from(v) / 255.),
+                animated_assets: vec![path.display().to_string()],
+                omissions: vec![
+                    "Video audio is omitted; CPU FFmpeg decoding and RGBA uploads are used.".into(),
+                ],
+                ..Default::default()
+            },
+            base: Duration::ZERO,
+            started: None,
+            frozen: None,
+            pending_time: Mutex::new(None),
+            calendar_time: None,
+        })
+    }
+
+    /// Fix calendar/clock text to an explicit wall time for repeatable captures.
+    /// Does not execute scripts or change the scene animation clock.
+    pub fn set_calendar_time(&mut self, time: SystemTime) {
+        self.calendar_time = Some(time);
+        self.frozen = None;
+    }
     /// Blocking preparation of selected image descriptions and static sources.
     /// Starts unique sprite pagers in the background. Open on an asset thread
     /// or before creating the host window, never during UI updates. Playback
@@ -146,14 +237,21 @@ impl ImagePlayback {
         let mut static_pages = BTreeMap::new();
         let mut cloud_motions = Vec::new();
         let mut flow_motions = Vec::new();
-        for layer in &plan.layers {
+        let mut image_motions = Vec::new();
+        let tolerant = objects.is_none() && settings.allow_unsupported_features;
+        for layer in &mut plan.layers {
             // Include interpretation in the key: the same TEX cannot silently
             // become a static page for one layer and an animation for another.
             let key = (layer.asset.clone(), layer.sprite);
             let index = if let Some(index) = indexed.get(&key) {
                 *index
             } else {
-                let prepared = if layer.sprite {
+                let prepared = if tolerant
+                    && let Some(file) = decoder.embedded_video(&layer.asset)?
+                {
+                    animated_assets.push(layer.asset.clone());
+                    Source::Video(crate::assets::video::VideoPager::embedded(file)?)
+                } else if layer.sprite {
                     let (pager, _events) = SpritePager::new(source.clone(), layer.asset.clone())?;
                     animated_assets.push(layer.asset.clone());
                     Source::Animated(pager)
@@ -176,43 +274,103 @@ impl ImagePlayback {
                 index
             };
             layer_sources.push(index);
-            cloud_motions.push(
-                layer
-                    .cloud_profile()
-                    .map(|profile| profile.prepare(&decoder, &mut static_pages, &mut static_bytes))
-                    .transpose()?,
-            );
-            flow_motions.push(match &layer.effect {
-                Some(snapshot::EffectDescription::Flow(profile)) => {
-                    Some(profile.prepare(&decoder, &mut static_pages, &mut static_bytes)?)
+            let cloud = layer
+                .cloud_profile()
+                .map(|profile| profile.prepare(&decoder, &mut static_pages, &mut static_bytes))
+                .transpose();
+            cloud_motions.push(match cloud {
+                Ok(cloud) => cloud,
+                Err(error) if tolerant => {
+                    plan.omissions
+                        .push(format!("{}: cloud effect omitted: {error}", layer.asset));
+                    layer.effect = None;
+                    None
                 }
-                _ => None,
+                Err(error) => return Err(error),
+            });
+            let flow = match &layer.effect {
+                Some(snapshot::EffectDescription::Flow(profile)) => profile
+                    .prepare(&decoder, &mut static_pages, &mut static_bytes)
+                    .map(Some),
+                _ => Ok(None),
+            };
+            flow_motions.push(match flow {
+                Ok(flow) => flow,
+                Err(error) if tolerant => {
+                    plan.omissions.push(format!(
+                        "{}: water-flow effect omitted: {error}",
+                        layer.asset
+                    ));
+                    layer.effect = None;
+                    None
+                }
+                Err(error) => return Err(error),
+            });
+            let motion = match &layer.effect {
+                Some(snapshot::EffectDescription::Motion(profile)) => profile
+                    .prepare(&decoder, &mut static_pages, &mut static_bytes)
+                    .map(Some),
+                _ => Ok(None),
+            };
+            image_motions.push(match motion {
+                Ok(motion) => motion,
+                Err(error) if tolerant => {
+                    plan.omissions.push(format!(
+                        "{}: masked image motion omitted: {error}",
+                        layer.asset
+                    ));
+                    layer.effect = None;
+                    None
+                }
+                Err(error) => return Err(error),
             });
         }
-        let particles = particles::prepare(
-            &decoder,
+        let particles = optional_objects(
             &plan.particles,
-            &mut static_pages,
-            &mut static_bytes,
+            tolerant,
             &mut plan.omissions,
+            |objects, omissions| {
+                particles::prepare(
+                    &decoder,
+                    objects,
+                    tolerant,
+                    &mut static_pages,
+                    &mut static_bytes,
+                    omissions,
+                )
+            },
         )?;
         let mut particle_pages = if particles.is_empty() {
             Vec::new()
         } else {
             static_pages.values().cloned().collect()
         };
-        let rays = super::rays::prepare(
-            &decoder,
+        let rays = optional_objects(
             &plan.ray_objects,
-            plan.canvas,
-            &mut static_pages,
-            &mut static_bytes,
+            tolerant,
+            &mut plan.omissions,
+            |objects, _| {
+                super::rays::prepare(
+                    &decoder,
+                    objects,
+                    plan.canvas,
+                    &mut static_pages,
+                    &mut static_bytes,
+                )
+            },
         )?;
-        let texts = super::text::prepare(
-            &decoder,
+        let texts = optional_objects(
             &plan.text_objects,
-            settings.visual_effects,
-            &mut static_bytes,
+            tolerant,
+            &mut plan.omissions,
+            |objects, _| {
+                super::text::prepare(
+                    &decoder,
+                    objects,
+                    settings.visual_effects,
+                    &mut static_bytes,
+                )
+            },
         )?;
         particle_pages.extend(texts.iter().map(|text| text.page()));
         let report = ImagePlaybackReport {
@@ -239,6 +397,7 @@ impl ImagePlayback {
                 .collect(),
             particle_objects: particles.iter().map(|particles| particles.id).collect(),
             hdr_bloom: plan.hdr.is_some(),
+            background_color: plan.background,
             water_flow_objects: plan
                 .object_ids
                 .iter()
@@ -248,16 +407,28 @@ impl ImagePlayback {
                 })
                 .collect(),
             shape_objects: rays.iter().map(|r| r.id).collect(),
+            image_motions: plan
+                .object_ids
+                .iter()
+                .zip(&plan.layers)
+                .filter_map(|(id, layer)| match &layer.effect {
+                    Some(snapshot::EffectDescription::Motion(description)) => {
+                        Some((*id, description.profile.name().into()))
+                    }
+                    _ => None,
+                })
+                .collect(),
             text_objects: texts.iter().map(|t| t.id).collect(),
             omissions: plan.omissions.clone(),
         };
         Ok(Self {
-            _decoder: decoder,
+            _decoder: Some(decoder),
             plan,
             layer_sources,
             sources,
             cloud_motions,
             flow_motions,
+            image_motions,
             particles,
             particle_pages,
             rays,
@@ -266,6 +437,8 @@ impl ImagePlayback {
             base: Duration::ZERO,
             started: None,
             frozen: None,
+            pending_time: Mutex::new(None),
+            calendar_time: None,
         })
     }
 
@@ -299,12 +472,16 @@ impl ImagePlayback {
 
     /// Freeze common time. Bounded outstanding sprite preparation may settle.
     pub fn pause(&mut self) {
-        self.base = self.time();
-        self.started = None;
+        if self.started.is_some() {
+            self.base = self.time();
+            self.started = None;
+            *self.pending_time.get_mut().expect("sample state") = None;
+        }
     }
 
     /// Pause and select an exact time. A sample may be unavailable during seek.
     pub fn seek(&mut self, time: Duration) {
+        *self.pending_time.get_mut().expect("sample state") = None;
         self.frozen = None;
         self.base = time;
         self.started = None;
@@ -319,6 +496,7 @@ impl ImagePlayback {
     /// (or copied host texture), ignoring in-flight results while frozen. This
     /// method cannot decide which GPU frame the host last displayed.
     pub fn freeze(&mut self, sample: &ImagePlaybackSample) {
+        *self.pending_time.get_mut().expect("sample state") = None;
         self.base = sample.time;
         self.started = None;
         self.frozen = Some(sample.clone());
@@ -326,13 +504,26 @@ impl ImagePlayback {
 
     /// Sample every source at one captured clock time without I/O, decoding or
     /// waiting for metadata. Returns `None` when any source is unavailable; keep
-    /// the previous completed GPU frame and retry. Returns contextual asset or
+    /// the previous completed GPU frame and retry. Retries retain one selection
+    /// time until all sources are ready; the next selection uses the current
+    /// clock. Seek, pause and freeze discard pending selections. Returns asset or
     /// composition errors. Construction copies descriptors, not image pixels.
     pub fn try_sample(&self) -> Result<Option<ImagePlaybackSample>, InspectionError> {
         if let Some(sample) = &self.frozen {
             return Ok(Some(sample.clone()));
         }
-        let time = self.time();
+        let mut pending = match self.pending_time.try_lock() {
+            Ok(pending) => pending,
+            Err(TryLockError::WouldBlock) => return Ok(None),
+            Err(TryLockError::Poisoned(_)) => {
+                return Err(InspectionError::invalid(
+                    "image playback",
+                    "sample state poisoned",
+                ));
+            }
+        };
+        // Advancing requests before decoding completes can starve live video forever.
+        let time = *pending.get_or_insert_with(|| self.time());
         let mut regions = Vec::with_capacity(self.sources.len());
         let mut frame_indices = Vec::new();
         for source in &self.sources {
@@ -341,6 +532,10 @@ impl ImagePlayback {
                 Source::Animated(pager) => pager.try_sample_at(time)?.map(|sample| {
                     frame_indices.push(sample.frame_index());
                     sample.region().clone()
+                }),
+                Source::Video(pager) => pager.try_sample_at(time)?.map(|(region, index)| {
+                    frame_indices.push(index);
+                    region
                 }),
             });
         }
@@ -354,7 +549,8 @@ impl ImagePlayback {
             .zip(&self.layer_sources)
             .zip(&self.cloud_motions)
             .zip(&self.flow_motions)
-            .map(|(((description, index), cloud), flow)| {
+            .zip(&self.image_motions)
+            .map(|((((description, index), cloud), flow), motion)| {
                 description
                     .layer(
                         regions[*index].as_ref().expect("all sources ready").clone(),
@@ -364,6 +560,11 @@ impl ImagePlayback {
                     .map(|layer| {
                         let layer = if let Some(flow) = flow {
                             layer.with_flow(flow.clone(), time)
+                        } else {
+                            layer
+                        };
+                        let layer = if let Some(motion) = motion {
+                            layer.with_motion(motion.clone(), time)
                         } else {
                             layer
                         };
@@ -379,27 +580,41 @@ impl ImagePlayback {
             .zip(image_layers)
             .collect();
         let mut layers = Vec::new();
-        let now = chrono::Local::now();
+        let now = self
+            .calendar_time
+            .map_or_else(chrono::Local::now, chrono::DateTime::<chrono::Local>::from);
         let (mut work, mut draws) = (0, 0);
         for id in &self.plan.draw_order {
             if let Some(layer) = by_id.remove(id) {
+                let mut layer = layer;
+                layer.scale_coordinates(self.plan.coordinate_scale);
                 layers.push(layer);
             }
             if let Some(rays) = self.rays.iter().find(|rays| rays.id == *id) {
                 layers.push(rays.layer(time)?);
             }
             if let Some(text) = self.texts.iter().find(|text| text.id == *id) {
+                let start = layers.len();
                 text.append(now, &mut layers)?;
+                for layer in &mut layers[start..] {
+                    layer.scale_coordinates(self.plan.coordinate_scale);
+                }
             }
             if let Some(particles) = self.particles.iter().find(|particles| particles.id == *id) {
+                let start = layers.len();
                 particles.append(time, &mut layers, &mut work, &mut draws)?;
+                for layer in &mut layers[start..] {
+                    layer.scale_coordinates(self.plan.coordinate_scale);
+                }
             }
         }
         let mut composition =
             ImageComposition::scene(self.plan.canvas, layers, &self.particle_pages)
                 .map_err(|error| InspectionError::invalid("image playback", error.to_string()))?;
         composition.hdr = self.plan.hdr;
+        composition.background = self.plan.background;
         let composition = Arc::new(composition);
+        *pending = None;
         Ok(Some(ImagePlaybackSample {
             composition,
             time,

@@ -114,6 +114,12 @@ impl App {
         {
             self.fixture.presented(&frame);
             if let Some(images) = &mut self.images {
+                images.set_refresh_rate(
+                    window
+                        .current_monitor()
+                        .and_then(|monitor| monitor.refresh_rate_millihertz())
+                        .unwrap_or(60_000),
+                );
                 images.presented(&frame);
             }
         }
@@ -567,6 +573,7 @@ fn main() -> Result<()> {
     let mut paged = false;
     let mut image_fixture = false;
     let mut scene_path = None;
+    let mut video_path = None;
     let mut engine_assets = None;
     let mut settings = PlaybackSettings::default();
     while let Some(arg) = args.next() {
@@ -578,6 +585,9 @@ fn main() -> Result<()> {
             "--reduce-flashing" => settings.reduce_flashing = true,
             "--scene" => {
                 scene_path = Some(PathBuf::from(args.next().ok_or("--scene needs a package")?))
+            }
+            "--video" => {
+                video_path = Some(PathBuf::from(args.next().ok_or("--video needs a file")?))
             }
             "--engine-assets" => {
                 engine_assets = Some(PathBuf::from(
@@ -611,32 +621,42 @@ fn main() -> Result<()> {
     if scene_path.is_some() != engine_assets.is_some() {
         return Err("--scene and --engine-assets must be supplied together".into());
     }
-    if (image_fixture || scene_path.is_some()) && (layers || texture)
+    if (image_fixture || scene_path.is_some() || video_path.is_some()) && (layers || texture)
         || image_fixture && scene_path.is_some()
+        || video_path.is_some() && (image_fixture || scene_path.is_some())
     {
         return Err("choose one image playback or diagnostic fixture route".into());
     }
     let (output, mode) = support::options(common.into_iter())?;
-    if settings != PlaybackSettings::default() && !image_fixture && scene_path.is_none() {
+    if settings != PlaybackSettings::default()
+        && !image_fixture
+        && scene_path.is_none()
+        && video_path.is_none()
+    {
         return Err("playback settings require --scene or --image-fixture".into());
     }
-    let images = if image_fixture || scene_path.is_some() {
-        let source = if image_fixture {
-            let generated = output.join("generated");
-            std::fs::create_dir(&generated)?;
-            std::fs::create_dir(generated.join("engine"))?;
-            std::fs::write(generated.join("scene.pkg"), playback_checks::package())?;
-            SceneSource {
-                package: generated.join("scene.pkg"),
-                engine_assets: generated.join("engine"),
-            }
+    let images = if image_fixture || scene_path.is_some() || video_path.is_some() {
+        let playback = if let Some(path) = video_path {
+            ImagePlayback::open_video(&path, Size::new(1920, 1080)?, settings)?
         } else {
-            SceneSource {
-                package: scene_path.expect("paired source"),
-                engine_assets: engine_assets.expect("paired source"),
-            }
+            let source = if image_fixture {
+                let generated = output.join("generated");
+                std::fs::create_dir(&generated)?;
+                std::fs::create_dir(generated.join("engine"))?;
+                std::fs::write(generated.join("scene.pkg"), playback_checks::package())?;
+                SceneSource {
+                    package: generated.join("scene.pkg"),
+                    engine_assets: generated.join("engine"),
+                }
+            } else {
+                SceneSource {
+                    package: scene_path.expect("paired source"),
+                    engine_assets: engine_assets.expect("paired source"),
+                }
+            };
+            settings.allow_unsupported_features = !image_fixture;
+            ImagePlayback::open_scene_images_with_settings(&source, settings)?
         };
-        let playback = ImagePlayback::open_scene_images_with_settings(&source, settings)?;
         support::write_json(
             &output.join("image-playback.json"),
             &serde_json::to_value(playback.report())?,

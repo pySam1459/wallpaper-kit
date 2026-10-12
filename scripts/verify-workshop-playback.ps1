@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$ScenePath,
-    [Parameter(Mandatory)][string]$EngineAssets,
+    [Parameter(Mandatory, ParameterSetName='Scene')][string]$ScenePath,
+    [Parameter(Mandatory, ParameterSetName='Scene')][string]$EngineAssets,
+    [Parameter(Mandatory, ParameterSetName='Video')][string]$VideoPath,
     [string]$Executable = 'target/debug/examples/native-viewer.exe',
     [string]$Output = ('artifacts/workshop-playback-' + [Guid]::NewGuid().ToString('N').Substring(0,8)),
     [ValidateRange(1,3840)][int]$Width = 960,
@@ -17,7 +18,12 @@ $start.RedirectStandardOutput=$true
 $start.RedirectStandardError=$true
 $start.WorkingDirectory=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $outputPath=[IO.Path]::GetFullPath($Output)
-foreach($argument in @('--output',$outputPath,'--scene',[IO.Path]::GetFullPath($ScenePath),'--engine-assets',[IO.Path]::GetFullPath($EngineAssets),'--linear-images')) { $start.ArgumentList.Add($argument) }
+foreach($argument in @('--output',$outputPath,'--linear-images')) { $start.ArgumentList.Add($argument) }
+if ($VideoPath) {
+    foreach($argument in @('--video',[IO.Path]::GetFullPath($VideoPath))) { $start.ArgumentList.Add($argument) }
+} else {
+    foreach($argument in @('--scene',[IO.Path]::GetFullPath($ScenePath),'--engine-assets',[IO.Path]::GetFullPath($EngineAssets))) { $start.ArgumentList.Add($argument) }
+}
 if($Software) { $start.ArgumentList.Add('--software') }
 $process=[Diagnostics.Process]::new()
 $process.StartInfo=$start
@@ -82,7 +88,7 @@ try {
     [ordered]@{status='passed';package_sha256=$ready.state.image_playback.report.package_sha256;playback=$ready.state.image_playback.report;adapter=$ready.state.frame.adapter;resolution=@($Width,$Height);checkpoints=$checkpoints;live_samples=$live.Count;maximum_presentation_call_gap_ms=($gaps|Measure-Object -Maximum).Maximum;paused_idle='passed';rewind='identical PNG hash';cleanup='Owned process exited';executable_sha256=(Get-FileHash $start.FileName).Hash;limits=@('Controlled capture checks deterministic scene sampling; clock text follows local wall time.','Presentation-call observations do not establish display cadence or exact engine effect fidelity.')}|ConvertTo-Json -Depth 12|Set-Content (Join-Path $outputPath 'report.json') -Encoding utf8
     Write-Output "Evidence: $outputPath"
 } finally {
-    if($started -and -not $process.HasExited) { $process.Kill();$null=$process.WaitForExit(10000) }
+    if($started -and -not $process.HasExited) { $process.Kill($true);$null=$process.WaitForExit(10000) }
     if(Test-Path $outputPath) {
         $transcript|ConvertTo-Json -Depth 12|Set-Content (Join-Path $outputPath 'transcript.json') -Encoding utf8
         if($errors -and $errors.IsCompleted) { $errors.Result|Set-Content (Join-Path $outputPath 'stderr.log') -Encoding utf8 }

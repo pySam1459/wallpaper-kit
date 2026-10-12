@@ -7,6 +7,7 @@ mod flow;
 pub(crate) mod hdr;
 mod inspect;
 mod layers;
+mod motion;
 mod particles;
 mod playback;
 mod precise;
@@ -326,6 +327,7 @@ pub fn inspect_scene(source: &SceneSource) -> Result<SceneInspection, Inspection
 
 #[derive(Deserialize)]
 struct RawScene {
+    #[serde(default)]
     version: u32,
     general: General,
     objects: Vec<RawObject>,

@@ -15,6 +15,7 @@ pub struct Images {
     playback: ImagePlayback,
     pending: bool,
     next_tick: Option<Instant>,
+    frame_period: Duration,
     requested: Option<Selection>,
     latest: Option<Selection>,
     held: bool,
@@ -29,6 +30,7 @@ impl Images {
             playback,
             pending: true,
             next_tick: Some(Instant::now()),
+            frame_period: Duration::from_nanos(1_000_000_000 / 60),
             requested: None,
             latest: None,
             held: false,
@@ -37,6 +39,10 @@ impl Images {
             omitted: 0,
             fixture,
         }
+    }
+    pub fn set_refresh_rate(&mut self, millihertz: u32) {
+        self.frame_period =
+            Duration::from_secs_f64(1000. / f64::from(millihertz.clamp(1000, 240_000)));
     }
     pub fn play(&mut self) {
         self.held = false;
@@ -83,9 +89,9 @@ impl Images {
         let sample = self.playback.try_sample()?;
         self.pending = sample.is_none();
         self.next_tick = if self.pending {
-            Some(Instant::now() + Duration::from_millis(10))
+            Some(Instant::now() + Duration::from_millis(1))
         } else if self.playback.playing() {
-            Some(Instant::now() + Duration::from_nanos(1_000_000_000 / 30))
+            Some(Instant::now() + self.frame_period)
         } else {
             None
         };

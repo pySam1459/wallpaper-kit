@@ -25,6 +25,644 @@ use wallpaper_kit::{
 };
 
 static RUN: AtomicU64 = AtomicU64::new(0);
+
+fn masked_motion_package(kind: &str, constants: Value, combos: Value) -> Package {
+    motion_package(kind, constants, combos, None, None, false)
+}
+
+fn motion_package(
+    kind: &str,
+    constants: Value,
+    combos: Value,
+    phase: Option<u8>,
+    opacity: Option<u8>,
+    hdr: bool,
+) -> Package {
+    let textures = if kind == "shake" {
+        json!([
+            null,
+            "mask",
+            phase.map(|_| "phase"),
+            opacity.map(|_| "opacity")
+        ])
+    } else {
+        json!([null, "mask"])
+    };
+    let scene = serde_json::to_vec(&json!({"version":5,"general":{"hdr":hdr,"orthogonalprojection":{"width":8,"height":8}},"objects":[{
+        "id":1,"image":"models/image.json","origin":"4 4 0","size":"8 8","effects":[{
+            "file":format!("effects/{kind}/effect.json"),"passes":[{"constantshadervalues":constants,"combos":combos,"textures":textures}]
+        }]
+    }]})).unwrap();
+    let definition = serde_json::to_vec(
+        &json!({"version":1,"replacementkey":kind,"passes":[{"material":"materials/effect.json"}]}),
+    )
+    .unwrap();
+    let effect_material =
+        serde_json::to_vec(&json!({"passes":[{"shader":format!("effects/{kind}")}]})).unwrap();
+    let pixels: Vec<_> = (0..64)
+        .flat_map(|i| {
+            [
+                (i % 8 * 31) as u8,
+                (i / 8 * 31) as u8,
+                if kind == "shake" && i % 2 == 1 {
+                    200
+                } else {
+                    0
+                },
+                255,
+            ]
+        })
+        .collect();
+    let mask: Vec<_> = if kind == "shake" {
+        (0..64)
+            .flat_map(|i| [if i % 8 < 4 { 127 } else { 255 }, 127, 0, 255])
+            .collect()
+    } else {
+        (0..64).map(|i| if i % 8 < 4 { 0 } else { 255 }).collect()
+    };
+    Package::new(&[
+        ("scene.json", &scene),
+        ("models/image.json", &serde_json::to_vec(&model()).unwrap()),
+        (
+            "materials/image.json",
+            &serde_json::to_vec(&material(false)).unwrap(),
+        ),
+        ("materials/effect.json", &effect_material),
+        (&format!("effects/{kind}/effect.json"), &definition),
+        (
+            "materials/image.tex",
+            &texture_checks::tex(0, [8, 8], &pixels, false, false),
+        ),
+        (
+            "materials/mask.tex",
+            &texture_checks::tex(
+                if kind == "shake" { 0 } else { 9 },
+                [8, 8],
+                &mask,
+                false,
+                false,
+            ),
+        ),
+        (
+            "materials/phase.tex",
+            &texture_checks::tex(9, [1, 1], &[phase.unwrap_or(0)], false, false),
+        ),
+        (
+            "materials/opacity.tex",
+            &texture_checks::tex(9, [1, 1], &[opacity.unwrap_or(255)], false, false),
+        ),
+    ])
+}
+
+#[test]
+fn masked_spin_and_water_waves_animate_rewind_and_preserve_unmasked_pixels() {
+    for (kind, constants) in [
+        (
+            "spin",
+            json!({"center":"0.5 0.5","speed":std::f32::consts::FRAC_PI_2}),
+        ),
+        (
+            "waterwaves",
+            json!({"direction":0,"scale":0,"speed":std::f32::consts::FRAC_PI_2,"strength":0.2,"perspective":0}),
+        ),
+    ] {
+        let package = masked_motion_package(kind, constants, json!({}));
+        let source = SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        };
+        let mut playback = ImagePlayback::open_scene_images(&source).unwrap();
+        assert!(
+            !playback
+                .report()
+                .omissions
+                .iter()
+                .any(|s| s.contains(&format!("effect effects/{kind}/")))
+        );
+        let (renderer, events) =
+            Renderer::new(Size::new(8, 8).unwrap(), DeviceMode::Software).unwrap();
+        let mut captures = Vec::new();
+        for seconds in [0, 1, 0] {
+            playback.seek(Duration::from_secs(seconds));
+            let sample = playback_sample(&playback);
+            let id = renderer.render_images(sample.composition).unwrap();
+            captures.push(wait(&renderer, &events, id).readback().unwrap().rgba);
+        }
+        assert_eq!(captures[0], captures[2], "{kind} rewind");
+        assert_ne!(captures[0], captures[1], "{kind} must change pixels");
+        for y in 0..8 {
+            for x in 0..4 {
+                let i = (y * 8 + x) * 4;
+                assert_eq!(
+                    &captures[0][i..i + 4],
+                    &captures[1][i..i + 4],
+                    "{kind} mask at {x},{y}"
+                );
+            }
+        }
+        // Independent cardinal-turn oracle: UV (5.5,1.5) samples (1.5,2.5).
+        if kind == "spin" {
+            let i = (8 + 5) * 4;
+            assert_eq!(&captures[1][i..i + 4], &[31, 62, 0, 255]);
+        }
+        renderer.shutdown().unwrap();
+        playback.shutdown().unwrap();
+    }
+}
+
+#[test]
+fn image_motion_rejects_bad_profiles_and_respects_effect_policy() {
+    for (kind, constants, combos) in [
+        ("spin", json!({"center":"2 0.5"}), json!({})),
+        ("spin", json!({"speed":"fast"}), json!({})),
+        ("waterwaves", json!({"strength":-1}), json!({})),
+        ("waterwaves", json!({"perspective":1}), json!({})),
+        ("waterwaves", json!({}), json!({"DUALWAVES":1})),
+        ("shake", json!({"strength":-1}), json!({})),
+        ("shake", json!({"friction":"2 1"}), json!({})),
+        ("shake", json!({"bounds":"0 0.5"}), json!({})),
+        ("shake", json!({}), json!({"NOISE":1})),
+        ("shake", json!({}), json!({"DIRECTION":1})),
+        ("shake", json!({}), json!({"AUDIOPROCESSING":3})),
+        ("shake", json!({}), json!({"UNKNOWN":0})),
+    ] {
+        let package = masked_motion_package(kind, constants, combos);
+        let source = SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        };
+        assert!(ImagePlayback::open_scene_images(&source).is_err());
+        let playback = ImagePlayback::open_scene_images_with_settings(
+            &source,
+            PlaybackSettings {
+                allow_unsupported_features: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(playback.report().image_motions.is_empty());
+        assert!(
+            playback
+                .report()
+                .omissions
+                .iter()
+                .any(|s| s.contains("effect") && s.contains("omitted"))
+        );
+        playback.shutdown().unwrap();
+        // Disabled VFX must bypass unsupported profiles before preparing masks.
+        let playback = ImagePlayback::open_scene_images_with_settings(
+            &source,
+            PlaybackSettings {
+                visual_effects: false,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(playback.report().image_motions.is_empty());
+        playback.shutdown().unwrap();
+    }
+}
+
+#[test]
+fn periodic_shake_is_discovered_and_rewinds() {
+    let package = masked_motion_package(
+        "shake",
+        json!({"speed":1,"strength":0.5,"friction":"1 1","bounds":"0 1"}),
+        json!({"AUDIOPROCESSING":0,"DIRECTION":0,"NOISE":0}),
+    );
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    let mut playback = ImagePlayback::open_scene_images(&source).unwrap();
+    assert_eq!(playback.report().image_motions.get(&1).unwrap(), "shake");
+    let (renderer, events) = Renderer::new(Size::new(8, 8).unwrap(), DeviceMode::Software).unwrap();
+    let mut captures = Vec::new();
+    for seconds in [0, 1, 0] {
+        playback.seek(Duration::from_secs(seconds));
+        let id = renderer
+            .render_images(playback_sample(&playback).composition)
+            .unwrap();
+        captures.push(wait(&renderer, &events, id).readback().unwrap().rgba);
+    }
+    assert_ne!(captures[0], captures[1]);
+    assert_eq!(captures[0], captures[2]);
+    renderer.shutdown().unwrap();
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn shake_direction_phase_strength_and_opacity_match_independent_pixels() {
+    for (phase, opacity, strength) in [
+        (None, None, 0.5),
+        (None, None, 0.25),
+        (Some(64), None, 0.5),
+        (Some(128), None, 0.5),
+        (Some(255), None, 0.5),
+        (None, Some(0), 0.5),
+        (None, Some(128), 0.5),
+    ] {
+        let package = motion_package(
+            "shake",
+            json!({"speed":1,"strength":strength}),
+            json!({}),
+            phase,
+            opacity,
+            false,
+        );
+        let source = SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        };
+        let mut playback = ImagePlayback::open_scene_images(&source).unwrap();
+        let (renderer, events) =
+            Renderer::new(Size::new(8, 8).unwrap(), DeviceMode::Software).unwrap();
+        playback.seek(Duration::from_secs(1));
+        let id = renderer
+            .render_images(playback_sample(&playback).composition)
+            .unwrap();
+        let pixels = wait(&renderer, &events, id).readback().unwrap().rgba;
+        let phase_offset = f64::from(phase.unwrap_or(0)) / 255. * std::f64::consts::TAU;
+        let x = (5. + 8. * strength * strength * (1. + phase_offset).sin()).clamp(0., 7.);
+        let left = x.floor() as usize;
+        let fraction = x - x.floor();
+        let blue = |x: usize| if x % 2 == 1 { 200. } else { 0. };
+        let displaced = [
+            x * 31.,
+            31.,
+            blue(left) * (1. - fraction) + blue((left + 1).min(7)) * fraction,
+            255.,
+        ];
+        let amount = f64::from(opacity.unwrap_or(255)) / 255.;
+        for (channel, original) in [155., 31., 200., 255.].into_iter().enumerate() {
+            let expected = (original * (1. - amount) + displaced[channel] * amount).round() as i32;
+            assert!(
+                (i32::from(pixels[(8 + 5) * 4 + channel]) - expected).abs() <= 1,
+                "phase={phase:?} opacity={opacity:?} strength={strength} channel={channel} expected={expected}"
+            );
+        }
+        // Painted neutral is byte 127 on both axes, independent of phase.
+        assert_eq!(&pixels[(8 + 1) * 4..(8 + 1) * 4 + 4], &[31, 31, 200, 255]);
+        renderer.shutdown().unwrap();
+        playback.shutdown().unwrap();
+    }
+}
+
+#[test]
+fn shake_preserves_hdr_scene_rendering() {
+    let package = motion_package(
+        "shake",
+        json!({"speed":1,"strength":0.5}),
+        json!({}),
+        None,
+        None,
+        true,
+    );
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    let mut playback = ImagePlayback::open_scene_images(&source).unwrap();
+    assert_eq!(playback.report().image_motions.get(&1).unwrap(), "shake");
+    let (renderer, events) = Renderer::new(Size::new(8, 8).unwrap(), DeviceMode::Software).unwrap();
+    let mut frames = Vec::new();
+    for time in [0, 1, 0] {
+        playback.seek(Duration::from_secs(time));
+        let id = renderer
+            .render_images(playback_sample(&playback).composition)
+            .unwrap();
+        frames.push(wait(&renderer, &events, id).readback().unwrap().rgba);
+    }
+    assert_ne!(frames[0], frames[1]);
+    assert_eq!(frames[0], frames[2]);
+    renderer.shutdown().unwrap();
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn new_motion_profiles_preserve_existing_effects_in_either_order() {
+    for (new_kind, old_kind) in [
+        ("spin", "waterflow"),
+        ("shake", "waterflow"),
+        ("shake", "spin"),
+        ("shake", "waterwaves"),
+    ] {
+        let new = json!({"file":format!("effects/{new_kind}/effect.json"),"passes":[{"textures":[null,"image"]}]});
+        let old_textures = if old_kind == "waterflow" {
+            json!([null, "image", "image"])
+        } else {
+            json!([null, "image"])
+        };
+        let old = json!({"file":format!("effects/{old_kind}/effect.json"),"passes":[{"textures":old_textures}]});
+        for effects in [json!([new, old]), json!([old, new])] {
+            let mut image = object(1);
+            image["effects"] = effects;
+            let texture = texture_checks::tex(0, [1, 1], &[127, 127, 127, 255], false, false);
+            let package = snapshot_package(json!([image]), model(), material(false), &texture);
+            for kind in [new_kind, old_kind] {
+                let directory = package.root.join("engine/effects").join(kind);
+                fs::create_dir_all(&directory).unwrap();
+                fs::create_dir_all(package.root.join("engine/materials")).unwrap();
+                fs::write(directory.join("effect.json"),serde_json::to_vec(&json!({"version":1,"replacementkey":kind,"passes":[{"material":format!("materials/test-{kind}.json")}]})).unwrap()).unwrap();
+                fs::write(
+                    package
+                        .root
+                        .join(format!("engine/materials/test-{kind}.json")),
+                    serde_json::to_vec(&json!({"passes":[{"shader":format!("effects/{kind}")}]}))
+                        .unwrap(),
+                )
+                .unwrap();
+            }
+            let source = SceneSource {
+                package: package.root.join("scene.pkg"),
+                engine_assets: package.root.join("engine"),
+            };
+            for tolerant in [false, true] {
+                let playback = ImagePlayback::open_scene_images_with_settings(
+                    &source,
+                    PlaybackSettings {
+                        allow_unsupported_features: tolerant,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                if old_kind == "waterflow" {
+                    assert_eq!(playback.report().water_flow_objects, [1]);
+                    assert!(playback.report().image_motions.is_empty());
+                } else {
+                    assert_eq!(playback.report().image_motions.get(&1).unwrap(), old_kind);
+                }
+                assert!(
+                    playback
+                        .report()
+                        .omissions
+                        .iter()
+                        .any(|s| s.contains(&format!("effects/{new_kind}/effect.json"))
+                            && s.contains("omitted"))
+                );
+                playback.shutdown().unwrap();
+            }
+        }
+    }
+}
+
+fn background_package(general: Value, texture: &[u8]) -> Package {
+    let mut general = general;
+    general["orthogonalprojection"] = json!({"width":6,"height":1});
+    let scene = serde_json::to_vec(&json!({"version":5,"general":general,"objects":[{
+        "id":1,"image":"models/image.json","origin":"2 0.5 0","size":"4 1"
+    }]}))
+    .unwrap();
+    let model = serde_json::to_vec(&model()).unwrap();
+    let material = serde_json::to_vec(&material(false)).unwrap();
+    Package::new(&[
+        ("scene.json", &scene),
+        ("models/image.json", &model),
+        ("materials/image.json", &material),
+        ("materials/image.tex", texture),
+    ])
+}
+
+#[test]
+fn scene_background_survives_transparency_resize_and_retained_samples() {
+    let texture = texture_checks::tex(
+        0,
+        [4, 1],
+        &[
+            255, 255, 255, 0, 0, 0, 0, 128, 255, 0, 0, 255, 255, 255, 255, 128,
+        ],
+        false,
+        false,
+    );
+    let expected = [
+        [51, 102, 153, 255],
+        [25, 51, 76, 255],
+        [255, 0, 0, 255],
+        [153, 179, 204, 255],
+        [51, 102, 153, 255],
+        [51, 102, 153, 255],
+    ];
+    for hdr in [false, true] {
+        let package = background_package(
+            json!({"clearcolor":"0.2 0.4 0.6","clearenabled":true,"hdr":hdr,"bloom":false}),
+            &texture,
+        );
+        let source = SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        };
+        let playback = ImagePlayback::open_scene_images(&source).unwrap();
+        assert_eq!(playback.report().background_color, [0.2, 0.4, 0.6, 1.]);
+        let sample = playback_sample(&playback);
+        assert_eq!(sample.composition.background_color(), [0.2, 0.4, 0.6, 1.]);
+        playback.shutdown().unwrap();
+        let (renderer, events) =
+            Renderer::new(Size::new(6, 1).unwrap(), DeviceMode::Software).unwrap();
+        let mut id = renderer.render_images(sample.composition).unwrap();
+        for width in [6, 12] {
+            if width == 12 {
+                id = renderer.resize(Size::new(12, 2).unwrap()).unwrap();
+            }
+            let pixels = wait(&renderer, &events, id).readback().unwrap();
+            for (index, pixel) in pixels.rgba.chunks_exact(4).enumerate() {
+                let target = expected[index % width / (width / 6)];
+                assert!(
+                    pixel.iter().zip(target).all(|(a, b)| a.abs_diff(b) <= 1),
+                    "hdr={hdr}: {pixel:?} != {target:?}"
+                );
+            }
+        }
+        renderer.shutdown().unwrap();
+        let selected = ImagePlayback::open(&source, &[1]).unwrap();
+        assert_eq!(
+            playback_sample(&selected).composition.background_color(),
+            wallpaper_kit::BLANK_RGBA.map(|v| f32::from(v) / 255.)
+        );
+        selected.shutdown().unwrap();
+    }
+}
+
+#[test]
+fn scene_background_rejects_bad_values_before_image_decode_and_reports_disabled_clearing() {
+    let corrupt = texture_checks::tex(0, [2, 2], b"invalid PNG", false, true);
+    for general in [
+        json!({"clearcolor":"0 NaN 1"}),
+        json!({"clearcolor":"0.2 0.4"}),
+        json!({"clearcolor":"0 2 1"}),
+        json!({"clearcolor":[0,0,0]}),
+        json!({"clearenabled":"true"}),
+    ] {
+        let package = background_package(general, &corrupt);
+        let error = ImagePlayback::open_scene_images(&SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        })
+        .err()
+        .unwrap()
+        .to_string();
+        assert!(error.contains("scene.json general.clear"), "{error}");
+        assert!(!error.contains("PNG"), "{error}");
+    }
+    let texture = texture_checks::tex(0, [4, 1], &[255; 16], false, false);
+    let package = background_package(json!({"clearcolor":"1 0 0","clearenabled":false}), &texture);
+    let playback = ImagePlayback::open_scene_images(&SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    })
+    .unwrap();
+    assert!(
+        playback
+            .report()
+            .omissions
+            .iter()
+            .any(|m| m.contains("Disabled scene clearing"))
+    );
+    assert_eq!(
+        playback_sample(&playback).composition.background_color(),
+        wallpaper_kit::BLANK_RGBA.map(|v| f32::from(v) / 255.)
+    );
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn tolerant_playback_draws_base_images_and_reports_optional_failures() {
+    let tex = texture_checks::tex(0, [2, 2], &[255; 16], false, false);
+    let mut image = object(1);
+    image["origin"] = json!("8 6 0");
+    image["size"] = json!("16 12");
+    image["animationlayers"] = json!([{"animation":"unimplemented"}]);
+    image["alpha"] = json!({"script":"unimplemented", "value":2.0});
+    image["effects"] = json!([{"file":"effects/cloudmotion/effect.json"}]);
+    let mut puppet = model();
+    puppet["puppet"] = json!("models/unimplemented.mdl");
+    let mut custom = material(false);
+    custom["passes"][0]["shader"] = json!("unimplemented");
+    let package = snapshot_package(
+        json!([image,{"id":2,"particle":"missing-particle.json"},{"id":3,"text":"hello","pointsize":-1}]),
+        puppet,
+        custom,
+        &tex,
+    );
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    assert!(ImagePlayback::open_scene_images(&source).is_err());
+    let playback = ImagePlayback::open_scene_images_with_settings(
+        &source,
+        PlaybackSettings {
+            allow_unsupported_features: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(playback.report().object_ids, [1]);
+    for feature in [
+        "animationlayers",
+        "authored default",
+        "clamped",
+        "puppet",
+        "custom shader",
+        "cloudmotion",
+        "Object 2",
+        "Object 3",
+    ] {
+        assert!(
+            playback
+                .report()
+                .omissions
+                .iter()
+                .any(|line| line.contains(feature)),
+            "missing {feature}: {:?}",
+            playback.report().omissions
+        );
+    }
+    let sample = playback_sample(&playback);
+    let (renderer, events) = Renderer::new(Size::new(2, 2).unwrap(), DeviceMode::Software).unwrap();
+    let id = renderer.render_images(sample.composition).unwrap();
+    let frame = wait(&renderer, &events, id);
+    assert_eq!(frame.readback().unwrap().rgba, [255; 16]);
+    renderer.shutdown().unwrap();
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn tolerant_playback_still_rejects_corrupt_source_pixels_and_unsafe_references() {
+    for (texture, material) in [
+        (
+            texture_checks::tex(0, [2, 2], b"invalid PNG", false, true),
+            material(false),
+        ),
+        (
+            texture_checks::tex(0, [2, 2], &texture_checks::rgba(), false, false),
+            {
+                let mut material = material(false);
+                material["passes"][0]["textures"][0] = json!("../../outside");
+                material
+            },
+        ),
+    ] {
+        let package = snapshot_package(json!([object(1)]), model(), material, &texture);
+        let source = SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        };
+        assert!(
+            ImagePlayback::open_scene_images_with_settings(
+                &source,
+                PlaybackSettings {
+                    allow_unsupported_features: true,
+                    ..Default::default()
+                }
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
+fn large_logical_canvas_preserves_image_coverage_without_larger_gpu_outputs() {
+    let tex = texture_checks::tex(0, [2, 2], &texture_checks::rgba(), false, false);
+    let definition = json!({"version":5,"general":{"orthogonalprojection":{"width":8192,"height":8192}},"objects":[{
+        "id":1,"image":"models/image.json","origin":"4096 4096 0","size":"8192 8192"
+    }]});
+    let package = Package::new(&[
+        ("scene.json", &serde_json::to_vec(&definition).unwrap()),
+        ("models/image.json", &serde_json::to_vec(&model()).unwrap()),
+        (
+            "materials/image.json",
+            &serde_json::to_vec(&material(false)).unwrap(),
+        ),
+        ("materials/image.tex", &tex),
+    ]);
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    assert!(ImagePlayback::open_scene_images(&source).is_err());
+    let playback = ImagePlayback::open_scene_images_with_settings(
+        &source,
+        PlaybackSettings {
+            allow_unsupported_features: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let sample = playback_sample(&playback);
+    assert_eq!(sample.composition.canvas(), Size::new(4096, 4096).unwrap());
+    assert_eq!(sample.composition.layers()[0].center(), [2048., 2048.]);
+    assert_eq!(sample.composition.layers()[0].size(), [4096., 4096.]);
+    let (renderer, events) = Renderer::new(Size::new(2, 2).unwrap(), DeviceMode::Software).unwrap();
+    let id = renderer.render_images(sample.composition).unwrap();
+    assert_eq!(
+        wait(&renderer, &events, id).readback().unwrap().rgba,
+        [
+            255, 0, 0, 255, 8, 140, 16, 255, 16, 24, 32, 255, 240, 160, 80, 255
+        ]
+    );
+    renderer.shutdown().unwrap();
+    playback.shutdown().unwrap();
+}
 struct Package {
     root: PathBuf,
 }
@@ -314,6 +952,16 @@ fn authored_particles_survive_seek_and_image_layer_order() {
 }
 
 fn particle_package(root: Value, child: Option<Value>, visible: Value) -> Package {
+    let white = texture_checks::tex(0, [1, 1], &[255, 255, 255, 255], false, false);
+    particle_package_with_texture(root, child, visible, &white)
+}
+
+fn particle_package_with_texture(
+    root: Value,
+    child: Option<Value>,
+    visible: Value,
+    white: &[u8],
+) -> Package {
     let scene=serde_json::to_vec(&json!({"version":1,"general":{"orthogonalprojection":{"width":64,"height":64}},"objects":[
         {"id":1,"image":"models/base.json","origin":"32 32 0","size":"64 64","color":"1 1 1","alignment":"center","perspective":false},
         {"id":2,"particle":"particles/root.json","origin":"32 32 0","visible":visible}
@@ -321,13 +969,12 @@ fn particle_package(root: Value, child: Option<Value>, visible: Value) -> Packag
     let root = serde_json::to_vec(&root).unwrap();
     let child = serde_json::to_vec(&child).unwrap();
     let dark = texture_checks::tex(0, [1, 1], &[32, 32, 32, 255], false, false);
-    let white = texture_checks::tex(0, [1, 1], &[255, 255, 255, 255], false, false);
     let mut package_bytes=texture_checks::package(&[
         ("scene.json",&scene),("particles/root.json",&root),("particles/child.json",&child),
         ("models/base.json",br#"{"material":"materials/base.json"}"#),
         ("materials/base.json",br#"{"passes":[{"shader":"genericimage2","blending":"translucent","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","combos":{"VERSION":2},"textures":["dark"]}]}"#),
         ("materials/star.json",br#"{"passes":[{"shader":"genericparticle","blending":"additive","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","textures":["white"]}]}"#),
-        ("materials/dark.tex",&dark),("materials/white.tex",&white)
+        ("materials/dark.tex",&dark),("materials/white.tex",white)
     ]);
     package_bytes[4..12].copy_from_slice(b"PKGV0016");
     let package = Package::new(&[]);
@@ -354,6 +1001,466 @@ fn particle_sprite_size_matches_the_engine_reference() {
     let sample = playback.try_sample().unwrap().unwrap();
     assert_eq!(sample.composition.layers()[1].size(), [4., 4.]);
     playback.shutdown().unwrap();
+}
+
+#[test]
+fn particle_vector_rotation_uses_radians_and_accepts_null_defaults() {
+    for (rotation, expected) in [(json!(90), 90.), (json!("0 0 1.5707963267948966"), 270.)] {
+        let mut root = burst();
+        root["sequencemultiplier"] = Value::Null;
+        root["initializer"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"name":"rotationrandom","min":rotation,"max":rotation,"exponent":null}));
+        let package = particle_package(root, None, json!(true));
+        let mut playback = ImagePlayback::open_scene_images(&SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        })
+        .unwrap();
+        assert_eq!(playback.report().particle_objects, [2]);
+        for time in [0, 500, 0] {
+            playback.seek(Duration::from_millis(time));
+            let sample = playback.try_sample().unwrap().unwrap();
+            let layer = &sample.composition.layers()[1];
+            assert!((layer.angle_degrees() - expected).abs() < 0.001);
+        }
+        playback.shutdown().unwrap();
+    }
+}
+
+#[test]
+fn particle_box_directions_scale_birth_positions_and_rewind() {
+    let mut root = burst();
+    root["emitter"] = json!([{"name":"boxrandom","instantaneous":2,
+        "distancemin":"10 20 0","distancemax":"10 20 0","directions":"2 0.25 0"}]);
+    let package = particle_package(root, None, json!(true));
+    let mut playback = ImagePlayback::open_scene_images(&SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    })
+    .unwrap();
+    assert_eq!(playback.report().particle_objects, [2]);
+    for time in [0, 500, 0] {
+        playback.seek(Duration::from_millis(time));
+        let sample = playback.try_sample().unwrap().unwrap();
+        assert_eq!(sample.composition.layers().len(), 3);
+        for layer in &sample.composition.layers()[1..] {
+            let center = layer.center();
+            assert!(((center[0] - 32.).abs() - 20.).abs() < 0.001);
+            assert!(((center[1] - 32.).abs() - 5.).abs() < 0.001);
+        }
+    }
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn particle_sphere_sign_and_missing_rotation_minimum_preserve_authored_ranges() {
+    let mut root = burst();
+    root["maxcount"] = json!(80);
+    root["emitter"] = json!([{"name":"sphererandom","instantaneous":80,
+        "distancemin":8,"distancemax":16,"directions":"1 1 0","sign":"-1 1 0"}]);
+    root["initializer"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"name":"rotationrandom","max":"0 0 1.5707963267948966"}));
+    let package = particle_package(root, None, json!(true));
+    let playback = ImagePlayback::open_scene_images(&SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    })
+    .unwrap();
+    let sample = playback.try_sample().unwrap().unwrap();
+    assert_eq!(sample.composition.layers().len(), 81);
+    let mut angles = Vec::new();
+    for layer in &sample.composition.layers()[1..] {
+        let [x, y] = layer.center();
+        assert!(x <= 32. && y >= 32.);
+        assert!((8. ..=16.01).contains(&(x - 32.).hypot(y - 32.)));
+        assert!((270. ..=360.).contains(&layer.angle_degrees()));
+        angles.push(layer.angle_degrees());
+    }
+    assert!(angles.iter().any(|v| *v < 300.) && angles.iter().any(|v| *v > 330.));
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn particle_vector_rotation_draws_the_engine_observed_quarter_turn() {
+    let pixels: Vec<_> = (0..8)
+        .flat_map(|y| {
+            (0..8).flat_map(move |x| [255, 255, 255, if x < 2 || y < 2 { 255 } else { 0 }])
+        })
+        .collect();
+    let texture = texture_checks::tex(0, [8, 8], &pixels, false, false);
+    let (renderer, events) =
+        Renderer::new(Size::new(64, 64).unwrap(), DeviceMode::Software).unwrap();
+    for (rotation, lit, dark) in [
+        ("0 0 0", [(20, 32), (32, 20)], (44, 32)),
+        ("0 0 1.5707963267948966", [(44, 32), (32, 20)], (20, 32)),
+    ] {
+        let mut root = burst();
+        root["emitter"][0]["instantaneous"] = json!(1);
+        root["initializer"] = json!([
+            {"name":"lifetimerandom","min":2,"max":2},
+            {"name":"sizerandom","min":64,"max":64},
+            {"name":"rotationrandom","min":rotation,"max":rotation}]);
+        let package = particle_package_with_texture(root, None, json!(true), &texture);
+        let playback = ImagePlayback::open_scene_images(&SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        })
+        .unwrap();
+        let sample = playback.try_sample().unwrap().unwrap();
+        let id = renderer.render_images(sample.composition).unwrap();
+        let capture = wait(&renderer, &events, id).readback().unwrap();
+        for (x, y) in lit {
+            assert_eq!(capture.rgba[(y * 64 + x) * 4], 255);
+        }
+        assert_eq!(capture.rgba[(dark.1 * 64 + dark.0) * 4], 32);
+        playback.shutdown().unwrap();
+    }
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn particle_two_channel_textures_use_grayscale_and_alpha() {
+    let (renderer, events) =
+        Renderer::new(Size::new(64, 64).unwrap(), DeviceMode::Software).unwrap();
+    for (channels, expected) in [([255, 128], 160), ([64, 255], 96), ([255, 0], 32)] {
+        let texture = texture_checks::tex(8, [1, 1], &channels, false, false);
+        let mut root = burst();
+        root["emitter"][0]["instantaneous"] = json!(1);
+        root["initializer"] = json!([
+            {"name":"lifetimerandom","min":2,"max":2},
+            {"name":"sizerandom","min":64,"max":64}]);
+        let package = particle_package_with_texture(root, None, json!(true), &texture);
+        let playback = ImagePlayback::open_scene_images(&SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        })
+        .unwrap();
+        let sample = playback.try_sample().unwrap().unwrap();
+        let id = renderer.render_images(sample.composition).unwrap();
+        let capture = wait(&renderer, &events, id).readback().unwrap();
+        let pixel = &capture.rgba[(32 * 64 + 32) * 4..][..4];
+        assert_eq!(pixel, &[expected, expected, expected, 255]);
+        playback.shutdown().unwrap();
+    }
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn particle_alpha_change_scales_initial_alpha_and_samples_smoothly() {
+    let mut root = burst();
+    root["emitter"][0]["instantaneous"] = json!(1);
+    root["initializer"][0]["min"] = json!(4);
+    root["initializer"][0]["max"] = json!(4);
+    root["operator"] = json!([{"name":"alphachange","starttime":0.25,"endtime":0.75,"startvalue":0.25,"endvalue":0.75}]);
+    let package = particle_package(root, None, json!(true));
+    let mut playback = ImagePlayback::open_scene_images(&SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    })
+    .unwrap();
+    assert_eq!(playback.report().particle_objects, [2]);
+    for (time, expected) in [
+        (0., 0.125),
+        (1., 0.125),
+        (2., 0.25),
+        (3.5, 0.375),
+        (2., 0.25),
+    ] {
+        playback.seek(Duration::from_secs_f64(time));
+        let sample = playback.try_sample().unwrap().unwrap();
+        assert!((sample.composition.layers()[1].opacity() - expected).abs() < 0.00001);
+    }
+    let mut previous = 0.125;
+    for frame in 0..=240 {
+        playback.seek(Duration::from_secs_f64(1. + f64::from(frame) / 120.));
+        let sample = playback.try_sample().unwrap().unwrap();
+        let opacity = sample.composition.layers()[1].opacity();
+        assert!((opacity - previous).abs() <= 0.00105);
+        previous = opacity;
+    }
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn particle_alpha_change_rejects_invalid_ranges_and_reports_extra_fields() {
+    for change in [
+        json!({"name":"alphachange","starttime":0.5,"endtime":0.5}),
+        json!({"name":"alphachange","endvalue":1.1}),
+        json!({"name":"alphachange","startvalue":"NaN"}),
+    ] {
+        let mut root = burst();
+        root["operator"] = json!([change]);
+        let package = particle_package(root, None, json!(true));
+        assert!(
+            ImagePlayback::open_scene_images(&SceneSource {
+                package: package.root.join("scene.pkg"),
+                engine_assets: package.root.join("engine"),
+            })
+            .is_err()
+        );
+    }
+    let mut root = burst();
+    root["operator"] = json!([{"name":"alphachange","audiomode":1}]);
+    let package = particle_package(root, None, json!(true));
+    let playback = ImagePlayback::open_scene_images(&SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    })
+    .unwrap();
+    assert!(playback.report().particle_objects.is_empty());
+    assert!(
+        playback
+            .report()
+            .omissions
+            .iter()
+            .any(|v| v.contains("operator component"))
+    );
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn tolerant_particles_keep_supported_operators_when_turbulence_is_missing() {
+    for tolerant in [false, true] {
+        let mut root = burst();
+        root["emitter"][0]["instantaneous"] = json!(1);
+        root["initializer"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"name":"velocityrandom","min":"8 0 0","max":"8 0 0"}));
+        root["operator"] = json!([
+            {"name":"movement","gravity":"0 0 0"},
+            {"name":"turbulence","mask":"1 0 0","speedmin":100,"speedmax":150},
+            {"name":"sizechange","startvalue":0.5,"endvalue":0.5},
+            {"name":"alphachange","startvalue":0.5,"endvalue":0.5}]);
+        let package = particle_package(root, None, json!(true));
+        let mut playback = ImagePlayback::open_scene_images_with_settings(
+            &SceneSource {
+                package: package.root.join("scene.pkg"),
+                engine_assets: package.root.join("engine"),
+            },
+            PlaybackSettings {
+                allow_unsupported_features: tolerant,
+                ..PlaybackSettings::default()
+            },
+        )
+        .unwrap();
+        playback.seek(Duration::from_millis(500));
+        let sample = playback.try_sample().unwrap().unwrap();
+        assert_eq!(
+            sample.composition.layers().len(),
+            if tolerant { 2 } else { 1 }
+        );
+        if tolerant {
+            assert_eq!(playback.report().particle_objects, [2]);
+            assert!(
+                playback
+                    .report()
+                    .omissions
+                    .iter()
+                    .any(|v| v.contains("operator component turbulence is omitted"))
+            );
+            let particle = &sample.composition.layers()[1];
+            assert_eq!(particle.center(), [36., 32.]);
+            assert_eq!(particle.size(), [2., 2.]);
+            assert_eq!(particle.opacity(), 0.25);
+            playback.seek(Duration::from_secs(1));
+            assert_eq!(
+                playback.try_sample().unwrap().unwrap().composition.layers()[1].center(),
+                [40., 32.]
+            );
+            playback.seek(Duration::from_millis(500));
+            assert_eq!(
+                playback.try_sample().unwrap().unwrap().composition.layers()[1].center(),
+                particle.center()
+            );
+        } else {
+            assert!(playback.report().particle_objects.is_empty());
+        }
+        playback.shutdown().unwrap();
+    }
+}
+
+#[test]
+fn tolerant_particle_children_retain_draws_but_invalid_values_still_fail_preparation() {
+    let mut root = burst();
+    root["children"] = json!([{"name":"particles/child.json","type":"eventdeath"}]);
+    let mut child = burst();
+    child["operator"] = json!([{"name":"oscillateposition","mask":"1 0.5 0"}]);
+    let package = particle_package(root, Some(child), json!(true));
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    for tolerant in [false, true] {
+        let mut playback = ImagePlayback::open_scene_images_with_settings(
+            &source,
+            PlaybackSettings {
+                allow_unsupported_features: tolerant,
+                ..PlaybackSettings::default()
+            },
+        )
+        .unwrap();
+        playback.seek(Duration::from_secs(3));
+        assert_eq!(
+            playback
+                .try_sample()
+                .unwrap()
+                .unwrap()
+                .composition
+                .layers()
+                .len(),
+            if tolerant { 5 } else { 1 }
+        );
+        playback.seek(Duration::from_secs(100));
+        assert_eq!(
+            playback
+                .try_sample()
+                .unwrap()
+                .unwrap()
+                .composition
+                .layers()
+                .len(),
+            1
+        );
+        playback.shutdown().unwrap();
+    }
+    let mut root = burst();
+    root["operator"] = json!([{"name":"alphachange","endvalue":2}]);
+    let package = particle_package(root, None, json!(true));
+    let playback = ImagePlayback::open_scene_images_with_settings(
+        &SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        },
+        PlaybackSettings {
+            allow_unsupported_features: true,
+            ..PlaybackSettings::default()
+        },
+    )
+    .unwrap();
+    assert!(playback.report().particle_objects.is_empty());
+    assert!(
+        playback
+            .report()
+            .omissions
+            .iter()
+            .any(|v| v.contains("particle number outside supported bounds"))
+    );
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn turbulent_velocity_zero_scale_matches_engine_forward_and_offset() {
+    for offset in [0., -0.5_f32] {
+        let mut root = burst();
+        root["emitter"][0]["instantaneous"] = json!(1);
+        root["initializer"] = json!([
+            {"name":"lifetimerandom","min":4,"max":4},
+            {"name":"sizerandom","min":8,"max":8},
+            {"name":"turbulentvelocityrandom","scale":0,"offset":offset,"speedmin":32,"speedmax":32}]);
+        root["operator"] = json!([{"name":"movement","gravity":"0 0 0"}]);
+        let package = particle_package(root, None, json!(true));
+        let mut playback = ImagePlayback::open_scene_images(&SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        })
+        .unwrap();
+        playback.seek(Duration::from_secs(1));
+        let sample = playback.try_sample().unwrap().unwrap();
+        let center = sample.composition.layers()[1].center();
+        assert!((center[0] - (32. - offset.sin() * 32.)).abs() < 0.001);
+        assert!((center[1] - (32. + offset.cos() * 32.)).abs() < 0.001);
+        playback.shutdown().unwrap();
+    }
+}
+
+#[test]
+fn turbulent_velocity_missing_speeds_use_the_engine_100_to_250_range() {
+    let mut root = burst();
+    root["maxcount"] = json!(1000);
+    root["emitter"][0]["instantaneous"] = json!(1000);
+    root["initializer"] = json!([
+        {"name":"lifetimerandom","min":4,"max":4},
+        {"name":"sizerandom","min":2,"max":2},
+        {"name":"turbulentvelocityrandom","scale":0,"offset":0}]);
+    root["operator"] = json!([{"name":"movement","gravity":"0 0 0"}]);
+    let package = particle_package(root, None, json!(true));
+    let mut playback = ImagePlayback::open_scene_images(&SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    })
+    .unwrap();
+    playback.seek(Duration::from_secs(1));
+    let sample = playback.try_sample().unwrap().unwrap();
+    let speeds: Vec<_> = sample.composition.layers()[1..]
+        .iter()
+        .map(|p| {
+            assert_eq!(p.center()[0], 32.);
+            p.center()[1] - 32.
+        })
+        .collect();
+    assert_eq!(speeds.len(), 1000);
+    assert!(speeds.iter().all(|s| (100. ..=250.).contains(s)));
+    assert!(speeds.iter().copied().fold(0_f32, f32::max) > 249.);
+    assert!(speeds.iter().copied().fold(250_f32, f32::min) < 101.);
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn particle_profiles_keep_invalid_values_and_3d_rotations_explicit() {
+    for (field, value) in [
+        ("min", json!("0 0 NaN")),
+        ("min", json!("0 0")),
+        ("max", json!("0 0 100")),
+        ("exponent", json!(0)),
+    ] {
+        let mut root = burst();
+        let mut rotation = json!({"name":"rotationrandom","min":"0 0 0","max":"0 0 1"});
+        rotation[field] = value;
+        root["initializer"].as_array_mut().unwrap().push(rotation);
+        let package = particle_package(root, None, json!(true));
+        assert!(
+            ImagePlayback::open_scene_images(&SceneSource {
+                package: package.root.join("scene.pkg"),
+                engine_assets: package.root.join("engine")
+            })
+            .is_err()
+        );
+    }
+    let mut root = burst();
+    root["initializer"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"name":"rotationrandom","min":"1 0 0","max":"1 0 0"}));
+    let package = particle_package(root, None, json!(true));
+    let playback = ImagePlayback::open_scene_images(&SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    })
+    .unwrap();
+    assert!(playback.report().particle_objects.is_empty());
+    assert!(
+        playback
+            .report()
+            .omissions
+            .iter()
+            .any(|v| v.contains("3D rotation"))
+    );
+    playback.shutdown().unwrap();
+    let mut root = burst();
+    root["emitter"][0]["sign"] = json!("0 0 2");
+    let package = particle_package(root, None, json!(true));
+    assert!(
+        ImagePlayback::open_scene_images(&SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine")
+        })
+        .is_err()
+    );
 }
 
 #[test]

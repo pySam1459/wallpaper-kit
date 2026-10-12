@@ -3,7 +3,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     fs::{File, OpenOptions},
-    io::{Read, Seek, SeekFrom},
+    io::{Read, Seek, SeekFrom, Write},
     os::windows::fs::OpenOptionsExt,
     path::{Path, PathBuf},
 };
@@ -51,10 +51,11 @@ impl Package {
         }
         let mut reader = AssetReader::file(&path)?;
         let signature = reader.string(32)?;
-        if !matches!(
-            signature.as_str(),
-            "PKGV0016" | "PKGV0018" | "PKGV0022" | "PKGV0024"
-        ) {
+        let version = signature
+            .strip_prefix("PKGV")
+            .filter(|suffix| suffix.len() == 4 && suffix.bytes().all(|b| b.is_ascii_digit()))
+            .and_then(|suffix| suffix.parse::<u32>().ok());
+        if !version.is_some_and(|version| (1..=24).contains(&version)) {
             return Err(reader.invalid(format!("unsupported package signature {signature}")));
         }
         let count = reader.count(65_536, "package entries")?;
@@ -138,6 +139,14 @@ impl Package {
         reader.asset = key;
         reader.origin = "engine";
         Ok(Some(reader))
+    }
+
+    pub(crate) fn scene_key(&self) -> &'static str {
+        if !self.entries.contains_key("scene.json") && self.entries.contains_key("gifscene.json") {
+            "gifscene.json"
+        } else {
+            "scene.json"
+        }
     }
 }
 
@@ -228,6 +237,28 @@ impl AssetReader {
         let mut bytes = vec![0; length as usize];
         self.read_into(&mut bytes)?;
         Ok(bytes)
+    }
+
+    pub(crate) fn copy_to(
+        &mut self,
+        output: &mut impl Write,
+        length: u64,
+        maximum: u64,
+    ) -> Result<(), InspectionError> {
+        if length > maximum || length > self.length - self.position {
+            return Err(self.invalid("asset copy range or size limit exceeded"));
+        }
+        let mut remaining = length;
+        let mut buffer = [0; 65536];
+        while remaining > 0 {
+            let count = remaining.min(buffer.len() as u64) as usize;
+            self.read_into(&mut buffer[..count])?;
+            output
+                .write_all(&buffer[..count])
+                .map_err(|error| InspectionError::io(&self.asset, error))?;
+            remaining -= count as u64;
+        }
+        Ok(())
     }
 
     fn string(&mut self, maximum: u64) -> Result<String, InspectionError> {

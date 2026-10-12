@@ -318,10 +318,12 @@ impl Gpu {
         // SAFETY: exclusive worker context, no Frame leases, and acquired GPU
         // access. Query and views are owned by the slot through completion.
         unsafe {
-            self.context.ClearRenderTargetView(
-                &output.view,
-                &BLANK_RGBA.map(|component| f32::from(component) / 255.0),
-            );
+            let background = match &request.content {
+                Content::Images(composition) => composition.background_color(),
+                _ => BLANK_RGBA.map(|component| f32::from(component) / 255.0),
+            };
+            self.context
+                .ClearRenderTargetView(&output.view, &background);
             if let Content::MotionFixture(time) = &request.content {
                 let [left, top, right, bottom] = motion::rectangle(request.size, *time);
                 context1

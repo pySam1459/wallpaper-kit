@@ -255,6 +255,53 @@ impl TextureDecoder {
         &self.package.summary.sha256
     }
 
+    pub(crate) fn embedded_video(
+        &self,
+        asset: &str,
+    ) -> Result<Option<super::video::VideoFile>, InspectionError> {
+        let mut reader = self
+            .package
+            .reader(asset)?
+            .ok_or_else(|| InspectionError::invalid(asset, "texture asset is missing"))?;
+        if reader.signature()? != "TEXV0005" || reader.signature()? != "TEXI0001" {
+            return Err(reader.invalid("unsupported TEX header signatures"));
+        }
+        let format = reader.u32()?;
+        let flags = reader.u32()?;
+        if flags & 32 == 0 {
+            return Ok(None);
+        }
+        if format != 0 || flags & !35 != 0 {
+            return Err(reader.invalid("unsupported video texture format/flags"));
+        }
+        let extent = dimensions(&mut reader)?;
+        let content = dimensions(&mut reader)?;
+        reader.u32()?;
+        let container = reader.signature()?;
+        if !matches!(container.as_str(), "TEXB0003" | "TEXB0004")
+            || reader.u32()? != 1
+            || reader.u32()? != u32::MAX
+        {
+            return Err(reader.invalid("unsupported video texture container"));
+        }
+        if container == "TEXB0004" && reader.u32()? != 0 {
+            return Err(reader.invalid("unsupported video texture marker"));
+        }
+        if reader.u32()? != 1
+            || dimensions(&mut reader)? != extent
+            || content != extent
+            || reader.u32()? != 0
+            || reader.u32()? != 0
+        {
+            return Err(reader.invalid("unsupported video mip layout"));
+        }
+        let length = u64::from(reader.u32()?);
+        if length == 0 || length != reader.length - reader.position {
+            return Err(reader.invalid("video payload length mismatch"));
+        }
+        super::video::VideoFile::copy_from(&mut reader, length, extent).map(Some)
+    }
+
     /// Read the authored frame table in order, without decoding page payloads.
     ///
     /// Performs blocking I/O and full TEX structural validation. Returns an
@@ -590,7 +637,8 @@ fn index_sampling(
                 && version == 3
                 && mip_extent == content_extent
                 && (0..2).all(|axis| content_extent[axis] <= extent[axis]);
-            if page == 0 && level == 0 && mip_extent != extent && !legacy_png {
+            let legacy_sprite = flags & 4 != 0 && version == 1;
+            if page == 0 && level == 0 && mip_extent != extent && !legacy_png && !legacy_sprite {
                 return Err(reader.invalid("first page differs from header extent"));
             }
             previous = Some(mip_extent);
@@ -643,25 +691,31 @@ fn index_sampling(
     let mut frame_locations = Vec::new();
     if flags & 4 != 0 {
         let sprite = reader.signature()?;
-        if sprite != "TEXS0003" {
+        if !matches!(sprite.as_str(), "TEXS0001" | "TEXS0003") {
             return Err(reader.invalid(format!("unsupported sprite container {sprite}")));
         }
+        let legacy = sprite == "TEXS0001";
         signatures.push(sprite);
         let count = reader.count(65_536, "sprite frames")?;
         if count == 0 {
             return Err(reader.invalid("sprite has no frames"));
         }
-        dimensions(reader)?;
+        if !legacy {
+            dimensions(reader)?;
+        }
         frames = count as usize;
         for frame in 0..count {
             let page_index = reader.u32()?;
             let duration = reader.f32()?;
-            let x = reader.f32()?;
-            let y = reader.f32()?;
-            let wx = reader.f32()?;
-            let wy = reader.f32()?;
-            let hx = reader.f32()?;
-            let hy = reader.f32()?;
+            let mut rectangle = [0.; 6];
+            for coordinate in &mut rectangle {
+                *coordinate = if legacy {
+                    reader.u32()? as f32
+                } else {
+                    reader.f32()?
+                };
+            }
+            let [x, y, wx, wy, hx, hy] = rectangle;
             let Some(page) = pages.get(page_index as usize) else {
                 return Err(reader.invalid(format!("frame {frame} references an invalid page")));
             };
