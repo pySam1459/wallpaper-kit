@@ -84,6 +84,8 @@ def main():
         dict(name='velocity-defaults-explicit', x=3072, y=512, size=32, count=1000, start=1, velocity='0 0 0', initializer=dict(name='turbulentvelocityrandom', scale=0, offset=0, speedmin=100, speedmax=300)),
         dict(name='velocity-speed-implicit', x=128, y=128, size=8, count=1000, velocity='0 0 0', stationary=True, renderer='spritetrail', trail=dict(length=.1, maxlength=100), initializer=dict(name='turbulentvelocityrandom', scale=0, offset=0)),
         dict(name='velocity-speed-explicit', x=384, y=128, size=8, count=1000, velocity='0 0 0', stationary=True, renderer='spritetrail', trail=dict(length=.1, maxlength=100), initializer=dict(name='turbulentvelocityrandom', scale=0, offset=0, speedmin=100, speedmax=300)),
+        dict(name='velocity-min-implicit', x=128, y=128, size=8, count=1000, velocity='0 0 0', stationary=True, renderer='spritetrail', trail=dict(length=.1, maxlength=100), initializer=dict(name='turbulentvelocityrandom', scale=0, offset=0, speedmax=0)),
+        dict(name='velocity-min-explicit', x=384, y=128, size=8, count=1000, velocity='0 0 0', stationary=True, renderer='spritetrail', trail=dict(length=.1, maxlength=100), initializer=dict(name='turbulentvelocityrandom', scale=0, offset=0, speedmin=100, speedmax=0)),
         dict(name='turb-mask-zero', x=256, y=224, size=8, velocity='0 0 0',
              turbulence_op=dict(mask='0 0 0', speedmin=40, speedmax=40, phasemin=1, phasemax=1, scale=.002)),
         dict(name='turb-no-movement', x=256, y=192, size=8,
@@ -116,11 +118,29 @@ def main():
                           velocity='0 0 0', operator=dict(name='oscillateposition',
                           mask='1 0.5 0', frequencymin=1, frequencymax=1,
                           scalemin=16, scalemax=16, phasemin=0, phasemax=0)))
+    # Independent constant-force oracle for the tolerant browser noise model.
+    for name, x, mask, color in [
+        ('x', 64, '1 0 0', '255 0 0'),
+        ('zero', 192, '0 0 0', '0 255 0'),
+        ('half', 320, '0.5 0 0', '0 0 255'),
+        ('negative', 448, '-1 0 0', '255 255 0'),
+    ]:
+        cases.append(dict(name=f'browser-turb-{name}', x=x, y=192, size=8,
+                          life=8, velocity='0 0 0', color=color,
+                          turbulence_op=dict(mask=mask, timescale=0, scale=0,
+                                             speedmin=8, speedmax=8,
+                                             phasemin=1.5707963267948966,
+                                             phasemax=1.5707963267948966)))
+    cases.append(dict(name='browser-turb-stock', x=256, y=64, size=4,
+                      count=16, life=8, velocity='0 8 0',
+                      turbulence_op=dict(mask='1 0 0', scale=.002,
+                                         speedmin=100, speedmax=150, phasemax=5)))
     if args.case:
         cases = [case for case in cases if case['name'] == args.case
                  or args.case == 'compatibility' and case['name'].startswith('compat-')
                  or args.case == 'channels' and case['name'].startswith('channels-')
                  or args.case == 'turbulence' and case['name'].startswith('turb-')
+                 or args.case == 'browser-turbulence' and case['name'].startswith('browser-turb-')
                  or args.case == 'position' and case['name'].startswith('position-') and not case['name'].startswith('position-live-')
                  or args.case == 'position-live' and case['name'].startswith('position-live-')
                  or args.case == 'position-mask' and case['name'].startswith('position-mask-')
@@ -128,7 +148,8 @@ def main():
                  or args.case == 'position-warm' and case['name'].startswith('position-warm-')
                  or args.case == 'velocity-turbulence' and case['name'].startswith('velocity-turb-')
                  or args.case == 'velocity-defaults' and case['name'].startswith('velocity-defaults-')
-                 or args.case == 'velocity-speed' and case['name'].startswith('velocity-speed-')]
+                 or args.case == 'velocity-speed' and case['name'].startswith('velocity-speed-')
+                 or args.case == 'velocity-minimum' and case['name'].startswith('velocity-min-')]
         if not cases:
             parser.error('unknown probe case')
     for index, case in enumerate(cases, 2):
@@ -195,7 +216,8 @@ def main():
         data += struct.pack('<I', len(key)) + key + struct.pack('<II', offset, len(payload))
         offset += len(payload)
     (root / 'library.pkg').write_bytes(data + b''.join(payload for _, payload in files))
-    shutil.copytree(args.engine / 'shaders', root / 'shaders', dirs_exist_ok=True)
+    if args.case != 'browser-turbulence':
+        shutil.copytree(args.engine / 'shaders', root / 'shaders', dirs_exist_ok=True)
     write_json(root, 'probes.json', dict(cases=cases, limits='Generated data only; reference timing is measured from captures, not engine simulation time.'))
     print(root.resolve())
 

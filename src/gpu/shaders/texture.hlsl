@@ -163,11 +163,38 @@ float4 motion_pixel(LayerVertex input) : SV_Target {
         float2 direction = motion_parameters.xy;
         float phase = dot(uv, direction) * motion_parameters.z * 6.28318530718 + motion_phase;
         uv += float2(-direction.y, direction.x) * sin(phase) * motion_parameters.w * 0.05 * mask;
-    } else {
+    } else if (motion_kind == 2) {
         float2 direction = (cloud_sample(cloud_mask, uv, uint2(0,0), motion_mask_extent, false).rg * 255 - 127) / 128;
         float phase_offset = (motion_mask_flags & 1) != 0
             ? cloud_sample(cloud_noise, uv, uint2(0,0), motion_phase_extent, false).r * 6.28318530718 : 0;
         uv += direction * sin(motion_phase + phase_offset) * motion_parameters.x;
+    } else if (motion_kind == 3) {
+        float2 axis = motion_parameters.xy;
+        float aspect = (float)layer_source_extent.x / layer_source_extent.y * motion_parameters.z;
+        float2 stretch = float2(axis.x / aspect - axis.y * aspect,
+                                axis.y / aspect + axis.x * aspect);
+        float2 local = float2(dot(uv, float2(axis.x,-axis.y)), dot(uv, float2(axis.y,axis.x)));
+        float noise = cloud_sample(cloud_noise, uv * asfloat(motion_mask_flags), uint2(0,0), motion_phase_extent, true).g;
+        float offset = asfloat(motion_opacity_extent.x) * (noise * 6.28318530718 + dot(local, float2(10,5)));
+        float2 sway = 0;
+        const float x_rates[4] = {1, -0.16161616, 0.0083333, -0.00019841};
+        const float y_rates[4] = {-0.5, 0.041666666, -0.0013888889, 0.000024801587};
+        [unroll] for (int n = 0; n < 4; n++) {
+            float2 wave = sin(offset + float2(0,0.4) + motion_phase * float2(x_rates[n],y_rates[n]));
+            sway += sign(wave) * pow(abs(wave), asfloat(motion_opacity_extent.y));
+        }
+        uv += sway * stretch * motion_parameters.w * mask;
+    } else {
+        float2 drift = float2(-motion_parameters.y, motion_parameters.x) * asfloat(motion_opacity_extent.y) * motion_phase;
+        float cycle = asfloat(motion_opacity_extent.x) * motion_phase;
+        float2 aspect = float2((float)layer_source_extent.x / layer_source_extent.y, asfloat(motion_mask_flags));
+        float2 first = (uv + cycle + drift) * motion_parameters.z * aspect;
+        float2 second = (uv * 1.333 - cycle + drift) * motion_parameters.z * aspect;
+        float3 n = cloud_sample(cloud_noise, first, uint2(0,0), motion_phase_extent, true).rgb * 2 - 1;
+        float2 other = cloud_sample(cloud_noise, second, uint2(0,0), motion_phase_extent, true).rg * 2 - 1;
+        float3 combined = float3(n.xy + other, n.z);
+        combined *= rsqrt(max(dot(combined, combined), 1e-12));
+        uv += combined.xy * motion_parameters.w * mask;
     }
     float4 color = cloud_sample(image, uv, layer_source_origin, layer_source_extent, false);
     if (motion_kind == 2 && (motion_mask_flags & 2) != 0) {

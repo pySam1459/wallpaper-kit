@@ -41,7 +41,8 @@ pub struct ImagePlaybackReport {
     /// Image objects with the checked two-phase water-flow profile.
     pub water_flow_objects: Vec<u64>,
     /// Applied basic masked UV animation profiles, keyed by image object ID.
-    /// Values are `spin`, `waterwaves` or `shake`; additional effect passes remain omitted.
+    /// Values are `spin`, `waterwaves`, `shake`, `foliagesway` or `waterripple`;
+    /// additional effect passes remain omitted.
     pub image_motions: BTreeMap<u64, String>,
     /// Standalone corner light-shaft objects prepared in authored draw order.
     pub shape_objects: Vec<u64>,
@@ -100,7 +101,7 @@ fn optional_objects<T>(
 /// The host schedules sampling/presentation from its event loop. Sampling never
 /// waits for codecs and returns `None` until every source for that time is ready.
 /// Default unmasked precise blur, cloud motion and a bounded 2D particle profile
-/// and basic masked Spin/Water Waves/periodic Shake animation are supported by scene discovery. Other effects,
+/// and masked Spin/Water Waves/periodic Shake/UV Foliage Sway/planar Water Ripple animation are supported by scene discovery. Other effects,
 /// parallax, camera/color settings and animated crop offsets are unsupported,
 /// as reported or rejected by [`Self::open`]. Existing per-
 /// pager and composition bounds apply; aggregate scene memory is not budgeted.

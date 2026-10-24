@@ -16,6 +16,31 @@ def fixtures(messages):
 
 
 class FidelityAudit(unittest.TestCase):
+    def test_additional_image_passes_are_ranked_without_losing_effect_names(self):
+        result = audit["summarize"](*fixtures([
+            "scene.json object 1: additional effect effects/waterripple/effect.json is omitted.",
+            "scene.json object 1: additional effect effects/foliagesway/effect.json is omitted."]))
+        groups = {g["key"]: g for g in result["groups"]}
+        self.assertEqual(groups["image-effect-chains"]["affected_wallpapers"], 1)
+        self.assertEqual(groups["image-effect-chains"]["occurrences"], 2)
+        self.assertEqual(groups["effect:waterripple"]["status"], "missing-effect")
+        self.assertEqual(groups["effect:foliagesway"]["status"], "missing-effect")
+
+    def test_approximate_particle_noise_remains_unverified_fidelity(self):
+        result = audit["summarize"](*fixtures([
+            "Particle particles/a.json: turbulent velocity uses independent noise; exact engine noise is not reproduced."]))
+        group = result["groups"][0]
+        self.assertEqual(group["key"], "particle-fidelity")
+        self.assertEqual(group["status"], "unverified-fidelity")
+
+    def test_turbulence_approximation_is_visible_as_an_unverified_feature(self):
+        result = audit["summarize"](*fixtures([
+            "Particle particles/a.json: turbulence uses independent harmonic noise; exact engine noise is not reproduced."]))
+        group = result["groups"][0]
+        self.assertEqual(group["key"], "particle-turbulence-fidelity")
+        self.assertEqual(group["status"], "unverified-fidelity")
+        self.assertEqual(group["affected_wallpapers"], 1)
+
     def test_partial_particle_operators_remain_missing_features(self):
         result = audit["summarize"](*fixtures([
             "Particle particles/a.json: operator component turbulence is omitted.",

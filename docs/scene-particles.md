@@ -10,6 +10,20 @@ particle defaults. It records the controlled engine geometry checks and the
 nine newly prepared objects across five local wallpapers. Nonzero X/Y rotations
 and other unsupported components remain explicitly reported.
 
+Alpha change scales initial opacity over normalized lifetime. Tolerant playback
+retains supported particle components when an operator is unknown and names the
+missing operator. Turbulent velocity uses calibrated 100–250 speed defaults and
+upward direction; nonzero noise remains an explicitly reported approximation.
+The profile guide records engine/native geometry checks and real ember playback.
+
+Tolerant playback also applies an independent harmonic turbulence field to
+zero-gravity, zero-drag 2D systems. Axis masks and speed/phase/scale controls
+affect continuous position and trail velocity. Analytic sampling preserves exact
+rewind without simulation replay. Strict playback omits this approximation;
+the report and audit retain its unverified engine fidelity. Other turbulence
+profiles remain omitted. See [browser turbulence verification](particle-profiles.md#browser-turbulence-approximation-24-october)
+for independent GPU/browser checks and limits.
+
 `REFRACT=1` translucent particle materials prepare texture slot 1 as a normal map and validate `ui_editor_properties_refract_amount` in 0..=1. At each refractive quad, the GPU snapshots the prior composition, rotates the normal's XY displacement with the quad, samples the clamped background and blends using albedo alpha and particle opacity. Normal maps share existing source limits and stay resident across empty particle intervals. The independent displacement model is verified through generated GPU pixels; its exact engine scaling and blending still require a stable reference capture.
 
 Scene discovery applies authored `hdr=true` when visual effects are enabled. The library accumulates code values in RGBA16F before resolving back to the existing RGBA8 output. Authored `bloom=false` disables the glow and its pyramid while retaining float accumulation and refraction. Scenes without a `bloom` field retain the existing default of applying the configured HDR bloom strength. A bounded independent bloom pyramid applies HDR threshold, feather, strength, scatter and 1..=16 integral iterations. The filter is an approximation, not verified Wallpaper Engine bloom fidelity. `ImagePlaybackReport::hdr_bloom` records HDR pipeline activation, including zero-strength or disabled bloom. Explicit image selection and static snapshots remain SDR. Selected precise/cloud effects still reject HDR, and HDR image-brightness overrides are not implemented. See the [official HDR bloom description](https://docs.wallpaperengine.io/en/scene/effects/bloom.html) for the intended scene behavior.

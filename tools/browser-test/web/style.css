@@ -1,0 +1,10 @@
+:root { color-scheme: dark; font: 15px/1.5 system-ui, sans-serif; background: #11151b; color: #e5ebf3; }
+body { margin: 0; } main { max-width: 1120px; margin: 32px auto; padding: 0 24px; }
+h1 { margin: 0; font-size: 28px; } header p, .note { color: #a4b1c2; }
+section { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; margin: 24px 0; }
+label { display: grid; gap: 4px; font-size: 13px; } input { width: 100px; }
+input, button { font: inherit; color: inherit; background: #202a37; border: 1px solid #4b5c73; border-radius: 5px; padding: 8px 12px; }
+button { cursor: pointer; } button:hover { background: #314159; } :focus-visible { outline: 2px solid #78b8ff; outline-offset: 3px; }
+canvas { display: block; width: 100%; height: auto; background: #101820; border: 1px solid #3b4b60; }
+details { margin: 24px 0; } pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, monospace; max-height: 320px; overflow: auto; }
+#error { color: #ffc0b9; background: #3a2023; padding: 12px; } .note { font-size: 13px; }

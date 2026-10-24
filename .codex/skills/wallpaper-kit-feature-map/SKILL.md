@@ -11,6 +11,7 @@ Map behavior from the library consumer's point of view: what the capability does
 
 | Entry | Scope | Status |
 | --- | --- | --- |
+| [Browser tests](features/browser-tests.md) | Native pixels, playback controls, resize/errors, Playwright and Chrome DevTools MCP | Fixture, actual scene and video verified in isolated headless Chrome |
 | [Blank renderer infrastructure](features/blank-renderer.md) | Native/headless blank GPU frames, bounded output reuse, resize, idle, capture and cleanup | Verified on recorded Windows build |
 | [Diagnostic motion](features/diagnostic-motion.md) | Fixed-time GPU animation, independent pixel checks, live readiness and native play/pause | Verified on recorded Windows build |
 | [TEX page and crop drawing](features/texture-pages.md) | Selected raw/PNG/LZ4 pages, authored integer sprite crops, RGBA8/R8/BC3 sampling, reuse and native capture | Verified on recorded Windows build |

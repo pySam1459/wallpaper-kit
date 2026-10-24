@@ -1,15 +1,30 @@
 ---
 name: control-wallpaper-kit
-description: Inspect readiness and verify wallpaper-kit through its minimal Windows example viewer. Use when testing rendered output, playback, lifecycle behavior, or performance after a renderer change.
+description: Verify wallpaper-kit output, playback, errors and resizing through headless Chrome, Playwright and Chrome DevTools MCP. Use native consumers for Windows presentation, GPU sharing and performance checks.
 ---
 
 # Control wallpaper-kit
 
 Give agents a repeatable way to observe the rendering library through a real consumer. The example viewer uses the public library API. Keep scene behavior in the library and control mechanics in a reusable tool.
 
+## Browser verification
+
+Prefer the [browser route](../../../docs/browser-testing.md) for rendered pixels,
+play/pause/seek, resizing, omissions and error inspection. Run
+`pwsh -File scripts/verify-browser.ps1` for the generated fixture, or add
+`-Hardware -ScenePath '<scene.pkg>'` for local content. It drives the real native
+renderer through headless Chrome using Playwright and Chrome DevTools MCP and
+retains screenshots, a trace and cleanup evidence. Use `-Install` once for its
+pinned development dependencies. The [browser feature entry](../wallpaper-kit-feature-map/features/browser-tests.md)
+records the verified routes and limits.
+
+Use the native viewer for native presentation, GPU texture sharing and display
+timing checks. PNG browser transport does not establish those properties.
+Wallpaper Engine comparisons still need separate engine reference evidence.
+
 ## Current capability
 
-Blank rendering, controlled motion, bounded output reuse, TEX page/region decoding/drawing, sprite extraction/background preparation/prefetch, diagnostic image composition, native/headless consumers, and repeatable launch/control/capture/cleanup are implemented. Runtime scene loading and production playback remain unavailable. For read-only package/dependency inspection, use [the inspection guide](../../../docs/scene-inspection.md). Doctor with `-ScenePath` still rejects scene rendering readiness; inspection evidence is separate. Read [the blank renderer guide](../../../docs/blank-renderer.md) for ownership and [motion verification](../../../docs/motion-verification.md) for temporal checks and metric definitions. The [frame exchange guide](../../../docs/frame-pool.md) defines retained-frame saturation and output counters; viewer `inspect` replies include `output_pool`. For page decoding, shader sampling and the native `--texture-fixture` / `--region-fixture` routes, read [TEX page verification](../../../docs/texture-pages.md). For fixed-time sampling and the native --extracted-fixture route, read [sprite extraction](../../../docs/sprite-extraction.md) and [background preparation](../../../docs/sprite-worker.md). For current/next ready batches and the native --paged-fixture route, read [sprite prefetch](../../../docs/sprite-prefetch.md). For ordered placed images and the native `--layers-fixture` route, read [image composition](../../../docs/image-layers.md). For a common image clock, native `--image-fixture` or target `--scene` startup, and exact seek/play/pause controls, read [selected image playback](../../../docs/image-playback.md).
+Blank rendering, controlled motion, bounded output reuse, TEX page/region decoding/drawing, sprite extraction/background preparation/prefetch, diagnostic image composition, native/headless consumers, and repeatable launch/control/capture/cleanup are implemented. Selected scene playback is available through the browser and native routes; complete scene fidelity and production lifecycle remain unverified. For read-only package/dependency inspection, use [the inspection guide](../../../docs/scene-inspection.md). Doctor with `-ScenePath` still rejects scene rendering readiness; inspection evidence is separate. Read [the blank renderer guide](../../../docs/blank-renderer.md) for ownership and [motion verification](../../../docs/motion-verification.md) for temporal checks and metric definitions. The [frame exchange guide](../../../docs/frame-pool.md) defines retained-frame saturation and output counters; viewer `inspect` replies include `output_pool`. For page decoding, shader sampling and the native `--texture-fixture` / `--region-fixture` routes, read [TEX page verification](../../../docs/texture-pages.md). For fixed-time sampling and the native --extracted-fixture route, read [sprite extraction](../../../docs/sprite-extraction.md) and [background preparation](../../../docs/sprite-worker.md). For current/next ready batches and the native --paged-fixture route, read [sprite prefetch](../../../docs/sprite-prefetch.md). For ordered placed images and the native `--layers-fixture` route, read [image composition](../../../docs/image-layers.md). For a common image clock, native `--image-fixture` or target `--scene` startup, and exact seek/play/pause controls, read [selected image playback](../../../docs/image-playback.md).
 
 From the repository root, run:
 

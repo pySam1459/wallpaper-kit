@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>wallpaper-kit browser test</title>
+<link rel="stylesheet" href="/style.css">
+<main>
+  <header><h1>wallpaper-kit</h1><p>Native renderer · browser test transport</p></header>
+  <section aria-label="Playback controls">
+    <button id="play">Play</button><button id="pause">Pause</button>
+    <label>Time (ms) <input id="time" type="number" min="0" max="86400000" value="0"></label><button id="seek">Seek</button>
+    <label>Width <input id="width" type="number" min="1" value="640"></label>
+    <label>Height <input id="height" type="number" min="1" value="360"></label><button id="resize">Resize</button>
+  </section>
+  <p id="status" role="status">Loading native renderer…</p>
+  <p id="error" role="alert" hidden></p>
+  <canvas id="wallpaper" width="640" height="360" aria-label="Native wallpaper output"></canvas>
+  <details open><summary>Renderer state and omissions</summary><pre id="state"></pre></details>
+  <p class="note">PNG readback is for visual tests. Browser delivery rate is separate from native GPU or monitor timing.</p>
+</main>
+<script type="module" src="/app.js"></script>
+</html>

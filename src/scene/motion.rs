@@ -21,6 +21,23 @@ pub(crate) enum MotionProfile {
         speed: f32,
         strength: f32,
     },
+    Foliage {
+        direction: f32,
+        ratio: f32,
+        scale: f32,
+        phase: f32,
+        power: f32,
+        strength: f32,
+        speed: f32,
+    },
+    Ripple {
+        animation_speed: f32,
+        scroll_speed: f32,
+        direction: f32,
+        scale: f32,
+        ratio: f32,
+        strength: f32,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -45,6 +62,8 @@ impl MotionProfile {
             Self::Spin { .. } => "spin",
             Self::Waves { .. } => "waterwaves",
             Self::Shake { .. } => "shake",
+            Self::Foliage { .. } => "foliagesway",
+            Self::Ripple { .. } => "waterripple",
         }
     }
 }
@@ -57,10 +76,12 @@ pub(super) fn load(
         || InspectionError::invalid(&effect.file, "unsupported masked image-motion profile");
     let definition = snapshot::json(&decoder.package, &effect.file)?;
     let kind = definition["replacementkey"].as_str().ok_or_else(invalid)?;
-    if !matches!(kind, "spin" | "waterwaves" | "shake")
-        || !definition["version"]
-            .as_u64()
-            .is_some_and(|v| (1..=2).contains(&v))
+    if !matches!(
+        kind,
+        "spin" | "waterwaves" | "shake" | "foliagesway" | "waterripple"
+    ) || !definition["version"]
+        .as_u64()
+        .is_some_and(|v| (1..=2).contains(&v))
         || effect.passes.len() != 1
         || definition["passes"].as_array().is_none_or(|p| p.len() != 1)
     {
@@ -84,6 +105,13 @@ pub(super) fn load(
     }) || pass.get("combos").is_some_and(|v| {
         v.as_object().is_none_or(|p| {
             p.iter().any(|(k, v)| {
+                if kind == "foliagesway" {
+                    return !((k == "MODE" && v == 0) || (k == "MASK" && (v == 0 || v == 1)));
+                }
+                if kind == "waterripple" {
+                    return !((["PERSPECTIVE", "SPECULAR"].contains(&k.as_str()) && v == 0)
+                        || (k == "MASK" && (v == 0 || v == 1)));
+                }
                 v != 0
                     || (kind == "shake"
                         && !["AUDIOPROCESSING", "DIRECTION", "NOISE"].contains(&k.as_str()))
@@ -96,6 +124,25 @@ pub(super) fn load(
     let allowed: &[&str] = match kind {
         "spin" => &["center", "speed"],
         "shake" => &["speed", "strength", "bounds", "friction"],
+        "waterripple" => &[
+            "animationspeed",
+            "scrollspeed",
+            "scrolldirection",
+            "scale",
+            "ratio",
+            "ripplestrength",
+        ],
+        "foliagesway" => &[
+            "speeduv",
+            "strength",
+            "phase",
+            "power",
+            "ratio",
+            "scale",
+            "scrolldirection",
+            "cornerweights",
+            "directionweights",
+        ],
         _ => &["direction", "scale", "speed", "strength", "perspective"],
     };
     if constants.is_some_and(|v| {
@@ -111,7 +158,11 @@ pub(super) fn load(
         }
         Ok(value)
     };
-    let speed = scalar("speed", 1., -100., 100.)?;
+    let speed = if kind == "foliagesway" {
+        scalar("speeduv", 5., -100., 100.)?
+    } else {
+        scalar("speed", 1., -100., 100.)?
+    };
     let profile = if kind == "spin" {
         let center = snapshot::vector(
             constants.and_then(|v| v.get("center")),
@@ -143,6 +194,36 @@ pub(super) fn load(
             speed,
             strength: scalar("strength", 0.1, 0., 1.)?,
         }
+    } else if kind == "foliagesway" {
+        // Corner controls are inactive in UV mode, but still validate their data.
+        snapshot::vector::<4>(
+            constants.and_then(|v| v.get("cornerweights")),
+            [1., 1., 0., 0.],
+            &effect.file,
+        )?;
+        snapshot::vector::<2>(
+            constants.and_then(|v| v.get("directionweights")),
+            [1., 0.2],
+            &effect.file,
+        )?;
+        MotionProfile::Foliage {
+            direction: scalar("scrolldirection", 0., -65536., 65536.)?,
+            ratio: scalar("ratio", 0.3, 0.01, 10.)?,
+            scale: scalar("scale", 0.05, 0., 1.)?,
+            phase: scalar("phase", 0.5, 0., 2.)?,
+            power: scalar("power", 1., 0.01, 2.)?,
+            strength: scalar("strength", 0.4, 0., 1.)?,
+            speed,
+        }
+    } else if kind == "waterripple" {
+        MotionProfile::Ripple {
+            animation_speed: scalar("animationspeed", 0.15, -10., 10.)?,
+            scroll_speed: scalar("scrollspeed", 0., -10., 10.)?,
+            direction: scalar("scrolldirection", 0., -65536., 65536.)?,
+            scale: scalar("scale", 1., 0., 10.)?,
+            ratio: scalar("ratio", 1., 0., 10.)?,
+            strength: scalar("ripplestrength", 0.1, 0., 1.)?,
+        }
     } else {
         scalar("perspective", 0., 0., 0.)?;
         MotionProfile::Waves {
@@ -158,7 +239,13 @@ pub(super) fn load(
             let textures = value
                 .as_array()
                 .filter(|v| {
-                    (1..=if kind == "shake" { 4 } else { 2 }).contains(&v.len()) && v[0].is_null()
+                    (1..=match kind {
+                        "shake" => 4,
+                        "foliagesway" | "waterripple" => 3,
+                        _ => 2,
+                    })
+                        .contains(&v.len())
+                        && v[0].is_null()
                 })
                 .ok_or_else(invalid)?;
             Some(textures)
@@ -176,7 +263,11 @@ pub(super) fn load(
             })
             .transpose()
     };
-    let mask = texture(1)?;
+    let mask = if matches!(kind, "foliagesway" | "waterripple") && pass["combos"]["MASK"] == 0 {
+        None
+    } else {
+        texture(1)?
+    };
     if kind == "shake" && mask.is_none() {
         return Err(InspectionError::invalid(
             &effect.file,
@@ -186,7 +277,21 @@ pub(super) fn load(
     Ok(MotionDescription {
         profile,
         mask,
-        phase_mask: texture(2)?,
+        phase_mask: if kind == "foliagesway" {
+            Some(texture(2)?.unwrap_or_else(|| "materials/util/noise.tex".into()))
+        } else if kind == "waterripple" {
+            Some(match texture(2)? {
+                Some(normal) => normal,
+                None => asset_key(&format!(
+                    "materials/{}.tex",
+                    material["passes"][0]["textures"][2]
+                        .as_str()
+                        .unwrap_or("effects/waterripplenormal")
+                ))?,
+            })
+        } else {
+            texture(2)?
+        },
         opacity_mask: texture(3)?,
     })
 }
@@ -243,11 +348,43 @@ impl ImageMotion {
                 speed,
             } => (1, speed, direction.cos(), direction.sin(), scale, strength),
             MotionProfile::Shake { speed, strength } => (2, speed, strength * strength, 0., 0., 0.),
+            MotionProfile::Foliage {
+                direction,
+                ratio,
+                strength,
+                speed,
+                ..
+            } => (
+                3,
+                speed,
+                direction.cos(),
+                direction.sin(),
+                ratio,
+                strength * strength * 0.005,
+            ),
+            MotionProfile::Ripple {
+                direction,
+                scale,
+                strength,
+                ..
+            } => (
+                4,
+                1.,
+                direction.cos(),
+                direction.sin(),
+                scale,
+                strength * strength,
+            ),
         };
-        let phase =
-            (time.as_secs_f64() * f64::from(speed)).rem_euclid(std::f64::consts::TAU) as f32;
+        // Sway combines unrelated frequencies, so a single-cycle wrap would jump.
+        let phase = time.as_secs_f64() * f64::from(speed);
+        let phase = if kind >= 3 {
+            phase
+        } else {
+            phase.rem_euclid(std::f64::consts::TAU)
+        } as f32;
         let extent = self.mask.as_ref().map_or([1, 1], |mask| mask.extent());
-        [
+        let mut constants = [
             kind,
             u32::from(self.mask.is_some()),
             phase.to_bits(),
@@ -268,6 +405,29 @@ impl ImageMotion {
                 .map_or(1, |mask| mask.extent()[1]),
             0,
             0,
-        ]
+        ];
+        if let MotionProfile::Foliage {
+            scale,
+            phase,
+            power,
+            ..
+        } = self.profile
+        {
+            constants[3] = scale.to_bits();
+            constants[12] = phase.to_bits();
+            constants[13] = power.to_bits();
+        }
+        if let MotionProfile::Ripple {
+            animation_speed,
+            scroll_speed,
+            ratio,
+            ..
+        } = self.profile
+        {
+            constants[3] = ratio.to_bits();
+            constants[12] = (animation_speed * animation_speed).to_bits();
+            constants[13] = (scroll_speed * scroll_speed).to_bits();
+        }
+        constants
     }
 }

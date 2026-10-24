@@ -43,6 +43,41 @@ The table below retains baseline counts so progress can be compared.
 
 ## Fix order
 
+The [24 October particle audit](../artifacts/workshop-fidelity-particle-velocity-20261024/report.md)
+retains 65/65 loading. Tolerant playback retains supported parts around missing
+operators, and [calibrated velocity defaults](particle-profiles.md#velocity-correction-24-october)
+restore visible rising ember trails. Operator omissions still affect 19 folders;
+turbulence remains unimplemented. Prepared particle counts are not a fidelity
+score, and the independent initializer noise remains explicitly unverified.
+
+The subsequent [browser turbulence batch](particle-profiles.md#browser-turbulence-approximation-24-october)
+restores a smooth independent force approximation in 16 folders. The
+[current audit](../artifacts/workshop-fidelity-turbulence-final-20261024/report.md)
+retains 65/65 loading. Omitted operators now affect four folders, while the
+16 turbulence approximations remain a separate unverified-fidelity category.
+Previous objects and effect inputs are unchanged. This is motion coverage, not
+proof of matching engine noise. At that point, Foliage Sway was the largest wholly
+omitted named effect at 14 folders; turbulence calibration remains open.
+
+The [UV Foliage Sway batch](foliage-sway.md) adds eight applied layers across seven
+folders. Its installed-shader browser comparisons pass on WARP and hardware;
+the real `3309706653` scene passes Playwright and Chrome DevTools MCP controls.
+The [updated audit](../artifacts/workshop-fidelity-foliage-20261024/report.md)
+retains 65/65 loading and all previous objects/effects. Sway omissions fell from
+27 instances in 14 folders to 19 in 10 folders. Remaining passes require effect
+chains or unsupported profiles. Water Ripple, remaining Shake/Water Waves and
+property bindings each affect 13 folders; composition/effect chains affect 12.
+
+The [planar Water Ripple batch](water-ripple.md) adds five applied layers across
+five folders. Both WARP and hardware match the installed shader in 15 headless
+Chrome cases, and actual-scene Playwright/DevTools checks pass. The
+[current audit](../artifacts/workshop-fidelity-ripple-20261024/report.md) retains
+65/65 loading and all prior objects/effects. Ripple omissions fell from 14
+instances in 13 folders to nine in eight. **Additional image effect passes now
+rank first at 22 folders and 86 notices.** The audit records this shared cause
+alongside each named effect, so categories overlap. Ordered image-effect chains
+are the next priority; composition layers are a separate overlapping gap.
+
 Prioritize concrete gaps by distinct wallpapers affected. For equal counts,
 restore an absent object before refining an existing effect. Compare a checked
 profile with Wallpaper Engine before admitting additional variants.

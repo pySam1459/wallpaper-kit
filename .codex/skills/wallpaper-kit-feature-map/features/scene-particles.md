@@ -2,6 +2,25 @@
 
 ## Status
 
+The [browser turbulence batch](../../../../docs/particle-profiles.md#browser-turbulence-approximation-24-october)
+adds an explicitly reported harmonic approximation in 16 folders under tolerant
+playback. Strict playback omits it. Independent constant-force GPU pixels, axis
+masks, trail velocity, 120 Hz sampled continuity and rewind pass. Playwright and
+Chrome DevTools MCP verify the generated fixture on WARP/hardware and the actual
+Levi scene, including controls, errors and cleanup. The required
+[software/headless gate](../../../../artifacts/20261024-192121-e4bde8b7/manifest.json)
+passes with native-window checks skipped. Engine noise/force fidelity, native
+display cadence and T3 appearance remain unverified. Omitted operators now
+affect four folders; the audit retains 16 unverified turbulence approximations.
+
+The 24 October [velocity correction](../../../../docs/particle-profiles.md#velocity-correction-24-october)
+calibrates turbulent-velocity defaults and zero-scale direction. Independent
+engine/native trail bounds and the [hardware/native gate](../../../../artifacts/20261024-175119-c3344866/manifest.json)
+pass. Real ember playback shows bright rising streaks; exact noise trajectories
+remain unverified; that batch omitted the turbulence operator. The collection
+retains 65/65 loading and prior prepared objects/effects. T3 addon lifecycle
+passes; application appearance and displayed cadence were not rechecked.
+
 [Particle profile compatibility](../../../../docs/particle-profiles.md) supports
 box direction scaling, sphere sign, vector rotation and nullable defaults.
 Controlled engine/native geometry checks, five public contracts and the
@@ -10,8 +29,8 @@ The collection adds nine particle objects across five wallpapers and preserves
 previous objects/effects. The [Levi comparison](../../../../artifacts/levi-particle-comparison/comparison.json)
 exposed a two-channel fog colour error, corrected with an engine channel probe
 and public GPU pixels. Rain and ash remain omitted; T3 application appearance
-remains unverified. Operator omissions now
-affect 19 wallpapers, including turbulence in 16.
+remains unverified. That batch recorded operator omissions in 19 wallpapers,
+including turbulence in 16.
 
 A bounded 2D particle profile is implemented through scene discovery. Generated WARP contracts and the [HDR/refraction Gojo native receipt](../../../../artifacts/gojo-hdr-refraction/report.json) verify the recorded Windows build, including normal-map ring admission and HDR bloom. Exact engine fidelity and complete particle compatibility remain unverified. The original Yuta particle profile remains omitted.
 

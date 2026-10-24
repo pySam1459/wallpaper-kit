@@ -55,6 +55,25 @@ Check generated six-layer composition pixels, masked RGBA and horizontal BC3 Gau
 
 ## Evidence and limits
 
+[Planar Water Ripple](../../../../docs/water-ripple.md) passes an installed-shader
+WebGL oracle on WARP and hardware across 15 cases, within two channel code values.
+Checks cover normal combination, strength, animation/scroll, aspect, masks,
+transparency, default/overridden textures and rewind. Actual `3137398793` passes
+Playwright/DevTools controls and cleanup. The required software/headless gate
+passes with native windows skipped. Five layers across five folders are added;
+previous effects remain intact. Perspective, specular and additional passes
+remain omitted. Engine/runtime agreement and displayed cadence remain open.
+
+[UV Foliage Sway](../../../../docs/foliage-sway.md) is verified through generated
+GPU tests and headless Chrome. The installed-shader WebGL oracle matches WARP
+and hardware output within two channel code values, including masks, noise,
+direction/aspect, power, timing, transparency and rewind. The actual
+`3309706653` browser route passes Playwright/DevTools controls and cleanup.
+The required software/headless gate passes with native-window checks skipped.
+Eight layers across seven folders are added while previous effects are retained.
+Vertex mode, legacy profiles and additional effect passes remain omitted.
+Complete engine/runtime fidelity and displayed cadence remain unverified.
+
 Inspect `textures/composition.png`, target composition captures, `textures/report.json` and `native-layers/report.json` plus captures/transcript. Source payloads are capped separately from output and total process memory. Cardinal pixel fixtures avoid exact rasterization ties. Target snapshots apply the default unmasked precise-blur and cloud-motion profiles and omit other effects, particles, parallax and general settings; static crop metadata preserves authored placement; nonzero animated crop offsets fail. Capture correctness does not establish animation, scene fidelity, GPU duration or consuming-app latency. Doctor with `-ScenePath` still rejects full scene readiness.
 
 ## Selected image playback

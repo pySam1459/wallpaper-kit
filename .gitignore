@@ -1,5 +1,7 @@
 /target/
 /artifacts/
+/tools/browser-test/node_modules/
+/.codex/config.toml
 /integrations/
 /.local/
 /loop.sh

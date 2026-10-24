@@ -6,6 +6,9 @@ use crate::{TextureDecoder, TexturePage, TextureRegion, assets::package::asset_k
 use serde_json::Value;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
+mod turbulence;
+use turbulence::Turbulence;
+
 const MAX_DRAWS: usize = 4096;
 const MAX_WORK: usize = 32768;
 
@@ -50,6 +53,7 @@ struct System {
     color: [Range; 3],
     velocity: [Range; 3],
     movement: Option<([f32; 3], f32)>,
+    force: Option<Turbulence>,
     operators: Vec<Operator>,
     renderer: Draw,
     children: Vec<(Event, System)>,
@@ -665,13 +669,19 @@ fn load_inner(
             Some("turbulentvelocityrandom")
                 if fields(init, &["name", "offset", "scale", "speedmin", "speedmax"]) =>
             {
+                let scale = number(init.get("scale"), 1., 0., 128., asset)?;
+                if scale != 0. {
+                    omissions.push(format!(
+                        "Particle {asset}: turbulent velocity uses independent noise; exact engine noise is not reproduced."
+                    ));
+                }
                 turbulence = Some((
                     Range {
-                        min: number(init.get("speedmin"), 0., 0., 16384., asset)?,
-                        max: number(init.get("speedmax"), 1., 0., 16384., asset)?,
+                        min: number(init.get("speedmin"), 100., 0., 16384., asset)?,
+                        max: number(init.get("speedmax"), 250., 0., 16384., asset)?,
                         exponent: 1.,
                     },
-                    number(init.get("scale"), 1., 0.001, 128., asset)?,
+                    scale,
                     number(init.get("offset"), 0., -16384., 16384., asset)?,
                 ));
             }
@@ -679,6 +689,7 @@ fn load_inner(
         }
     }
     let mut movement = None;
+    let mut force = None;
     let mut angular_force = 0.;
     let mut operators = Vec::new();
     for op in components(&value, "operator", asset)? {
@@ -698,6 +709,52 @@ fn load_inner(
                     vector(op.get("gravity"), [0.; 3], asset)?,
                     number(op.get("drag"), 0., 0., 32., asset)?,
                 ));
+            }
+            Some("turbulence")
+                if tolerant
+                    && force.is_none()
+                    && fields(
+                        op,
+                        &[
+                            "name",
+                            "mask",
+                            "scale",
+                            "timescale",
+                            "speedmin",
+                            "speedmax",
+                            "phasemin",
+                            "phasemax",
+                        ],
+                    ) =>
+            {
+                let mask = vector(op.get("mask"), [1., 1., 0.], asset)?;
+                if mask[2] != 0. || mask[..2].iter().any(|v| v.abs() > 16.) {
+                    omissions.push(format!(
+                        "Particle {asset}: operator component turbulence is omitted."
+                    ));
+                    continue;
+                }
+                force = Some(Turbulence {
+                    mask: [mask[0], mask[1]],
+                    scale: number(op.get("scale"), 0.005, 0., 16., asset)?,
+                    timescale: number(op.get("timescale"), 1., -100., 100., asset)?,
+                    speed: Range {
+                        min: number(op.get("speedmin"), 100., 0., 16384., asset)?,
+                        max: number(op.get("speedmax"), 250., 0., 16384., asset)?,
+                        exponent: 1.,
+                    },
+                    phase: Range {
+                        min: number(op.get("phasemin"), 0., -100., 100., asset)?,
+                        max: number(
+                            op.get("phasemax"),
+                            std::f32::consts::TAU,
+                            -100.,
+                            100.,
+                            asset,
+                        )?,
+                        exponent: 1.,
+                    },
+                });
             }
             Some("alphafade") if fields(op, &["name", "fadeintime", "fadeouttime"]) => operators
                 .push(Operator::Fade(
@@ -788,6 +845,18 @@ fn load_inner(
                 "Particle {asset}: operator component {name} is omitted."
             )),
             _ => return unsupported(omissions, "operator component"),
+        }
+    }
+    if force.is_some() {
+        if movement == Some(([0.; 3], 0.)) {
+            omissions.push(format!(
+                "Particle {asset}: turbulence uses independent harmonic noise; exact engine noise is not reproduced."
+            ));
+        } else {
+            force = None;
+            omissions.push(format!(
+                "Particle {asset}: operator component turbulence is omitted."
+            ));
         }
     }
     let renderers = components(&value, "renderer", asset)?;
@@ -909,6 +978,7 @@ fn load_inner(
         color,
         velocity,
         movement,
+        force,
         operators,
         renderer,
         children,
@@ -916,6 +986,7 @@ fn load_inner(
 }
 
 struct Particle {
+    born: f64,
     origin: [f32; 3],
     velocity: [f32; 3],
     life: f32,
@@ -927,7 +998,7 @@ struct Particle {
     angular_velocity: f32,
 }
 impl System {
-    fn particle(&self, e: &Emitter, seed: u64, appearance: Overrides) -> Particle {
+    fn particle(&self, e: &Emitter, seed: u64, appearance: Overrides, born: f64) -> Particle {
         let mut rng = Random(seed);
         let mut origin = e.origin;
         let mut velocity = [0.; 3];
@@ -979,17 +1050,17 @@ impl System {
             *v = (*v + self.velocity[i].sample(&mut rng)) * appearance.speed;
         }
         if let Some((speed, scale, offset)) = self.turbulence {
-            // A deterministic smooth direction field; engine noise phase is
-            // intentionally not inferred from proprietary shader code.
-            let angle = (origin[0] * scale * 0.01 + offset).sin()
-                + (origin[1] * scale * 0.01 - offset).cos();
+            // shortcut: independent nonzero noise; replace after engine calibration.
+            let noise = ((origin[0] * 0.01).sin() + (origin[1] * 0.01).cos()) * 0.5;
+            let angle = offset + noise * scale * std::f32::consts::PI;
             let speed = speed.sample(&mut rng) * appearance.speed;
-            velocity[0] += angle.cos() * speed;
-            velocity[1] += angle.sin() * speed;
+            velocity[0] -= angle.sin() * speed;
+            velocity[1] += angle.cos() * speed;
         }
         let rotation = self.rotation.sample(&mut rng);
         let angular_velocity = self.angular_velocity.sample(&mut rng);
         Particle {
+            born,
             origin,
             velocity,
             life,
@@ -1007,8 +1078,9 @@ impl System {
             return p.origin;
         };
         if drag == 0. {
+            let offset = self.force.map(|f| f.offset(p, age).0).unwrap_or([0.; 3]);
             return std::array::from_fn(|i| {
-                p.origin[i] + p.velocity[i] * age + gravity[i] * age * age * 0.5
+                p.origin[i] + p.velocity[i] * age + gravity[i] * age * age * 0.5 + offset[i]
             });
         }
         let integral = -(-drag * age).exp_m1() / drag;
@@ -1022,7 +1094,8 @@ impl System {
             return p.velocity;
         };
         if drag == 0. {
-            return std::array::from_fn(|i| p.velocity[i] + gravity[i] * age);
+            let offset = self.force.map(|f| f.offset(p, age).1).unwrap_or([0.; 3]);
+            return std::array::from_fn(|i| p.velocity[i] + gravity[i] * age + offset[i]);
         }
         let decay = (-drag * age).exp();
         std::array::from_fn(|i| p.velocity[i] * decay + gravity[i] * (1. - decay) / drag)
@@ -1151,7 +1224,7 @@ impl Particles {
                     .wrapping_mul(0x9e3779b97f4a7c15)
                     .wrapping_add(index)
                     .wrapping_add((emitter_index as u64).wrapping_mul(0x94d049bb133111eb));
-                let p = system.particle(e, particle_seed, self.appearance);
+                let p = system.particle(e, particle_seed, self.appearance, born);
                 if age >= 0. && age < p.life && alive < maximum {
                     alive += 1;
                     self.draw(system, &p, age, base, layers, draws)?;

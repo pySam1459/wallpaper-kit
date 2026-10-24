@@ -31,7 +31,9 @@ def classify(message):
     if "unsupported particle" in message:
         reason = message.split(": ", 1)[1].rstrip(".")
         return f"particle:{reason}", reason, "missing-feature"
-    if "exact engine randomness" in message:
+    if "turbulence uses independent harmonic noise" in message:
+        return "particle-turbulence-fidelity", "Particle turbulence approximation", "unverified-fidelity"
+    if "exact engine randomness" in message or "exact engine noise" in message:
         return "particle-fidelity", "Particle randomness / integration", "unverified-fidelity"
     if "particle parallax is omitted" in message or "parallax is omitted" in message:
         return "parallax-notice", "Layer parallax notice", "needs-source-check"
@@ -90,6 +92,8 @@ def summarize(report, inventories):
         scene = values.get("scene.json", values.get("gifscene.json", item.get("scene", {})))
         sound_ids = {str(o.get("id")) for o in scene.get("objects", []) if o.get("sound")}
         for message in omissions:
+            if ": additional effect effects/" in message:
+                add("image-effect-chains", "Additional image effect passes", "missing-feature", ident, message)
             object_id = re.match(r"Object (\d+)", message)
             if "non-image content is omitted" in message and object_id and object_id[1] in sound_ids:
                 add("audio", "Audio", "intentional", ident, message)
@@ -137,6 +141,7 @@ def markdown(result):
     lines = ["# Local Workshop fidelity audit", "",
              f"{result['loaded']}/{result['total']} load; {len(result['load_errors'])} load failures.", "",
              "Counts mean distinct wallpaper folders, not repeated warnings or layer instances.", "",
+             "Categories overlap; additional image effect passes also appear under their named effects.", "",
              "## Missing effects, features and preparation errors", "",
              "| Gap | Wallpapers | Occurrences | Folder IDs |", "| --- | ---: | ---: | --- |"]
     for group in result["groups"]:

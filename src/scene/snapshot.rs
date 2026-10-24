@@ -577,13 +577,17 @@ pub(crate) fn plan(
             let key = asset_key(&effect.file)?;
             let motion_effect = key.eq_ignore_ascii_case("effects/spin/effect.json")
                 || key.eq_ignore_ascii_case("effects/waterwaves/effect.json")
-                || key.eq_ignore_ascii_case("effects/shake/effect.json");
+                || key.eq_ignore_ascii_case("effects/shake/effect.json")
+                || key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
+                || key.eq_ignore_ascii_case("effects/waterripple/effect.json");
             if key.eq_ignore_ascii_case("effects/blurprecise/effect.json")
                 || key.eq_ignore_ascii_case("effects/cloudmotion/effect.json")
                 || key.eq_ignore_ascii_case("effects/waterflow/effect.json")
                 || key.eq_ignore_ascii_case("effects/spin/effect.json")
                 || key.eq_ignore_ascii_case("effects/waterwaves/effect.json")
                 || key.eq_ignore_ascii_case("effects/shake/effect.json")
+                || key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
+                || key.eq_ignore_ascii_case("effects/waterripple/effect.json")
             {
                 if raw
                     .general
@@ -591,6 +595,8 @@ pub(crate) fn plan(
                     .get("hdr")
                     .is_some_and(|value| value != false)
                     && !key.eq_ignore_ascii_case("effects/shake/effect.json")
+                    && !key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
+                    && !key.eq_ignore_ascii_case("effects/waterripple/effect.json")
                 {
                     if tolerant {
                         omissions.push(format!(
@@ -603,14 +609,23 @@ pub(crate) fn plan(
                         "supported image effects require SDR scene settings",
                     ));
                 }
-                // Preserve established effects when adding Shake to a mixed
+                // Preserve established effects when adding motion to a mixed
                 // layer. Ordered chains still require intermediate passes.
                 let replace_motion = matches!(&applied_effect, Some(EffectDescription::Motion(previous))
                     if !motion_effect || (previous.profile.name() == "shake"
-                        && !key.eq_ignore_ascii_case("effects/shake/effect.json")));
+                        && !key.eq_ignore_ascii_case("effects/shake/effect.json")
+                        && !key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
+                        && !key.eq_ignore_ascii_case("effects/waterripple/effect.json"))
+                        || (previous.profile.name() == "foliagesway"
+                            && !key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
+                            && !key.eq_ignore_ascii_case("effects/waterripple/effect.json"))
+                        || (previous.profile.name() == "waterripple"
+                            && !key.eq_ignore_ascii_case("effects/waterripple/effect.json")));
                 if applied_effect.is_some() && !replace_motion {
                     if tolerant
                         || key.eq_ignore_ascii_case("effects/shake/effect.json")
+                        || key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
+                        || key.eq_ignore_ascii_case("effects/waterripple/effect.json")
                         || (motion_effect
                             && !matches!(applied_effect, Some(EffectDescription::Motion(_))))
                     {
@@ -629,6 +644,8 @@ pub(crate) fn plan(
                 } else if key.eq_ignore_ascii_case("effects/spin/effect.json")
                     || key.eq_ignore_ascii_case("effects/waterwaves/effect.json")
                     || key.eq_ignore_ascii_case("effects/shake/effect.json")
+                    || key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
+                    || key.eq_ignore_ascii_case("effects/waterripple/effect.json")
                 {
                     super::motion::load(decoder, effect).map(EffectDescription::Motion)
                 } else {

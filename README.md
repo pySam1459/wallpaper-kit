@@ -27,6 +27,15 @@ opacity, with generated Wallpaper Engine reference checks and native Gojo
 playback. Audio/noise variants, nondefault curves and ordered effect chains
 remain reported as omissions.
 
+[UV Foliage Sway](docs/foliage-sway.md) supports painted opacity, noise,
+direction/aspect and continuous timing. Browser checks compare native pixels
+with the installed effect shader. Vertex mode and additional effect passes
+remain omitted.
+
+[Planar Water Ripple](docs/water-ripple.md) supports painted opacity, normal-map
+distortion and scrolling, with headless browser shader comparisons. Perspective,
+specular and additional effect passes remain omitted.
+
 ## Build and run
 
 Requires Windows, Rust 1.91 or newer with the MSVC toolchain and C++ build tools, and PowerShell 7 for verification scripts. Hardware runs require a Direct3D 11 feature-level 11.0 adapter. Software WARP runs are available explicitly for CI.
@@ -58,6 +67,10 @@ Evidence is retained under `artifacts/`, which Git ignores. The [blank renderer 
 The [motion verification guide](docs/motion-verification.md) describes fixed-time GPU captures, independent pixel checks, verifier fault cases, and separate live timing. These give agents evidence about motion without relying on a model to judge a video. Display timing, production scene fidelity, and host responsiveness still need additional measurements.
 
 The [frame exchange guide](docs/frame-pool.md) describes the three-output limit, retained-frame backpressure, nonblocking completion and verified GPU reuse.
+
+For headless Chrome testing, run `pwsh -File scripts/verify-browser.ps1 -Install`.
+The [browser verification guide](docs/browser-testing.md) covers Playwright,
+Chrome DevTools MCP, local Workshop scenes and the page automation API.
 
 ## Project requirements
 

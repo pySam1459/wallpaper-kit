@@ -39,6 +39,10 @@ name = "headless"
 path = "examples/headless/main.rs"
 
 [[example]]
+name = "browser-worker"
+path = "examples/browser-worker/main.rs"
+
+[[example]]
 name = "scene-inspect"
 path = "examples/scene-inspect/main.rs"
 
