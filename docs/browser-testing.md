@@ -111,3 +111,10 @@ Verified on 24 October 2026:
 - [Hardware image/particle scene](../artifacts/browser-1792863816136-6f30a2/report.json).
 - [Hardware Japanese Summer Tram video](../artifacts/browser-1792863817365-dcec5f/report.json).
 - [Required software/headless gate](../artifacts/20261024-182615-9d235504/manifest.json), with native window checks skipped.
+
+For sequential image-pass verification, use the
+[ordered-effects procedure](image-effect-chains.md#browser-verification).
+`verify-effect.mjs --effect chain` compares the native renderer with installed
+GLSL passes executed in Chrome. It checks pass order and optional-pass fallback,
+in addition to the individual [Foliage Sway](foliage-sway.md) and
+[Water Ripple](water-ripple.md) references.

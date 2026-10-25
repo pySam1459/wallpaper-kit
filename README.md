@@ -24,17 +24,18 @@ The [collection fidelity audit and fix order](docs/workshop-fidelity.md) rank re
 
 [Periodic Shake](docs/shake.md) supports painted direction, time offset and effect
 opacity, with generated Wallpaper Engine reference checks and native Gojo
-playback. Audio/noise variants, nondefault curves and ordered effect chains
-remain reported as omissions.
+playback. Audio/noise variants and nondefault curves remain reported as omissions.
 
 [UV Foliage Sway](docs/foliage-sway.md) supports painted opacity, noise,
 direction/aspect and continuous timing. Browser checks compare native pixels
-with the installed effect shader. Vertex mode and additional effect passes
-remain omitted.
+with the installed effect shader. Vertex mode remains omitted.
 
 [Planar Water Ripple](docs/water-ripple.md) supports painted opacity, normal-map
-distortion and scrolling, with headless browser shader comparisons. Perspective,
-specular and additional effect passes remain omitted.
+distortion and scrolling, with headless browser shader comparisons. Perspective and specular remain omitted.
+
+[Ordered image effects](docs/image-effect-chains.md) apply supported passes in
+authored order, adding 70 passes across 21 local wallpapers. Browser shader
+comparisons pass on WARP and hardware; all 65 wallpapers still load.
 
 ## Build and run
 

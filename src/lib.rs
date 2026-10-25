@@ -180,7 +180,9 @@ pub struct OutputStats {
     pub waiting_for_frame_release: bool,
     /// GPU payload bytes for selected source pages, outside the output cap.
     pub source_texture_bytes: u64,
-    /// RGBA16F blur scratch payload, at most 128 MiB; separate from source/output.
+    /// GPU effect targets, separate from source/output: blur scratch, image-chain
+    /// intermediates, HDR/refraction targets and the bloom pyramid. See
+    /// [`ImageComposition`] for individual bounds.
     pub effect_texture_bytes: u64,
     /// Cumulative source-page uploads; repeated use of the same Arc reuses it.
     pub texture_uploads: u64,

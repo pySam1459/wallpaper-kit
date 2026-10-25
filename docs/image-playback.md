@@ -3,18 +3,17 @@
 Scene discovery supports basic masked UV Spin, planar single-wave Water Waves
 and [periodic Shake](shake.md). Their masks decode once, share asset identity, and are sampled on
 the GPU at the common playback time. `ImagePlaybackReport::image_motions` records
-the applied profile per object. Seeking and pausing use the same clock as sprites.
-Perspective, dual waves, elliptical/vertex spin, additional constants and chained
-effects remain unsupported and explicitly reported. The independent sine-wave
+the first applied motion profile per object. Seeking and pausing use the same clock as sprites.
+Perspective, dual waves, elliptical/vertex spin and additional constants remain
+unsupported and explicitly reported. The independent sine-wave
 and rotation implementations have not been calibrated for exact Wallpaper Engine
 phase, speed or displacement agreement.
 
-Until ordered effect chains are implemented, an existing Precise Blur, Cloud
-Motion or Water Flow profile takes priority over a new motion profile on the
-same layer. The additional motion is reported as omitted in either authored
-order. Tolerant loading retains a valid motion if the other profile fails.
-Existing Spin and Water Waves also take priority over Shake. The checked Shake
-profile has separate reference evidence; its unsupported variants remain reported.
+[Ordered image effects](image-effect-chains.md) apply supported passes in authored
+order, including repeated profiles. `report.effect_chains` records the complete
+applied sequence. Unsupported optional passes remain named omissions under
+tolerant loading. The effect-specific report fields retain the first applied
+pass of each kind.
 
 Run `pwsh -File scripts/verify-image-motion.ps1 -ScenePath '<scene.pkg>'
 -EngineAssets '<engine assets>'` after building the native viewer. It checks real

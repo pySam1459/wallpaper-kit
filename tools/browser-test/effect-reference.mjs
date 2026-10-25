@@ -72,7 +72,7 @@ vec2 rotateVec2(vec2 v, float a) { return mat2(cos(a),sin(a),-sin(a),cos(a))*v; 
   if (ripple && input.masked) gl.uniform4f(gl.getUniformLocation(program, 'g_Texture2Resolution'), 8, 8, 8, 8);
   gl.uniformMatrix4fv(gl.getUniformLocation(program, 'g_ModelViewProjectionMatrix'), false, new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]));
   gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.enable(gl.BLEND);
+  if (!input.raw) gl.enable(gl.BLEND);
   gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   const rgba = new Uint8Array(input.width * input.height * 4);

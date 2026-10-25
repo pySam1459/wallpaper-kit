@@ -16,6 +16,15 @@ def fixtures(messages):
 
 
 class FidelityAudit(unittest.TestCase):
+    def test_applied_chains_count_wallpapers_once_and_keep_every_effect(self):
+        report, inventory = fixtures([])
+        report["wallpapers"][0]["evidence"]["playback"]["effect_chains"] = {
+            "1": ["foliagesway", "waterripple", "foliagesway"], "2": ["shake"]}
+        applied = audit["summarize"](report, inventory)["applied_features"]
+        self.assertEqual(applied["ordered-image-effect-chains"], ["1"])
+        for effect in ["foliagesway", "waterripple", "shake"]:
+            self.assertEqual(applied[f"image-effect:{effect}"], ["1"])
+
     def test_additional_image_passes_are_ranked_without_losing_effect_names(self):
         result = audit["summarize"](*fixtures([
             "scene.json object 1: additional effect effects/waterripple/effect.json is omitted.",

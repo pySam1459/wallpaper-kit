@@ -1,6 +1,6 @@
 use super::{
-    CloudMotion, CloudMotionReport, ImageComposition, InspectionError, PlaybackSettings,
-    SceneSource, particles, snapshot,
+    CloudMotionReport, ImageComposition, InspectionError, PlaybackSettings, SceneSource, particles,
+    snapshot,
 };
 use crate::{SpritePager, TextureDecoder, TexturePage, TextureRegion};
 use serde::Serialize;
@@ -41,9 +41,12 @@ pub struct ImagePlaybackReport {
     /// Image objects with the checked two-phase water-flow profile.
     pub water_flow_objects: Vec<u64>,
     /// Applied basic masked UV animation profiles, keyed by image object ID.
-    /// Values are `spin`, `waterwaves`, `shake`, `foliagesway` or `waterripple`;
-    /// additional effect passes remain omitted.
+    /// Values identify the first motion pass: `spin`, `waterwaves`, `shake`,
+    /// `foliagesway` or `waterripple`. See `effect_chains` for all applied passes.
     pub image_motions: BTreeMap<u64, String>,
+    /// Applied image passes in authored order, keyed by scene object ID.
+    /// Unsupported passes appear in omissions instead. At most 16 passes per image.
+    pub effect_chains: BTreeMap<u64, Vec<String>>,
     /// Standalone corner light-shaft objects prepared in authored draw order.
     pub shape_objects: Vec<u64>,
     /// Prepared static or recognized calendar/clock text objects, in authored order.
@@ -113,9 +116,7 @@ pub struct ImagePlayback {
     plan: snapshot::ImagePlan,
     layer_sources: Vec<usize>,
     sources: Vec<Source>,
-    cloud_motions: Vec<Option<Arc<CloudMotion>>>,
-    flow_motions: Vec<Option<Arc<super::flow::FlowMotion>>>,
-    image_motions: Vec<Option<Arc<super::motion::ImageMotion>>>,
+    effects: Vec<Vec<super::layers::LayerEffect>>,
     particles: Vec<particles::Particles>,
     particle_pages: Vec<Arc<TexturePage>>,
     rays: Vec<super::rays::RayLayer>,
@@ -150,9 +151,7 @@ impl ImagePlayback {
             plan: snapshot::video_plan(size),
             layer_sources: vec![0],
             sources: vec![Source::Video(pager)],
-            cloud_motions: vec![None],
-            flow_motions: vec![None],
-            image_motions: vec![None],
+            effects: vec![Vec::new()],
             particles: Vec::new(),
             particle_pages: Vec::new(),
             rays: Vec::new(),
@@ -236,9 +235,7 @@ impl ImagePlayback {
         let mut animated_assets = Vec::new();
         let mut static_bytes = 0;
         let mut static_pages = BTreeMap::new();
-        let mut cloud_motions = Vec::new();
-        let mut flow_motions = Vec::new();
-        let mut image_motions = Vec::new();
+        let mut effects = Vec::new();
         let tolerant = objects.is_none() && settings.allow_unsupported_features;
         for layer in &mut plan.layers {
             // Include interpretation in the key: the same TEX cannot silently
@@ -275,57 +272,26 @@ impl ImagePlayback {
                 index
             };
             layer_sources.push(index);
-            let cloud = layer
-                .cloud_profile()
-                .map(|profile| profile.prepare(&decoder, &mut static_pages, &mut static_bytes))
-                .transpose();
-            cloud_motions.push(match cloud {
-                Ok(cloud) => cloud,
-                Err(error) if tolerant => {
-                    plan.omissions
-                        .push(format!("{}: cloud effect omitted: {error}", layer.asset));
-                    layer.effect = None;
-                    None
+            let mut prepared = Vec::new();
+            let mut retained = Vec::new();
+            for effect in layer.effects.drain(..) {
+                match effect.prepare(&decoder, &mut static_pages, &mut static_bytes) {
+                    Ok(inputs) => {
+                        prepared.push(inputs);
+                        retained.push(effect);
+                    }
+                    Err(error) if tolerant => plan.omissions.push(format!(
+                        "{}: effect effects/{}/effect.json is omitted: {error}",
+                        layer.asset,
+                        effect.name()
+                    )),
+                    Err(error) => return Err(error),
                 }
-                Err(error) => return Err(error),
-            });
-            let flow = match &layer.effect {
-                Some(snapshot::EffectDescription::Flow(profile)) => profile
-                    .prepare(&decoder, &mut static_pages, &mut static_bytes)
-                    .map(Some),
-                _ => Ok(None),
-            };
-            flow_motions.push(match flow {
-                Ok(flow) => flow,
-                Err(error) if tolerant => {
-                    plan.omissions.push(format!(
-                        "{}: water-flow effect omitted: {error}",
-                        layer.asset
-                    ));
-                    layer.effect = None;
-                    None
-                }
-                Err(error) => return Err(error),
-            });
-            let motion = match &layer.effect {
-                Some(snapshot::EffectDescription::Motion(profile)) => profile
-                    .prepare(&decoder, &mut static_pages, &mut static_bytes)
-                    .map(Some),
-                _ => Ok(None),
-            };
-            image_motions.push(match motion {
-                Ok(motion) => motion,
-                Err(error) if tolerant => {
-                    plan.omissions.push(format!(
-                        "{}: masked image motion omitted: {error}",
-                        layer.asset
-                    ));
-                    layer.effect = None;
-                    None
-                }
-                Err(error) => return Err(error),
-            });
+            }
+            layer.effects = retained;
+            effects.push(prepared);
         }
+
         let particles = optional_objects(
             &plan.particles,
             tolerant,
@@ -383,9 +349,11 @@ impl ImagePlayback {
                 .object_ids
                 .iter()
                 .zip(&plan.layers)
-                .filter_map(|(id, layer)| match layer.effect {
-                    Some(snapshot::EffectDescription::Precise(blur)) => Some((*id, blur.scale())),
-                    _ => None,
+                .filter_map(|(id, layer)| {
+                    layer.effects.iter().find_map(|effect| match effect {
+                        snapshot::EffectDescription::Precise(blur) => Some((*id, blur.scale())),
+                        _ => None,
+                    })
                 })
                 .collect(),
             cloud_motions: plan
@@ -393,7 +361,10 @@ impl ImagePlayback {
                 .iter()
                 .zip(&plan.layers)
                 .filter_map(|(id, layer)| {
-                    layer.cloud_profile().map(|profile| (*id, profile.clone()))
+                    layer.effects.iter().find_map(|effect| match effect {
+                        snapshot::EffectDescription::Cloud(profile) => Some((*id, profile.clone())),
+                        _ => None,
+                    })
                 })
                 .collect(),
             particle_objects: particles.iter().map(|particles| particles.id).collect(),
@@ -404,7 +375,10 @@ impl ImagePlayback {
                 .iter()
                 .zip(&plan.layers)
                 .filter_map(|(id, l)| {
-                    matches!(l.effect, Some(snapshot::EffectDescription::Flow(_))).then_some(*id)
+                    l.effects
+                        .iter()
+                        .any(|effect| matches!(effect, snapshot::EffectDescription::Flow(_)))
+                        .then_some(*id)
                 })
                 .collect(),
             shape_objects: rays.iter().map(|r| r.id).collect(),
@@ -412,11 +386,29 @@ impl ImagePlayback {
                 .object_ids
                 .iter()
                 .zip(&plan.layers)
-                .filter_map(|(id, layer)| match &layer.effect {
-                    Some(snapshot::EffectDescription::Motion(description)) => {
-                        Some((*id, description.profile.name().into()))
-                    }
-                    _ => None,
+                .filter_map(|(id, layer)| {
+                    layer.effects.iter().find_map(|effect| match effect {
+                        snapshot::EffectDescription::Motion(description) => {
+                            Some((*id, description.profile.name().into()))
+                        }
+                        _ => None,
+                    })
+                })
+                .collect(),
+            effect_chains: plan
+                .object_ids
+                .iter()
+                .zip(&plan.layers)
+                .filter(|(_, layer)| !layer.effects.is_empty())
+                .map(|(id, layer)| {
+                    (
+                        *id,
+                        layer
+                            .effects
+                            .iter()
+                            .map(|effect| effect.name().to_owned())
+                            .collect(),
+                    )
                 })
                 .collect(),
             text_objects: texts.iter().map(|t| t.id).collect(),
@@ -427,9 +419,7 @@ impl ImagePlayback {
             plan,
             layer_sources,
             sources,
-            cloud_motions,
-            flow_motions,
-            image_motions,
+            effects,
             particles,
             particle_pages,
             rays,
@@ -548,29 +538,15 @@ impl ImagePlayback {
             .layers
             .iter()
             .zip(&self.layer_sources)
-            .zip(&self.cloud_motions)
-            .zip(&self.flow_motions)
-            .zip(&self.image_motions)
-            .map(|((((description, index), cloud), flow), motion)| {
+            .zip(&self.effects)
+            .map(|((description, index), effects)| {
                 description
                     .layer(
                         regions[*index].as_ref().expect("all sources ready").clone(),
-                        cloud.as_ref(),
+                        effects,
                         time,
                     )
-                    .map(|layer| {
-                        let layer = if let Some(flow) = flow {
-                            layer.with_flow(flow.clone(), time)
-                        } else {
-                            layer
-                        };
-                        let layer = if let Some(motion) = motion {
-                            layer.with_motion(motion.clone(), time)
-                        } else {
-                            layer
-                        };
-                        layer.with_image_quality(self.report.settings.image_quality)
-                    })
+                    .map(|layer| layer.with_image_quality(self.report.settings.image_quality))
             })
             .collect::<Result<Vec<_>, _>>()?;
         let mut by_id: BTreeMap<_, _> = self

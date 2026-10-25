@@ -10,8 +10,8 @@ and ratio scales the normal-map Y coordinates.
 The profile accepts version 1 or 2, one `effects/waterripple` material pass,
 absent/zero `PERSPECTIVE` and `SPECULAR`, and optional `MASK=0/1`. Perspective,
 specular controls and unknown constants/combinations remain explicit omissions
-under tolerant playback. Existing image effects retain priority in mixed layers;
-additional Ripple passes remain omitted until ordered effect chains are implemented.
+under tolerant playback. [Ordered image effects](image-effect-chains.md) apply
+Ripple at its authored position, including repeated passes.
 
 | Control | Default | Accepted range |
 | --- | ---: | --- |

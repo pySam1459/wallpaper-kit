@@ -88,6 +88,11 @@ def summarize(report, inventories):
         if probe["supported"] and source_hash != playback.get("package_sha256"):
             raise ValueError(f"{ident}: source bytes changed since the probe; rerun scripts/workshop-support.ps1")
         omissions = playback.get("omissions", [])
+        for chain in playback.get("effect_chains", {}).values():
+            if len(chain) > 1:
+                applied["ordered-image-effect-chains"].add(ident)
+            for name in chain:
+                applied[f"image-effect:{name}"].add(ident)
         values = item.get("json", {})
         scene = values.get("scene.json", values.get("gifscene.json", item.get("scene", {})))
         sound_ids = {str(o.get("id")) for o in scene.get("objects", []) if o.get("sound")}

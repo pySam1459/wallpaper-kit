@@ -73,10 +73,22 @@ five folders. Both WARP and hardware match the installed shader in 15 headless
 Chrome cases, and actual-scene Playwright/DevTools checks pass. The
 [current audit](../artifacts/workshop-fidelity-ripple-20261024/report.md) retains
 65/65 loading and all prior objects/effects. Ripple omissions fell from 14
-instances in 13 folders to nine in eight. **Additional image effect passes now
-rank first at 22 folders and 86 notices.** The audit records this shared cause
-alongside each named effect, so categories overlap. Ordered image-effect chains
-are the next priority; composition layers are a separate overlapping gap.
+instances in 13 folders to nine in eight. Additional image effect passes then
+ranked first at 22 folders and 86 notices. The audit records this shared cause
+alongside each named effect, so categories overlap. Composition layers are a separate overlapping gap.
+
+The [25 October ordered-pass batch](image-effect-chains.md) adds 70 effect passes
+across 21 folders. The [latest audit](../artifacts/workshop-fidelity-chains-final-20261025/report.md)
+retains 65/65 loading and all previous objects/effect families. Water Ripple
+omissions fall to zero folders, Shake to three, Water Waves to seven and Foliage
+Sway to one. Remaining profiles are still explicit. Installed-shader browser checks
+pass on WARP and hardware, and actual-scene Playwright/DevTools checks pass.
+
+Bindings now lead at 13 folders, followed by composition layers, optional-object
+failures and particle flags at 12 each. Next, inventory the 106 binding defaults
+and implement the most common concrete property updates. Arbitrary SceneScript
+execution remains a separate design. The baseline table below retains historical
+counts; use the latest catalog for current priorities.
 
 Prioritize concrete gaps by distinct wallpapers affected. For equal counts,
 restore an absent object before refining an existing effect. Compare a checked

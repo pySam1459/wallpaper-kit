@@ -2,6 +2,7 @@ use crate::{CloudMotion, Error, Size, TexturePage, TextureRegion};
 use std::{sync::Arc, time::Duration};
 
 pub(crate) const MAX_SOURCE_BYTES: u64 = 256 * 1024 * 1024;
+pub(crate) const MAX_IMAGE_EFFECTS: usize = 16;
 
 /// Separable Gaussian blur in source-crop texels, before layer composition.
 ///
@@ -9,7 +10,7 @@ pub(crate) const MAX_SOURCE_BYTES: u64 = 256 * 1024 * 1024;
 /// to the crop edge. Filtering and mask mixing use premultiplied RGBA code
 /// values to avoid transparent-color fringes. This operation does not establish
 /// compatibility with Wallpaper Engine's precise-blur parameter conventions.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GaussianBlur {
     sigma: [f32; 2],
     mask: Option<Arc<TextureRegion>>,
@@ -67,7 +68,7 @@ impl PreciseBlur {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum LayerBlur {
     Gaussian(GaussianBlur),
     Precise(PreciseBlur),
@@ -91,8 +92,8 @@ impl LayerBlur {
     }
 }
 
-#[derive(Debug)]
-enum LayerEffect {
+#[derive(Debug, Clone)]
+pub(crate) enum LayerEffect {
     Blur(LayerBlur),
     Cloud {
         motion: Arc<CloudMotion>,
@@ -106,6 +107,56 @@ enum LayerEffect {
         motion: Arc<super::motion::ImageMotion>,
         time: Duration,
     },
+}
+
+impl LayerEffect {
+    pub(crate) fn at(&self, time: Duration) -> Self {
+        let mut effect = self.clone();
+        match &mut effect {
+            Self::Cloud { time: clock, .. }
+            | Self::Flow { time: clock, .. }
+            | Self::Motion { time: clock, .. } => *clock = time,
+            Self::Blur(_) => {}
+        }
+        effect
+    }
+    pub(crate) fn filter(&self) -> Option<&LayerBlur> {
+        match self {
+            Self::Blur(blur) => Some(blur),
+            _ => None,
+        }
+    }
+    pub(crate) fn cloud_motion(&self) -> Option<(&Arc<CloudMotion>, Duration)> {
+        match self {
+            Self::Cloud { motion, time } => Some((motion, *time)),
+            _ => None,
+        }
+    }
+    pub(crate) fn flow_motion(&self) -> Option<(&Arc<super::flow::FlowMotion>, Duration)> {
+        match self {
+            Self::Flow { motion, time } => Some((motion, *time)),
+            _ => None,
+        }
+    }
+    pub(crate) fn image_motion(&self) -> Option<(&Arc<super::motion::ImageMotion>, Duration)> {
+        match self {
+            Self::Motion { motion, time } => Some((motion, *time)),
+            _ => None,
+        }
+    }
+    fn pages(&self) -> impl Iterator<Item = &Arc<TexturePage>> {
+        let regions = match self {
+            Self::Blur(blur) => [blur.mask(), None, None],
+            Self::Cloud { motion, .. } => [Some(motion.noise()), motion.mask(), None],
+            Self::Flow { motion, .. } => [Some(&motion.mask), Some(&motion.phase), None],
+            Self::Motion { motion, .. } => [
+                motion.mask.as_ref(),
+                motion.phase_mask.as_ref(),
+                motion.opacity_mask.as_ref(),
+            ],
+        };
+        regions.into_iter().flatten().map(|region| region.page())
+    }
 }
 
 /// A cropped image placed on a two-dimensional orthographic canvas.
@@ -124,7 +175,7 @@ pub struct ImageLayer {
     angle: f32,
     opacity: f32,
     brightness: f32,
-    effect: Option<LayerEffect>,
+    pub(crate) effects: Vec<LayerEffect>,
     pub(crate) particle_color: Option<([f32; 3], bool)>,
     pub(crate) particle_uv: Option<[f32; 6]>,
     pub(crate) particle_next: Option<(Arc<TextureRegion>, [f32; 6], f32)>,
@@ -134,34 +185,6 @@ pub struct ImageLayer {
 }
 
 impl ImageLayer {
-    pub(crate) fn with_motion(
-        mut self,
-        motion: Arc<super::motion::ImageMotion>,
-        time: Duration,
-    ) -> Self {
-        self.effect = Some(LayerEffect::Motion { motion, time });
-        self
-    }
-    pub(crate) fn image_motion(&self) -> Option<(&Arc<super::motion::ImageMotion>, Duration)> {
-        match &self.effect {
-            Some(LayerEffect::Motion { motion, time }) => Some((motion, *time)),
-            _ => None,
-        }
-    }
-    pub(crate) fn with_flow(
-        mut self,
-        motion: Arc<super::flow::FlowMotion>,
-        time: Duration,
-    ) -> Self {
-        self.effect = Some(LayerEffect::Flow { motion, time });
-        self
-    }
-    pub(crate) fn flow_motion(&self) -> Option<(&Arc<super::flow::FlowMotion>, Duration)> {
-        match &self.effect {
-            Some(LayerEffect::Flow { motion, time }) => Some((motion, *time)),
-            _ => None,
-        }
-    }
     /// Place a region using a centre in canvas units, with Y increasing upward.
     /// `size` is the positive displayed width/height. Rotation is in degrees,
     /// counterclockwise about the centre. Opacity must be 0..=1 and brightness
@@ -184,7 +207,7 @@ impl ImageLayer {
             angle: angle.rem_euclid(360.),
             opacity,
             brightness,
-            effect: None,
+            effects: Vec::new(),
             particle_color: None,
             particle_uv: None,
             particle_next: None,
@@ -263,7 +286,7 @@ impl ImageLayer {
     /// Replace any prior effect with checked Gaussian blur before blending. The
     /// source and mask join the composition's existing unique-page budget.
     pub fn with_blur(mut self, blur: GaussianBlur) -> Self {
-        self.effect = Some(LayerEffect::Blur(LayerBlur::Gaussian(blur)));
+        self.effects = vec![LayerEffect::Blur(LayerBlur::Gaussian(blur))];
         self
     }
     /// Optional premultiplied Gaussian blur. Precise blur uses a separate accessor.
@@ -275,7 +298,7 @@ impl ImageLayer {
     }
     /// Replace any prior effect with the checked unmasked precise operation.
     pub fn with_precise_blur(mut self, blur: PreciseBlur) -> Self {
-        self.effect = Some(LayerEffect::Blur(LayerBlur::Precise(blur)));
+        self.effects = vec![LayerEffect::Blur(LayerBlur::Precise(blur))];
         self
     }
     /// Optional fixed-kernel straight-RGBA blur, before placement and appearance.
@@ -286,7 +309,7 @@ impl ImageLayer {
         }
     }
     pub(crate) fn filter(&self) -> Option<&LayerBlur> {
-        match self.effect.as_ref() {
+        match self.effects.first() {
             Some(LayerEffect::Blur(blur)) => Some(blur),
             _ => None,
         }
@@ -295,12 +318,12 @@ impl ImageLayer {
     /// Noise and mask crops join the existing unique-page budget. No I/O,
     /// decoding, timer or scratch target is created by this operation.
     pub fn with_cloud_motion(mut self, motion: Arc<CloudMotion>, time: Duration) -> Self {
-        self.effect = Some(LayerEffect::Cloud { motion, time });
+        self.effects = vec![LayerEffect::Cloud { motion, time }];
         self
     }
     /// Prepared cloud inputs and the immutable time used for this draw.
     pub fn cloud_motion(&self) -> Option<(&Arc<CloudMotion>, Duration)> {
-        match self.effect.as_ref() {
+        match self.effects.first() {
             Some(LayerEffect::Cloud { motion, time }) => Some((motion, *time)),
             _ => None,
         }
@@ -335,6 +358,8 @@ impl ImageLayer {
 /// includes masks but excludes output/consumer textures, driver overhead and
 /// caller-owned content. Blur uses one additional RGBA16F target capped at
 /// 128 MiB; maximum crop width/height across blurred layers determine its size.
+/// Scene image chains admit up to 16 effects per image, using two reusable
+/// crop-sized targets, capped together at 128 MiB for SDR or 256 MiB for HDR.
 /// Scene HDR/refraction additionally use output-sized RGBA16F targets and a
 /// shrinking bloom pyramid, reported in [`crate::OutputStats::effect_texture_bytes`].
 #[derive(Debug)]
@@ -344,6 +369,7 @@ pub struct ImageComposition {
     layers: Vec<ImageLayer>,
     pages: Vec<Arc<TexturePage>>,
     blur_extent: Option<Size>,
+    pub(crate) chain_extent: Option<Size>,
     pub(crate) hdr: Option<super::hdr::HdrBloom>,
 }
 
@@ -387,38 +413,19 @@ impl ImageComposition {
         for page in layers
             .iter()
             .flat_map(|layer| {
-                let cloud = layer.cloud_motion().map(|(motion, _)| motion);
-                let flow = layer.flow_motion().map(|(motion, _)| motion);
-                let motion = layer.image_motion().map(|(motion, _)| motion);
                 [
                     Some(layer.region.page()),
                     layer
                         .particle_next
                         .as_ref()
                         .map(|(region, _, _)| region.page()),
-                    layer
-                        .filter()
-                        .and_then(LayerBlur::mask)
-                        .or_else(|| cloud.and_then(|motion| motion.mask()))
-                        .map(|mask| mask.page()),
-                    cloud.map(|motion| motion.noise().page()),
                     layer.refraction.as_ref().map(|(normal, _)| normal.page()),
-                    flow.map(|motion| motion.mask.page()),
-                    flow.map(|motion| motion.phase.page()),
-                    motion
-                        .and_then(|motion| motion.mask.as_ref())
-                        .map(|mask| mask.page()),
-                    motion
-                        .and_then(|motion| motion.phase_mask.as_ref())
-                        .map(|mask| mask.page()),
-                    motion
-                        .and_then(|motion| motion.opacity_mask.as_ref())
-                        .map(|mask| mask.page()),
                     layer.rays.as_ref().map(|(rays, _)| rays.noise.page()),
                     layer.rays.as_ref().map(|(rays, _)| rays.gradient.page()),
                 ]
                 .into_iter()
                 .flatten()
+                .chain(layer.effects.iter().flat_map(LayerEffect::pages))
             })
             .chain(retained)
         {
@@ -432,18 +439,38 @@ impl ImageComposition {
         }
         let mut extent = [0, 0];
         for layer in &layers {
-            if layer.filter().is_some_and(LayerBlur::active) {
+            if layer
+                .effects
+                .iter()
+                .any(|effect| effect.filter().is_some_and(LayerBlur::active))
+            {
                 let source = layer.region.extent();
                 extent = [extent[0].max(source[0]), extent[1].max(source[1])];
             }
         }
         // One reusable RGBA16F horizontal target; Size's 64 MiB RGBA8 cap
-        // bounds this target to 128 MiB. Final vertical filtering draws directly
-        // into the output. No target exists for compositions without blur.
+        // bounds this target to 128 MiB. Vertical filtering draws into the
+        // next chain target or output. No target exists without active blur.
         let blur_extent = if extent[0] == 0 {
             None
         } else {
             Some(Size::new(extent[0], extent[1]).map_err(|_| Error::InvalidBlur)?)
+        };
+        let mut chain = [0, 0];
+        for layer in &layers {
+            if layer.effects.len() > MAX_IMAGE_EFFECTS {
+                return Err(Error::ImageCompositionLimit);
+            }
+            if layer.effects.len() > 1 {
+                let source = layer.region.extent();
+                chain = [chain[0].max(source[0]), chain[1].max(source[1])];
+            }
+        }
+        // Two reusable source-sized targets, independent of layer/pass count.
+        let chain_extent = if chain[0] == 0 {
+            None
+        } else {
+            Some(Size::new(chain[0], chain[1]).map_err(|_| Error::ImageCompositionLimit)?)
         };
         Ok(Self {
             canvas,
@@ -451,6 +478,7 @@ impl ImageComposition {
             layers,
             pages,
             blur_extent,
+            chain_extent,
             hdr: None,
         })
     }

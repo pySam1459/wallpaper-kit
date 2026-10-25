@@ -37,10 +37,9 @@ frequencies, so its clock must not wrap at a single sine cycle. The
 [official effect guide](https://docs.wallpaperengine.io/en/scene/effects/effect/sway.html)
 describes the UV and vertex controls.
 
-Existing Spin, Water Waves, Shake, Precise Blur, Cloud Motion and Water Flow
-retain priority on mixed layers, in either order. Additional sway passes remain
-reported until ordered effect chains are implemented. The report records
-`image_motions[object_id] = "foliagesway"` only for the applied pass.
+[Ordered image effects](image-effect-chains.md) apply sway at its authored
+position, including repeated passes. `effect_chains` records every applied pass;
+`image_motions` retains the first applied motion profile per object.
 
 ## Browser verification
 

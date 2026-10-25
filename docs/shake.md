@@ -26,9 +26,8 @@ color = lerp(original_color, displaced_color, effect_opacity_red)
 
 Missing offset means zero and missing opacity means one. Opacity blends sampled
 colors rather than scaling UV displacement. Sampling clamps to the crop.
-Existing Spin, Water Waves, Precise Blur, Cloud Motion and Water Flow retain
-priority on mixed layers. Additional Shake passes remain reported until ordered
-chains are implemented.
+[Ordered image effects](image-effect-chains.md) apply Shake at its authored
+position, including repeated passes. Unsupported Shake profiles remain reported.
 
 ## Evidence
 

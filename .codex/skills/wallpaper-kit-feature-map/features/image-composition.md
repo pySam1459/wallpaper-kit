@@ -2,12 +2,23 @@
 
 ## Status
 
+[Ordered image effects](../../../../docs/image-effect-chains.md) are verified on
+25 October 2026. Scene snapshots/playback apply up to 16 supported passes in
+authored order; unsupported optional passes remain named omissions. WARP and
+hardware browser comparisons pass eight cases within two channel code values,
+including reversed-order/missing-pass fault checks. Public GPU tests cover
+16-pass pixels, HDR, scratch accounting/release and retained frames. Actual
+`3565747436` passes Playwright/DevTools controls and cleanup. The collection adds
+70 passes across 21 folders and retains 65/65 loading. Native display timing and
+complete engine/runtime fidelity remain unverified. This supersedes the older
+single-effect limits in the historical receipts below.
+
 [Periodic Shake](../../../../docs/shake.md) is implemented in SDR and HDR,
 including painted direction, time offset and effect opacity. The independent
 GPU pixel tests and [engine probe comparison](../../../../artifacts/shake-reference-v8/comparison.json)
 passed. Actual Gojo [native playback](../../../../artifacts/shake-native-gojo-final/report.json)
 and [T3 addon lifecycle](../../../../artifacts/shake-native-gojo-final/t3-native.json)
-passed. Nondefault curves, noise/audio and ordered chains remain omitted.
+passed. Nondefault curves and noise/audio remain omitted.
 The [actual Gojo comparison](../../../../artifacts/gojo-engine-comparison-20261012/comparison.json)
 observed both viewers at 1280×720 with the full character and animated particles.
 Foreground placement and particle arrangement differ; clocks, seeds and omitted
@@ -24,8 +35,7 @@ exact rewind, 241 completed frames over an eight-second live interval, paused id
 passed the generated mask/cardinal-rotation GPU test and existing contracts.
 The final [software gate](../../../../artifacts/20261012-153210-1618f7ac/manifest.json)
 also passed invalid-profile and mixed-effect-order regressions; native presentation
-was skipped in that run. Mixed layers preserve previously supported effects and
-explicitly omit the additional motion until ordered chains are implemented.
+was skipped in that run. That receipt predates ordered-pass support.
 See [image playback](../../../../docs/image-playback.md) for the command and limits.
 Wallpaper Engine's Panda Store window was observed; grain was visible in its
 artwork too. Exact effect phase/amplitude and complete scene fidelity remain
@@ -43,7 +53,7 @@ Implemented and verified through generated public tests and the native compositi
 
 ## Consumer outcome
 
-A host submits an immutable composition of cropped image layers with optional masked Gaussian blur, unmasked precise blur or masked cloud motion at an explicit time. Completed GPU frames preserve placement, order, opacity, brightness and filtering across resize. Unique page identities share uploads. A diagnostic selected-object snapshot retains supported authored transforms, checked precise-blur scales and time-zero cloud motion, and names omitted features and objects.
+A host submits an immutable composition of cropped image layers with optional masked Gaussian blur, unmasked precise blur or masked cloud motion at an explicit time. Scene preparation also supplies ordered supported effect passes. Completed GPU frames preserve placement, order, opacity, brightness and filtering across resize. Unique page identities share uploads. A diagnostic selected-object snapshot retains supported authored transforms, checked precise-blur scales and time-zero cloud motion, and names omitted features and objects.
 
 ## How to reach it
 
@@ -61,8 +71,7 @@ Checks cover normal combination, strength, animation/scroll, aspect, masks,
 transparency, default/overridden textures and rewind. Actual `3137398793` passes
 Playwright/DevTools controls and cleanup. The required software/headless gate
 passes with native windows skipped. Five layers across five folders are added;
-previous effects remain intact. Perspective, specular and additional passes
-remain omitted. Engine/runtime agreement and displayed cadence remain open.
+previous effects remain intact. Perspective and specular remain omitted. Engine/runtime agreement and displayed cadence remain open.
 
 [UV Foliage Sway](../../../../docs/foliage-sway.md) is verified through generated
 GPU tests and headless Chrome. The installed-shader WebGL oracle matches WARP
@@ -71,7 +80,7 @@ direction/aspect, power, timing, transparency and rewind. The actual
 `3309706653` browser route passes Playwright/DevTools controls and cleanup.
 The required software/headless gate passes with native-window checks skipped.
 Eight layers across seven folders are added while previous effects are retained.
-Vertex mode, legacy profiles and additional effect passes remain omitted.
+Vertex mode and legacy profiles remain omitted.
 Complete engine/runtime fidelity and displayed cadence remain unverified.
 
 Inspect `textures/composition.png`, target composition captures, `textures/report.json` and `native-layers/report.json` plus captures/transcript. Source payloads are capped separately from output and total process memory. Cardinal pixel fixtures avoid exact rasterization ties. Target snapshots apply the default unmasked precise-blur and cloud-motion profiles and omit other effects, particles, parallax and general settings; static crop metadata preserves authored placement; nonzero animated crop offsets fail. Capture correctness does not establish animation, scene fidelity, GPU duration or consuming-app latency. Doctor with `-ScenePath` still rejects full scene readiness.

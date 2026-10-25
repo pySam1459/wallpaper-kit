@@ -443,7 +443,8 @@ fn planar_water_ripple_keeps_unsupported_and_malformed_profiles_explicit() {
             .report()
             .omissions
             .iter()
-            .any(|v| v.contains("masked image motion omitted") && v.contains("missing-normal"))
+            .any(|v| v.contains("waterripple/effect.json is omitted")
+                && v.contains("missing-normal"))
     );
     assert_eq!(playback_sample(&playback).composition.layers().len(), 1);
     playback.shutdown().unwrap();
@@ -630,7 +631,7 @@ fn shake_preserves_hdr_scene_rendering() {
 }
 
 #[test]
-fn new_motion_profiles_preserve_existing_effects_in_either_order() {
+fn supported_motion_profiles_keep_both_passes_in_authored_order() {
     for (new_kind, old_kind) in [
         ("spin", "waterflow"),
         ("shake", "waterflow"),
@@ -662,7 +663,8 @@ fn new_motion_profiles_preserve_existing_effects_in_either_order() {
             let mut image = object(1);
             image["effects"] = effects;
             let texture = texture_checks::tex(0, [1, 1], &[127, 127, 127, 255], false, false);
-            let package = snapshot_package(json!([image]), model(), material(false), &texture);
+            let package =
+                snapshot_package(json!([image.clone()]), model(), material(false), &texture);
             for kind in [new_kind, old_kind] {
                 let directory = package.root.join("engine/effects").join(kind);
                 fs::create_dir_all(&directory).unwrap();
@@ -690,24 +692,186 @@ fn new_motion_profiles_preserve_existing_effects_in_either_order() {
                     },
                 )
                 .unwrap();
-                if old_kind == "waterflow" {
-                    assert_eq!(playback.report().water_flow_objects, [1]);
-                    assert!(playback.report().image_motions.is_empty());
-                } else {
-                    assert_eq!(playback.report().image_motions.get(&1).unwrap(), old_kind);
-                }
+                let expected: Vec<_> = image["effects"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|effect| {
+                        effect["file"]
+                            .as_str()
+                            .unwrap()
+                            .split('/')
+                            .nth(1)
+                            .unwrap()
+                            .to_owned()
+                    })
+                    .collect();
+                assert_eq!(playback.report().effect_chains[&1], expected);
                 assert!(
-                    playback
+                    !playback
                         .report()
                         .omissions
                         .iter()
-                        .any(|s| s.contains(&format!("effects/{new_kind}/effect.json"))
-                            && s.contains("omitted"))
+                        .any(|s| s.contains("additional effect"))
                 );
+                assert_eq!(playback_sample(&playback).composition.layers().len(), 1);
                 playback.shutdown().unwrap();
             }
         }
     }
+}
+
+#[test]
+fn image_chains_apply_every_pass_before_appearance_and_release_scratch() {
+    let pixels: Vec<_> = (0..64)
+        .flat_map(|i| {
+            [
+                (i % 8 * 29) as u8,
+                (i / 8 * 27) as u8,
+                (i * 3) as u8,
+                (i % 8 * 31) as u8,
+            ]
+        })
+        .collect();
+    let spin = |center: [f32; 2]| json!({"file":"effects/spin/effect.json","passes":[{"constantshadervalues":{"speed":std::f32::consts::TAU,"center":format!("{} {}",center[0],center[1])}}]});
+    let (renderer, events) = Renderer::new(Size::new(8, 8).unwrap(), DeviceMode::Software).unwrap();
+    for (count, hdr) in [(2, false), (3, false), (16, false), (2, true)] {
+        let centers: Vec<_> = (0..count)
+            .map(|i| if i % 2 == 0 { [0.5, 0.5] } else { [0.25, 0.5] })
+            .collect();
+        let effects: Vec<_> = centers.iter().map(|center| if hdr { json!({"file":"effects/shake/effect.json","passes":[{"textures":[null,"mask"],"constantshadervalues":{"strength":0}}]}) } else { spin(*center) }).collect();
+        let scene = serde_json::to_vec(&json!({"version":5,"general":{"hdr":hdr,"bloom":false,"orthogonalprojection":{"width":8,"height":8}},"objects":[{
+            "id":1,"image":"models/image.json","origin":"4 4 0","size":"8 8","alpha":0.5,"brightness":1.5,"effects":effects
+        }]})).unwrap();
+        let package = Package::new(&[
+            ("scene.json", &scene),
+            ("models/image.json", &serde_json::to_vec(&model()).unwrap()),
+            ("materials/image.json", &serde_json::to_vec(&material(false)).unwrap()),
+            ("materials/image.tex", &texture_checks::tex(0, [8,8], &pixels, false, false)),
+            ("effects/spin/effect.json", br#"{"version":1,"replacementkey":"spin","passes":[{"material":"materials/spin.json"}]}"#),
+            ("materials/spin.json", br#"{"passes":[{"shader":"effects/spin"}]}"#),
+            ("effects/shake/effect.json", br#"{"version":1,"replacementkey":"shake","passes":[{"material":"materials/shake.json"}]}"#),
+            ("materials/shake.json", br#"{"passes":[{"shader":"effects/shake"}]}"#),
+            ("materials/mask.tex", &texture_checks::tex(0, [1,1], &[127,127,0,255], false, false)),
+        ]);
+        let source = SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        };
+        let mut playback = ImagePlayback::open_scene_images(&source).unwrap();
+        assert_eq!(playback.report().effect_chains[&1].len(), count);
+        let mut expected = pixels.clone();
+        // A quarter turn maps exact pixel centres to integer texels. The
+        // off-centre pass clamps two rows/columns, making order observable.
+        for center in centers.iter().filter(|_| !hdr) {
+            let previous = expected.clone();
+            for y in 0_i32..8 {
+                for x in 0_i32..8 {
+                    let (sx, sy) = if center[0] == 0.5 {
+                        (y, 7 - x)
+                    } else {
+                        (y - 2, 5 - x)
+                    };
+                    let offset = ((sy.clamp(0, 7) * 8 + sx.clamp(0, 7)) * 4) as usize;
+                    let out = ((y * 8 + x) * 4) as usize;
+                    expected[out..out + 4].copy_from_slice(&previous[offset..offset + 4]);
+                }
+            }
+        }
+        playback.seek(Duration::from_millis(250));
+        let sample = playback_sample(&playback);
+        let id = renderer.render_images(sample.composition.clone()).unwrap();
+        let frame = wait(&renderer, &events, id);
+        let rgba = frame.readback().unwrap().rgba;
+        for (pixel, source) in rgba.chunks_exact(4).zip(expected.chunks_exact(4)) {
+            let alpha = f32::from(source[3]) / 255. * 0.5;
+            for c in 0..3 {
+                let bright = f32::from(source[c]) * 1.5;
+                let value = (if hdr { bright } else { bright.min(255.) }) * alpha
+                    + f32::from(wallpaper_kit::BLANK_RGBA[c]) * (1. - alpha);
+                assert!(
+                    (f32::from(pixel[c]) - value).abs() <= 1.1,
+                    "{count} passes: {pixel:?}, expected {value}"
+                );
+            }
+            assert_eq!(pixel[3], 255);
+        }
+        assert_eq!(
+            stats(&renderer, frame.sequence()).effect_texture_bytes,
+            if hdr { 8 * 8 * 8 * 3 } else { 8 * 8 * 4 * 2 }
+        );
+        // A retained frame must survive switching to content without effects.
+        let retained = frame.readback().unwrap().rgba;
+        let id = renderer
+            .render_texture_region(sample.composition.layers()[0].region().clone())
+            .unwrap();
+        let next = wait(&renderer, &events, id);
+        assert_eq!(stats(&renderer, next.sequence()).effect_texture_bytes, 0);
+        assert_eq!(frame.readback().unwrap().rgba, retained);
+        drop(next);
+        playback.seek(Duration::ZERO);
+        let zero = playback_sample(&playback);
+        let id = renderer.render_images(zero.composition).unwrap();
+        let zero_pixels = wait(&renderer, &events, id).readback().unwrap().rgba;
+        if !hdr {
+            assert_ne!(rgba, zero_pixels);
+        }
+        playback.seek(Duration::from_millis(250));
+        let id = renderer
+            .render_images(playback_sample(&playback).composition)
+            .unwrap();
+        assert_eq!(wait(&renderer, &events, id).readback().unwrap().rgba, rgba);
+        playback.shutdown().unwrap();
+    }
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn image_chain_limit_is_explicit_in_strict_and_tolerant_playback() {
+    let mut image = object(1);
+    image["effects"] = json!(
+        (0..17)
+            .map(|_| json!({"file":"effects/spin/effect.json","passes":[{}]}))
+            .collect::<Vec<_>>()
+    );
+    let texture = texture_checks::tex(0, [1, 1], &[64, 128, 192, 255], false, false);
+    let package = snapshot_package(json!([image]), model(), material(false), &texture);
+    let effect_dir = package.root.join("engine/effects/spin");
+    fs::create_dir_all(&effect_dir).unwrap();
+    fs::create_dir_all(package.root.join("engine/materials")).unwrap();
+    fs::write(
+        effect_dir.join("effect.json"),
+        br#"{"version":1,"replacementkey":"spin","passes":[{"material":"materials/spin.json"}]}"#,
+    )
+    .unwrap();
+    fs::write(
+        package.root.join("engine/materials/spin.json"),
+        br#"{"passes":[{"shader":"effects/spin"}]}"#,
+    )
+    .unwrap();
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    let error = ImagePlayback::open_scene_images(&source).err().unwrap();
+    assert!(error.to_string().contains("exceeds 16 passes"));
+    let playback = ImagePlayback::open_scene_images_with_settings(
+        &source,
+        PlaybackSettings {
+            allow_unsupported_features: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(playback.report().effect_chains[&1].len(), 16);
+    assert!(
+        playback
+            .report()
+            .omissions
+            .iter()
+            .any(|v| v.contains("16-pass image limit"))
+    );
+    playback.shutdown().unwrap();
 }
 
 fn background_package(general: Value, texture: &[u8]) -> Package {

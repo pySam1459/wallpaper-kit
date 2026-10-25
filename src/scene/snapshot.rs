@@ -1,6 +1,5 @@
 use super::{
-    CloudMotion, CloudMotionReport, ImageComposition, ImageLayer, InspectionError, PreciseBlur,
-    RawScene,
+    CloudMotionReport, ImageComposition, ImageLayer, InspectionError, PreciseBlur, RawScene,
 };
 use crate::assets::package::{Package, asset_key};
 use crate::{Size, TextureDecoder, TexturePage, TextureRegion};
@@ -43,7 +42,7 @@ pub(crate) struct LayerDescription {
     angle: f32,
     opacity: f32,
     brightness: f32,
-    pub(super) effect: Option<EffectDescription>,
+    pub(super) effects: Vec<EffectDescription>,
 }
 
 pub(super) enum EffectDescription {
@@ -66,7 +65,7 @@ pub(super) fn video_plan(size: Size) -> ImagePlan {
             angle: 0.,
             opacity: 1.,
             brightness: 1.,
-            effect: None,
+            effects: Vec::new(),
         }],
         object_ids: vec![0],
         draw_order: vec![0],
@@ -82,10 +81,10 @@ impl LayerDescription {
     pub fn layer(
         &self,
         region: Arc<TextureRegion>,
-        cloud: Option<&Arc<CloudMotion>>,
+        effects: &[super::layers::LayerEffect],
         time: Duration,
     ) -> Result<ImageLayer, InspectionError> {
-        let layer = ImageLayer::new(
+        let mut layer = ImageLayer::new(
             region,
             self.center,
             self.size,
@@ -94,20 +93,43 @@ impl LayerDescription {
             self.brightness,
         )
         .map_err(|error| InspectionError::invalid(&self.asset, error.to_string()))?;
-        Ok(match &self.effect {
-            Some(EffectDescription::Precise(blur)) => layer.with_precise_blur(*blur),
-            Some(EffectDescription::Cloud(_)) => {
-                layer.with_cloud_motion(cloud.expect("cloud inputs prepared").clone(), time)
-            }
-            Some(EffectDescription::Flow(_) | EffectDescription::Motion(_)) => layer,
-            None => layer,
-        })
+        layer.effects = effects.iter().map(|effect| effect.at(time)).collect();
+        Ok(layer)
     }
-    pub(super) fn cloud_profile(&self) -> Option<&CloudMotionReport> {
-        match &self.effect {
-            Some(EffectDescription::Cloud(profile)) => Some(profile),
-            _ => None,
+}
+
+impl EffectDescription {
+    pub(super) fn name(&self) -> &str {
+        match self {
+            Self::Precise(_) => "blurprecise",
+            Self::Cloud(_) => "cloudmotion",
+            Self::Flow(_) => "waterflow",
+            Self::Motion(description) => description.profile.name(),
         }
+    }
+    pub(super) fn prepare(
+        &self,
+        decoder: &TextureDecoder,
+        pages: &mut BTreeMap<(String, u32), Arc<TexturePage>>,
+        bytes: &mut u64,
+    ) -> Result<super::layers::LayerEffect, InspectionError> {
+        use super::layers::{LayerBlur, LayerEffect};
+        let time = Duration::ZERO;
+        Ok(match self {
+            Self::Precise(blur) => LayerEffect::Blur(LayerBlur::Precise(*blur)),
+            Self::Cloud(profile) => LayerEffect::Cloud {
+                motion: profile.prepare(decoder, pages, bytes)?,
+                time,
+            },
+            Self::Flow(profile) => LayerEffect::Flow {
+                motion: profile.prepare(decoder, pages, bytes)?,
+                time,
+            },
+            Self::Motion(profile) => LayerEffect::Motion {
+                motion: profile.prepare(decoder, pages, bytes)?,
+                time,
+            },
+        })
     }
 }
 
@@ -555,7 +577,7 @@ pub(crate) fn plan(
             }
             omissions.push(format!("{context}: disablepropagation is omitted."));
         }
-        let mut applied_effect = None;
+        let mut applied_effects = Vec::new();
         for effect in &object.effects {
             if !settings.visual_effects {
                 omissions.push(format!(
@@ -575,11 +597,6 @@ pub(crate) fn plan(
                 continue;
             }
             let key = asset_key(&effect.file)?;
-            let motion_effect = key.eq_ignore_ascii_case("effects/spin/effect.json")
-                || key.eq_ignore_ascii_case("effects/waterwaves/effect.json")
-                || key.eq_ignore_ascii_case("effects/shake/effect.json")
-                || key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
-                || key.eq_ignore_ascii_case("effects/waterripple/effect.json");
             if key.eq_ignore_ascii_case("effects/blurprecise/effect.json")
                 || key.eq_ignore_ascii_case("effects/cloudmotion/effect.json")
                 || key.eq_ignore_ascii_case("effects/waterflow/effect.json")
@@ -609,32 +626,14 @@ pub(crate) fn plan(
                         "supported image effects require SDR scene settings",
                     ));
                 }
-                // Preserve established effects when adding motion to a mixed
-                // layer. Ordered chains still require intermediate passes.
-                let replace_motion = matches!(&applied_effect, Some(EffectDescription::Motion(previous))
-                    if !motion_effect || (previous.profile.name() == "shake"
-                        && !key.eq_ignore_ascii_case("effects/shake/effect.json")
-                        && !key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
-                        && !key.eq_ignore_ascii_case("effects/waterripple/effect.json"))
-                        || (previous.profile.name() == "foliagesway"
-                            && !key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
-                            && !key.eq_ignore_ascii_case("effects/waterripple/effect.json"))
-                        || (previous.profile.name() == "waterripple"
-                            && !key.eq_ignore_ascii_case("effects/waterripple/effect.json")));
-                if applied_effect.is_some() && !replace_motion {
-                    if tolerant
-                        || key.eq_ignore_ascii_case("effects/shake/effect.json")
-                        || key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
-                        || key.eq_ignore_ascii_case("effects/waterripple/effect.json")
-                        || (motion_effect
-                            && !matches!(applied_effect, Some(EffectDescription::Motion(_))))
-                    {
-                        omissions.push(format!("{context}: additional effect {key} is omitted."));
+                if applied_effects.len() == super::layers::MAX_IMAGE_EFFECTS {
+                    if tolerant {
+                        omissions.push(format!("{context}: additional effect {key} exceeds the 16-pass image limit and is omitted."));
                         continue;
                     }
                     return Err(InspectionError::invalid(
                         &context,
-                        "multiple supported image effects on one layer are unsupported",
+                        "image effect chain exceeds 16 passes",
                     ));
                 }
                 let loaded = if key.eq_ignore_ascii_case("effects/blurprecise/effect.json") {
@@ -652,15 +651,7 @@ pub(crate) fn plan(
                     super::cloud::load(decoder, effect).map(EffectDescription::Cloud)
                 };
                 match loaded {
-                    Ok(effect) => {
-                        if let Some(EffectDescription::Motion(previous)) = &applied_effect {
-                            omissions.push(format!(
-                                "{context}: additional effect effects/{}/effect.json is omitted.",
-                                previous.profile.name()
-                            ));
-                        }
-                        applied_effect = Some(effect);
-                    }
+                    Ok(effect) => applied_effects.push(effect),
                     Err(error) if tolerant => {
                         omissions.push(format!("{context}: effect {key} is omitted: {error}"))
                     }
@@ -845,7 +836,7 @@ pub(crate) fn plan(
             angle: angles[2],
             opacity,
             brightness,
-            effect: applied_effect,
+            effects: applied_effects,
         });
         object_ids.push(object.id);
     }
@@ -905,23 +896,12 @@ pub(crate) fn prepare(
             )
             .map_err(|error| InspectionError::invalid(asset, error.to_string()))?,
         );
-        let cloud = description
-            .cloud_profile()
-            .map(|profile| profile.prepare(decoder, &mut pages, &mut bytes))
-            .transpose()?;
-        let mut layer = description.layer(region, cloud.as_ref(), Duration::ZERO)?;
-        if let Some(EffectDescription::Flow(profile)) = &description.effect {
-            layer = layer.with_flow(
-                profile.prepare(decoder, &mut pages, &mut bytes)?,
-                Duration::ZERO,
-            );
-        }
-        if let Some(EffectDescription::Motion(profile)) = &description.effect {
-            layer = layer.with_motion(
-                profile.prepare(decoder, &mut pages, &mut bytes)?,
-                Duration::ZERO,
-            );
-        }
+        let effects = description
+            .effects
+            .iter()
+            .map(|effect| effect.prepare(decoder, &mut pages, &mut bytes))
+            .collect::<Result<Vec<_>, _>>()?;
+        let layer = description.layer(region, &effects, Duration::ZERO)?;
         layers.push(layer);
     }
     let composition = Arc::new(
