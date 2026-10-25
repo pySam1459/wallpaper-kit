@@ -51,6 +51,11 @@ name = "workshop-check"
 path = "examples/workshop-check/main.rs"
 
 [[example]]
+name = "benchmark"
+path = "examples/benchmark/main.rs"
+test = true
+
+[[example]]
 name = "texture-checks"
 path = "examples/texture-checks/main.rs"
 

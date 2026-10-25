@@ -52,6 +52,14 @@ references on WARP and hardware and 65/65 loading retained.
 composition captures. Installed-shader browser checks pass on WARP and hardware;
 nine local wallpapers gain Pulse. Three audio-driven variants remain omitted.
 
+[Performance benchmarks](docs/performance-benchmarks.md) measure release native
+throughput, frame timing, process-tree CPU/memory and per-process GPU counters.
+Run `pwsh -File scripts/benchmark.ps1` for the 1080p/4K workload matrix, including
+disabled, paused and uncapped controls. Results retain source/build identities
+and raw samples; completed render fps is separate from displayed cadence.
+The [initial RTX 5080 baseline](docs/performance-baseline-2026-10-25.md) records
+the first matrix and a longer sprite-loop observation.
+
 ## Build and run
 
 Requires Windows, Rust 1.91 or newer with the MSVC toolchain and C++ build tools, and PowerShell 7 for verification scripts. Hardware runs require a Direct3D 11 feature-level 11.0 adapter. Software WARP runs are available explicitly for CI.

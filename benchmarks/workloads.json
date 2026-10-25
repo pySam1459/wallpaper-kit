@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "workloads": [
+    {"name": "blank", "kind": "blank", "description": "Forced blank draws: renderer scheduling and output-pool control"},
+    {"name": "static", "kind": "static", "description": "Original static image: upload reuse and paused control"},
+    {"name": "panda", "kind": "workshop", "folder": "2288914800", "description": "Panda Store: particles, image animation and composition effects"},
+    {"name": "gojo-particles", "kind": "workshop", "folder": "2470068449", "description": "Gojo: four prepared particle objects; audio effects remain omitted"},
+    {"name": "gojo-composition", "kind": "workshop", "folder": "3255418892", "description": "Gojo's Void: composition capture and repeated blur"},
+    {"name": "yuta", "kind": "workshop", "folder": "3780699842", "description": "MVP scene: paged sprite sources and effects"},
+    {"name": "tram-video", "kind": "workshop", "folder": "2630394084", "description": "Japanese Summer Tram: embedded video decoding and particles"}
+  ]
+}

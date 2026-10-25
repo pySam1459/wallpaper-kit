@@ -2,6 +2,31 @@
 
 ## Status
 
+Release native renderer benchmarks are verified on 25 October 2026. The
+[benchmark guide](../../../../docs/performance-benchmarks.md) defines the
+seven-workload, 1080p/4K, two-repetition matrix and metric units. Windows job
+accounting includes renderer/decoder CPU and exited children; PDH counters
+measure owned GPU engines and GPU memory. Disabled, paused, paced, uncapped and
+released controls retain raw timing/resource samples and source/build identity.
+The [initial baseline](../../../../benchmarks/baselines/2026-10-25-rtx5080.md)
+records repetition medians; its JSON retains ranges, configuration and hashes.
+All 28 cases pass with zero active owned processes after shutdown. One blank
+control was interrupted by an OS/GPU-access transition and passed an explicit
+retry; its failure history remains recorded. The controller prevents idle
+system sleep without changing the power plan or keeping the display on.
+GPU utilization and submit-to-ready time are separate from GPU timestamp-query
+duration. Native presentation and production host input latency remain open.
+
+The [baseline findings](../../../../docs/performance-baseline-2026-10-25.md)
+include a 35-second Yuta run through its full sprite loop, with no new output
+allocations after warmup. A separate headless browser proxy delivers all 160
+input events in alternating paused/playing intervals and records keyboard,
+event-handler, animation-frame and long-task observations. Its debug PNG route
+updates only four native frames per enabled interval; this is not production
+host frame-rate acceptance. Owned cleanup passes. Four Python metric/job tests,
+the WARP benchmark smoke route and the required software/headless gate pass.
+Native-window checks are skipped.
+
 T3 delivery now follows `requestAnimationFrame`; its native worker uses absolute
 frame deadlines and a scoped Windows timer request. Source videos retain their
 rational average rate instead of being converted to 30 fps. The local Panda
@@ -12,7 +37,7 @@ CPU/memory samples and the distinction between exports and display timing.
 Actual T3 and Wallpaper Engine captures establish visible motion; smooth monitor
 presentation and exact engine fidelity remain unmeasured.
 
-Blank verification reports one measured native idle interval with process CPU time, working set and handles. [Diagnostic motion](diagnostic-motion.md) records a separate warmed run's readiness percentiles, missed deadlines, skipped slots and acquisition duration, plus native presentation-call return samples. [TEX page checks](texture-pages.md) record source payload bytes, cumulative uploads and diagnostic decode times, with repeated draws/resize verifying upload reuse. Full scene metrics, GPU timing, host input latency and steady-state acceptance remain planned; proposed scene budgets are in the specification.
+Blank verification reports one measured native idle interval with process CPU time, working set and handles. [Diagnostic motion](diagnostic-motion.md) records a separate warmed run's readiness percentiles, missed deadlines, skipped slots and acquisition duration, plus native presentation-call return samples. [TEX page checks](texture-pages.md) record source payload bytes, cumulative uploads and diagnostic decode times, with repeated draws/resize verifying upload reuse. GPU timestamp duration, production host input latency, broad scene coverage and steady-state acceptance remain open; proposed scene budgets are in the specification.
 
 ## Consumer outcome
 
@@ -20,7 +45,12 @@ Rendering stays within measured resource limits and preserves consuming-app resp
 
 ## How to reach it
 
-Use a repeatable workload in the example viewer for renderer measurements. Use an actual host integration for input and scrolling latency. Record concrete commands and metric definitions after implementation.
+Run `pwsh -File scripts/benchmark.ps1` for the release resource/throughput
+matrix. Use `python -B scripts/benchmark.py --help` for source roots and selected
+binaries. The [guide](../../../../docs/performance-benchmarks.md) defines phase
+controls, raw artifacts, retries and the separate browser responsiveness probe.
+Finish all builds and verification before collecting performance samples.
+Use an actual product host for production input/scrolling acceptance.
 
 ## Drive and observe
 

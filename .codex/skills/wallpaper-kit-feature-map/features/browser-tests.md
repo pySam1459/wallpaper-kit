@@ -2,6 +2,12 @@
 
 ## Status
 
+The [performance proxy](../../../../docs/performance-baseline-2026-10-25.md#browser-consumer-probe)
+records input and animation-frame timing in two paused and two playing headless
+Chrome intervals. All 160 characters arrive and owned cleanup passes. The debug
+PNG route updates only four native frames per enabled interval, so this result
+is separate from release native throughput and production host acceptance.
+
 The [Pulse route](../../../../docs/pulse.md) passes 18 WARP/hardware reference
 cases within two channel values using installed effect and blending sources.
 It covers tint, alpha, noise, masks, HDR, composition capture and resize. Actual
