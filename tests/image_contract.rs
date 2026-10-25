@@ -1321,7 +1321,7 @@ fn composition_points_transform_only_prior_layers_and_reuse_bounded_targets() {
             }
             assert_eq!(
                 stats(&renderer, frame.sequence()).effect_texture_bytes,
-                u64::from(8 * scale * 8 * scale * 4 * 4)
+                u64::from(8 * scale * 8 * scale * 4 * 3)
             );
             if retained.is_none() {
                 retained = Some(frame);

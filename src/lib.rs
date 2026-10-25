@@ -166,6 +166,8 @@ struct Request {
 /// driver allocations and diagnostic readback.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct OutputStats {
+    /// Opt-in execution diagnostics, absent for [`Renderer::new`].
+    pub profile: Option<RenderProfile>,
     /// Currently owned output textures, at most three.
     pub resident_textures: usize,
     /// RGBA8 payload bytes of those textures, at most 192 MiB.
@@ -186,6 +188,25 @@ pub struct OutputStats {
     pub effect_texture_bytes: u64,
     /// Cumulative source-page uploads; repeated use of the same Arc reuses it.
     pub texture_uploads: u64,
+}
+
+/// Cumulative diagnostics for [`Renderer::new_profiled`], including startup.
+/// Worker durations are wall time, not CPU accounting. GPU duration excludes
+/// source upload, readback, completion polling and consumer presentation.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RenderProfile {
+    /// Submitted frames whose worker preparation/submission was measured.
+    pub submitted_frames: u64,
+    /// Frames with reliable, completed GPU timestamp queries.
+    pub gpu_frames: u64,
+    /// Disjoint, unavailable or invalid timestamp samples; excluded from time.
+    pub invalid_gpu_frames: u64,
+    /// Sum of reliable GPU clear/draw/copy execution intervals in nanoseconds.
+    pub gpu_draw_ns: u64,
+    /// Worker resource preparation wall time, including initial compilation/upload.
+    pub worker_prepare_ns: u64,
+    /// Worker command submission wall time, including Flush.
+    pub worker_submit_ns: u64,
 }
 
 struct State {
@@ -228,6 +249,22 @@ impl Renderer {
     /// Starts the worker and schedules one blank frame. GPU startup errors are
     /// delivered by [`Self::try_frame`]. The receiver has capacity one.
     pub fn new(size: Size, mode: DeviceMode) -> Result<(Self, mpsc::Receiver<()>), Error> {
+        Self::start(size, mode, false)
+    }
+
+    /// Starts a renderer with bounded, reusable GPU timestamp queries and worker
+    /// timing. Read cumulative results with [`Self::try_output_stats`]. Profiling
+    /// adds query overhead; use ordinary [`Self::new`] for production benchmarks.
+    /// Query/device errors arrive through [`Self::try_frame`], like render errors.
+    pub fn new_profiled(size: Size, mode: DeviceMode) -> Result<(Self, mpsc::Receiver<()>), Error> {
+        Self::start(size, mode, true)
+    }
+
+    fn start(
+        size: Size,
+        mode: DeviceMode,
+        profile: bool,
+    ) -> Result<(Self, mpsc::Receiver<()>), Error> {
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
                 requested: Some(Request {
@@ -249,7 +286,7 @@ impl Renderer {
         let worker_shared = shared.clone();
         let worker = thread::Builder::new()
             .name("wallpaper-kit".into())
-            .spawn(move || run_worker(worker_shared, notify, mode))
+            .spawn(move || run_worker(worker_shared, notify, mode, profile))
             .map_err(|error| Error::Worker(error.to_string()))?;
         Ok((
             Self {
@@ -396,8 +433,9 @@ impl Drop for Renderer {
     }
 }
 
-fn run_worker(shared: Arc<Shared>, notify: mpsc::SyncSender<()>, mode: DeviceMode) {
-    let result = gpu::Gpu::new(mode).and_then(|mut gpu| worker_loop(&shared, &notify, &mut gpu));
+fn run_worker(shared: Arc<Shared>, notify: mpsc::SyncSender<()>, mode: DeviceMode, profile: bool) {
+    let result =
+        gpu::Gpu::new(mode, profile).and_then(|mut gpu| worker_loop(&shared, &notify, &mut gpu));
     if let Err(error) = result {
         let previous = if let Ok(mut state) = shared.state.lock() {
             let previous = state.latest.replace(Err(error));

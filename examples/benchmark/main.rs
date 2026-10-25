@@ -43,6 +43,8 @@ struct Config {
     idle_seconds: u32,
     target_fps: u32,
     software: bool,
+    #[serde(default)]
+    profile_gpu: bool,
 }
 
 fn unix_ms() -> f64 {
@@ -322,7 +324,12 @@ fn run() -> Result<()> {
     }
     let mut phases = vec![idle("disabled", config.idle_seconds)?];
     let startup = Instant::now();
-    let (renderer, events) = Renderer::new(
+    let create = if config.profile_gpu {
+        Renderer::new_profiled
+    } else {
+        Renderer::new
+    };
+    let (renderer, events) = create(
         size,
         if config.software {
             DeviceMode::Software

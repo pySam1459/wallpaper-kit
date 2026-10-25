@@ -2,6 +2,23 @@
 
 ## Status
 
+The [CPU/GPU comparison](../../../../docs/cpu-gpu-climb-2026-10-25.md)
+is verified on 25 October 2026. Two alternating ordinary 20-second runs per
+version measure Gojo particles at 4K: paced CPU falls 61.6%, busiest-engine
+utilization falls 9.8%, and uncapped completed throughput rises 37.5%. Both
+versions hold 60 paced fps, with unchanged initial pixels and playback reports.
+Separate opt-in GPU timestamps and worker timings show lower frame intervals
+and command submission cost. Profiling is disabled by default; run
+`scripts/benchmark.ps1 -ProfileGpu` for execution diagnostics. Invalid timestamps
+remain explicit, and queries never introduce a completion wait. Composition
+throughput remains similar while one 4K snapshot allocation/copy is removed.
+The required [software gate](../../../../artifacts/20261025-201802-c17f339a/manifest.json)
+and both actual-scene hardware browser runs pass. The 65-wallpaper sweep keeps
+every fixed-time pixel hash and complete playback report unchanged. The browser
+proxy delivers 160/160 inputs with no observed long tasks, but only four native
+frames per enabled interval. Native windows and production display/host latency
+are unverified. Percentages apply to the measured particle workload.
+
 The [sprite residency comparison](../../../../docs/performance-climb-2026-10-25.md)
 verifies the first memory optimization on 25 October 2026. Two alternating
 35-second Yuta 4K runs per version reduce average paced private commit from
@@ -56,7 +73,7 @@ CPU/memory samples and the distinction between exports and display timing.
 Actual T3 and Wallpaper Engine captures establish visible motion; smooth monitor
 presentation and exact engine fidelity remain unmeasured.
 
-Blank verification reports one measured native idle interval with process CPU time, working set and handles. [Diagnostic motion](diagnostic-motion.md) records a separate warmed run's readiness percentiles, missed deadlines, skipped slots and acquisition duration, plus native presentation-call return samples. [TEX page checks](texture-pages.md) record source payload bytes, cumulative uploads and diagnostic decode times, with repeated draws/resize verifying upload reuse. GPU timestamp duration, production host input latency, broad scene coverage and steady-state acceptance remain open; proposed scene budgets are in the specification.
+Blank verification reports one measured native idle interval with process CPU time, working set and handles. [Diagnostic motion](diagnostic-motion.md) records a separate warmed run's readiness percentiles, missed deadlines, skipped slots and acquisition duration, plus native presentation-call return samples. [TEX page checks](texture-pages.md) record source payload bytes, cumulative uploads and diagnostic decode times, with repeated draws/resize verifying upload reuse. Per-pass GPU timestamp duration, production host input latency, broad scene coverage and steady-state acceptance remain open; proposed scene budgets are in the specification.
 
 ## Consumer outcome
 

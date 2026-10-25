@@ -62,7 +62,10 @@ pub fn frame_info(frame: &Frame) -> Value {
 }
 
 pub fn pool_info(stats: OutputStats) -> Value {
-    json!({"resident_textures":stats.resident_textures,"resident_bytes":stats.resident_bytes,
+    json!({"profile":stats.profile.map(|p| json!({"submitted_frames":p.submitted_frames,"gpu_frames":p.gpu_frames,
+        "invalid_gpu_frames":p.invalid_gpu_frames,"gpu_draw_ns":p.gpu_draw_ns,
+        "worker_prepare_ns":p.worker_prepare_ns,"worker_submit_ns":p.worker_submit_ns})),
+        "resident_textures":stats.resident_textures,"resident_bytes":stats.resident_bytes,
         "texture_allocations":stats.texture_allocations,"submitted_frames":stats.submitted_frames,
         "source_texture_bytes":stats.source_texture_bytes,"texture_uploads":stats.texture_uploads,
         "effect_texture_bytes":stats.effect_texture_bytes,

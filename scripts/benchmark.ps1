@@ -9,6 +9,7 @@ param(
     [int]$Idle = 2,
     [int]$Fps = 60,
     [switch]$Software,
+    [switch]$ProfileGpu,
     [switch]$SkipBuild
 )
 $ErrorActionPreference = 'Stop'
@@ -20,6 +21,7 @@ try {
     }
     $benchmarkArguments = @('-B', 'scripts/benchmark.py', '--output', $Output, '--workloads', $Workloads,
         '--resolutions', $Resolutions, '--repeat', $Repeat, '--seconds', $Seconds, '--warmup', $Warmup, '--idle', $Idle, '--fps', $Fps)
+    if ($ProfileGpu) { $benchmarkArguments += '--profile-gpu' }
     if ($Software) { $benchmarkArguments += '--software' }
     python @benchmarkArguments
     if ($LASTEXITCODE) { throw 'Benchmark failed; retained reports identify incomplete runs' }

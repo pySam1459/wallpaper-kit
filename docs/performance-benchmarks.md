@@ -4,6 +4,8 @@ The [25 October initial baseline](performance-baseline-2026-10-25.md) includes
 the completed matrix, a longer sprite-loop run and browser responsiveness data.
 The [first optimization](performance-climb-2026-10-25.md) profiles sprite
 residency and compares bounded prefetch windows against the pinned baseline.
+The [CPU/GPU follow-up](cpu-gpu-climb-2026-10-25.md) profiles worker submission
+and GPU intervals, then repeats ordinary runs with instrumentation disabled.
 
 Run the release renderer through its public API and collect Windows process-tree
 and GPU counters:
@@ -173,6 +175,36 @@ browser transport, host input/scroll latency, integrated-GPU performance,
 thermal equilibrium, or long-term leaks. Paused/released comparisons and short
 growth samples are diagnostics, not proof of a memory plateau. The production
 renderer and its resource/queue limits are unchanged by the benchmark harness.
+
+## Opt-in execution profiling
+
+Use timestamp queries separately from ordinary utilization/throughput runs:
+
+```powershell
+pwsh -File scripts/benchmark.ps1 -Workloads 'gojo-particles,gojo-composition' -Resolutions 3840x2160 -Repeat 2 -Seconds 20 -ProfileGpu
+```
+
+`Renderer::new_profiled` enables three reusable D3D11 queries on its worker.
+`Renderer::new` leaves profiling disabled. Read `try_output_stats().profile` or
+the benchmark's `pool_before.profile` / `pool_after.profile` snapshots. Subtract
+the counters for a phase. Divide `gpu_draw_ns` by `gpu_frames` for mean GPU
+interval, and worker durations by `submitted_frames` for mean worker wall time.
+Worker resource preparation and command submission include initialization in
+their cumulative totals; warmed phase differences exclude it.
+
+GPU timestamps bracket clear/draw/copy commands. They exclude source upload,
+readback, completion polling and presentation. The interval can include pipeline
+bubbles, scheduling and gaps while the CPU feeds commands. It is not isolated
+shader time. Disjoint, unavailable, reversed, zero-frequency or overflowing
+samples are counted as invalid and excluded from the duration. Collection never
+waits for timestamps: it runs after the existing completion event and uses
+`DONOTFLUSH`. An unexpected query error is a visible renderer error.
+
+This follows Microsoft's [timestamp query contract](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_query)
+and [disjoint reliability check](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_query_data_timestamp_disjoint).
+Queries add overhead. Compare identical profiling modes and repeat ordinary
+runs without `-ProfileGpu` for production CPU/GPU utilization and throughput.
+Worker wall time is separate from Windows job CPU accounting.
 
 ## Browser consumer responsiveness
 

@@ -16,6 +16,7 @@ use crate::{
 };
 
 mod image;
+mod profile;
 
 /// Adapter identity used by the producer. Adapter LUID is local to this system.
 #[derive(Clone, Debug)]
@@ -41,6 +42,7 @@ pub(crate) struct Gpu {
     allocations: u64,
     submissions: u64,
     image: Option<image::ImageRenderer>,
+    profile: Option<profile::Profile>,
 }
 
 struct Slot {
@@ -89,7 +91,7 @@ impl Drop for Output {
 }
 
 impl Gpu {
-    pub(crate) fn new(mode: DeviceMode) -> Result<Self, Error> {
+    pub(crate) fn new(mode: DeviceMode, profiled: bool) -> Result<Self, Error> {
         let driver = match mode {
             DeviceMode::Hardware => D3D_DRIVER_TYPE_HARDWARE,
             DeviceMode::Software => D3D_DRIVER_TYPE_WARP,
@@ -112,6 +114,9 @@ impl Gpu {
             software: matches!(mode, DeviceMode::Software),
         };
         Ok(Self {
+            profile: profiled
+                .then(|| profile::Profile::new(&device))
+                .transpose()?,
             device,
             context,
             adapter,
@@ -173,6 +178,7 @@ impl Gpu {
 
     pub(crate) fn stats(&self) -> OutputStats {
         OutputStats {
+            profile: self.profile.as_ref().map(|profile| profile.stats),
             resident_textures: self.slots.len(),
             resident_bytes: self
                 .slots
@@ -255,6 +261,7 @@ impl Gpu {
                 Submission::Leased
             });
         };
+        let prepare_started = self.profile.as_ref().map(|_| Instant::now());
         let pages = match &request.content {
             Content::Images(composition) => Some(composition.pages()),
             _ => request
@@ -315,6 +322,10 @@ impl Gpu {
                 return Err(Error::Graphics(error));
             }
         };
+        let submit_started = self.profile.as_ref().map(|_| Instant::now());
+        if let Some(profile) = &self.profile {
+            profile.begin(&self.context);
+        }
         // SAFETY: exclusive worker context, no Frame leases, and acquired GPU
         // access. Query and views are owned by the slot through completion.
         unsafe {
@@ -355,6 +366,9 @@ impl Gpu {
                     composition,
                 );
             }
+            if let Some(profile) = &self.profile {
+                profile.end(&self.context);
+            }
             output.mutex.ReleaseSync(0)?;
             self.context.End(&output.query);
             self.context.Flush();
@@ -364,6 +378,14 @@ impl Gpu {
             started: Instant::now(),
         };
         self.submissions += 1;
+        if let Some(profile) = &mut self.profile {
+            let submit_started = submit_started.expect("profile clock enabled");
+            profile.stats.submitted_frames += 1;
+            profile.stats.worker_prepare_ns += submit_started
+                .duration_since(prepare_started.expect("profile clock enabled"))
+                .as_nanos() as u64;
+            profile.stats.worker_submit_ns += submit_started.elapsed().as_nanos() as u64;
+        }
         Ok(Submission::Submitted)
     }
 
@@ -397,6 +419,9 @@ impl Gpu {
             }
             if result != S_OK {
                 return Err(Error::Graphics(windows::core::Error::from_hresult(result)));
+            }
+            if let Some(profile) = &mut self.profile {
+                profile.collect(&self.context)?;
             }
             if request.id != desired {
                 slot.state = SlotState::Available;

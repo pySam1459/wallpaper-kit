@@ -45,6 +45,24 @@ struct Uploaded {
     bytes: u64,
 }
 
+impl Uploaded {
+    fn is_page(&self, page: &Arc<TexturePage>) -> bool {
+        std::ptr::eq(self.source.as_ptr(), Arc::as_ptr(page))
+    }
+}
+
+// Call only on the exclusively owned worker context, before reusing inputs as outputs.
+fn unbind_inputs(context: &ID3D11DeviceContext) {
+    // SAFETY: live exclusive context; clearing references cannot alias a resource.
+    unsafe {
+        context.PSSetShaderResources(
+            0,
+            Some(&[None, None, None, None, None, None, None, None, None]),
+        );
+        context.OMSetRenderTargets(None, None);
+    }
+}
+
 struct BlurTarget {
     size: Size,
     format: DXGI_FORMAT,
@@ -318,11 +336,8 @@ impl ImageRenderer {
     ) -> Result<(), Error> {
         // Preceding queries completed and draw unbound sources. Evict obsolete
         // pages before uploading, keeping resident payloads within admission.
-        self.textures.retain(|texture| {
-            pages
-                .iter()
-                .any(|page| texture.source.ptr_eq(&Arc::downgrade(page)))
-        });
+        self.textures
+            .retain(|texture| pages.iter().any(|page| texture.is_page(page)));
         for page in pages {
             self.upload(device, page)?;
         }
@@ -406,7 +421,7 @@ impl ImageRenderer {
                 .map(|size| BlurTarget::with_format(device, size, scene_format))
                 .transpose()?;
         }
-        let background_size = (refract || compose).then_some(output_size);
+        let background_size = refract.then_some(output_size);
         if self.background.as_ref().map(|target| target.size) != background_size {
             self.background = None;
             self.background = background_size
@@ -440,12 +455,7 @@ impl ImageRenderer {
     }
 
     fn upload(&mut self, device: &ID3D11Device, page: &Arc<TexturePage>) -> Result<(), Error> {
-        let source = Arc::downgrade(page);
-        if self
-            .textures
-            .iter()
-            .any(|texture| texture.source.ptr_eq(&source))
-        {
+        if self.textures.iter().any(|texture| texture.is_page(page)) {
             return Ok(());
         }
         let [width, height] = page.extent();
@@ -489,7 +499,7 @@ impl ImageRenderer {
             )?;
         }
         self.textures.push(Uploaded {
-            source,
+            source: Arc::downgrade(page),
             view: view.expect("source view output"),
             bytes: page.data().len() as u64,
         });
@@ -571,12 +581,16 @@ impl ImageRenderer {
                 .scene
                 .as_ref()
                 .map_or(&output.view, |scene| &scene.target);
+            let mut particle_binding = None;
             for index in 0..=composition.layers().len() {
                 for point in composition
                     .compositions
                     .iter()
                     .filter(|point| point.after == index && point.active())
                 {
+                    if particle_binding.take().is_some() {
+                        unbind_inputs(context);
+                    }
                     self.draw_composition(context, output.size, composition.canvas(), point);
                 }
                 let Some(layer) = composition.layers().get(index) else {
@@ -584,11 +598,10 @@ impl ImageRenderer {
                 };
 
                 let region = layer.region();
-                let source = Arc::downgrade(region.page());
                 let texture = self
                     .textures
                     .iter()
-                    .find(|texture| texture.source.ptr_eq(&source))
+                    .find(|texture| texture.is_page(region.page()))
                     .expect("admitted source uploaded");
                 for pass in 0..layer.effects.len().max(1) {
                     let effect = layer.effects.get(pass);
@@ -711,15 +724,30 @@ impl ImageRenderer {
                         layer.particle_next.as_ref().map(|(region, _, _)| {
                             self.textures
                                 .iter()
-                                .find(|texture| {
-                                    texture.source.ptr_eq(&Arc::downgrade(region.page()))
-                                })
+                                .find(|texture| texture.is_page(region.page()))
                                 .expect("next particle page uploaded")
                                 .view
                                 .clone()
                         }),
                         None,
                     ];
+                    // Consecutive plain particles share pipeline state. Constants and
+                    // draw order still change for every quad, including sprite blending.
+                    let binding = (layer.particle_color.is_some()
+                        && layer.effects.is_empty()
+                        && layer.refraction.is_none()
+                        && layer.rays.is_none())
+                    .then(|| {
+                        (
+                            sources[0].as_ref().expect("particle source").as_raw(),
+                            sources[7].as_ref().map(Interface::as_raw),
+                            additive,
+                        )
+                    });
+                    let reuse_particle = binding.is_some() && binding == particle_binding;
+                    if !reuse_particle && particle_binding.take().is_some() {
+                        unbind_inputs(context);
+                    }
                     if let Some((normal, amount)) = &layer.refraction {
                         let scene = self.scene.as_ref().expect("refraction scene admitted");
                         let background = self.background.as_ref().expect("background admitted");
@@ -737,9 +765,7 @@ impl ImageRenderer {
                         sources[6] = Some(
                             self.textures
                                 .iter()
-                                .find(|texture| {
-                                    texture.source.ptr_eq(&Arc::downgrade(normal.page()))
-                                })
+                                .find(|texture| texture.is_page(normal.page()))
                                 .expect("normal uploaded")
                                 .view
                                 .clone(),
@@ -798,14 +824,16 @@ impl ImageRenderer {
                             sources[slot] = Some(
                                 self.textures
                                     .iter()
-                                    .find(|t| t.source.ptr_eq(&Arc::downgrade(region.page())))
+                                    .find(|t| t.is_page(region.page()))
                                     .expect("ray input uploaded")
                                     .view
                                     .clone(),
                             );
                         }
                         context.PSSetShader(&self.ray_pixel, None);
-                    } else if !self.select_effect(context, effect, &mut sources, region.extent()) {
+                    } else if !reuse_particle
+                        && !self.select_effect(context, effect, &mut sources, region.extent())
+                    {
                         context.PSSetShader(
                             if layer.particle_color.is_some() {
                                 &self.particle_pixel
@@ -815,43 +843,45 @@ impl ImageRenderer {
                             None,
                         );
                     }
-                    context.VSSetShader(
-                        if layer.rays.is_some() {
-                            &self.ray_vertex
-                        } else {
-                            &self.layer_vertex
-                        },
-                        None,
-                    );
-                    context.OMSetRenderTargets(Some(&[Some(target.clone())]), None);
-                    context.OMSetBlendState(
-                        if !final_pass {
-                            None
-                        } else if additive {
-                            Some(&self.additive)
-                        } else {
-                            Some(&self.blend)
-                        },
-                        None,
-                        u32::MAX,
-                    );
-                    context.RSSetViewports(Some(&[D3D11_VIEWPORT {
-                        Width: draw_size.width() as f32,
-                        Height: draw_size.height() as f32,
-                        MinDepth: 0.,
-                        MaxDepth: 1.,
-                        ..Default::default()
-                    }]));
-                    context.PSSetShaderResources(0, Some(&sources));
+                    if !reuse_particle {
+                        context.VSSetShader(
+                            if layer.rays.is_some() {
+                                &self.ray_vertex
+                            } else {
+                                &self.layer_vertex
+                            },
+                            None,
+                        );
+                        context.OMSetRenderTargets(Some(&[Some(target.clone())]), None);
+                        context.OMSetBlendState(
+                            if !final_pass {
+                                None
+                            } else if additive {
+                                Some(&self.additive)
+                            } else {
+                                Some(&self.blend)
+                            },
+                            None,
+                            u32::MAX,
+                        );
+                        context.RSSetViewports(Some(&[D3D11_VIEWPORT {
+                            Width: draw_size.width() as f32,
+                            Height: draw_size.height() as f32,
+                            MinDepth: 0.,
+                            MaxDepth: 1.,
+                            ..Default::default()
+                        }]));
+                        context.PSSetShaderResources(0, Some(&sources));
+                    }
                     context.Draw(6, 0);
-                    // Unbind all inputs before the next layer reuses scratch as an
-                    // output, including when original and mask share a source.
-                    context.PSSetShaderResources(
-                        0,
-                        Some(&[None, None, None, None, None, None, None, None, None]),
-                    );
-                    context.OMSetRenderTargets(None, None);
+                    particle_binding = binding;
+                    if particle_binding.is_none() {
+                        unbind_inputs(context);
+                    }
                 }
+            }
+            if particle_binding.is_some() {
+                unbind_inputs(context);
             }
             context.OMSetRenderTargets(None, None);
             context.OMSetBlendState(None, None, u32::MAX);
@@ -930,10 +960,6 @@ impl ImageRenderer {
         point: &crate::scene::composite::Point,
     ) {
         let scene = self.scene.as_ref().expect("composition scene admitted");
-        let snapshot = self
-            .background
-            .as_ref()
-            .expect("composition snapshot admitted");
         let capture = point.capture_size(output);
         let axes = crate::scene::axes(
             point.size,
@@ -961,11 +987,10 @@ impl ImageRenderer {
         geometry[15] = 1;
         geometry[16..19].fill(1_f32.to_bits());
         // SAFETY: the worker owns this context. Prior draws unbound all inputs.
-        // Snapshot, scene and alternating chain targets are distinct resources;
-        // every referenced COM object remains owned through GPU completion.
+        // Capture reads the unbound scene into a distinct chain target. Later
+        // passes unbind that source before drawing back into the scene.
         unsafe {
             context.OMSetRenderTargets(None, None);
-            context.CopyResource(&snapshot.texture, &scene.texture);
             context.UpdateSubresource(
                 &self.layer_constants,
                 0,
@@ -982,7 +1007,7 @@ impl ImageRenderer {
                 &self.chain[0].target,
                 capture,
                 &self.capture_pixel,
-                &snapshot.source,
+                &scene.source,
                 None,
                 false,
             );
@@ -1077,7 +1102,7 @@ impl ImageRenderer {
                     sources[slot] = mask.as_ref().map(|mask| {
                         self.textures
                             .iter()
-                            .find(|texture| texture.source.ptr_eq(&Arc::downgrade(mask.page())))
+                            .find(|texture| texture.is_page(mask.page()))
                             .expect("motion mask uploaded")
                             .view
                             .clone()
@@ -1120,7 +1145,7 @@ impl ImageRenderer {
                     sources[slot] = Some(
                         self.textures
                             .iter()
-                            .find(|texture| texture.source.ptr_eq(&Arc::downgrade(region.page())))
+                            .find(|texture| texture.is_page(region.page()))
                             .expect("flow input uploaded")
                             .view
                             .clone(),
@@ -1166,11 +1191,7 @@ impl ImageRenderer {
                 sources[3] = Some(
                     self.textures
                         .iter()
-                        .find(|texture| {
-                            texture
-                                .source
-                                .ptr_eq(&Arc::downgrade(motion.noise().page()))
-                        })
+                        .find(|texture| texture.is_page(motion.noise().page()))
                         .expect("cloud noise uploaded")
                         .view
                         .clone(),
@@ -1178,7 +1199,7 @@ impl ImageRenderer {
                 sources[4] = mask.map(|mask| {
                     self.textures
                         .iter()
-                        .find(|texture| texture.source.ptr_eq(&Arc::downgrade(mask.page())))
+                        .find(|texture| texture.is_page(mask.page()))
                         .expect("cloud mask uploaded")
                         .view
                         .clone()
@@ -1230,7 +1251,7 @@ impl ImageRenderer {
                 sources[2] = mask.map(|mask| {
                     self.textures
                         .iter()
-                        .find(|texture| texture.source.ptr_eq(&Arc::downgrade(mask.page())))
+                        .find(|texture| texture.is_page(mask.page()))
                         .expect("mask source uploaded")
                         .view
                         .clone()

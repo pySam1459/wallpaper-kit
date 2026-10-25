@@ -632,9 +632,10 @@ impl ImagePlayback {
         let mut layers = Vec::new();
         let mut text_values = BTreeMap::new();
         let mut composition_points = Vec::new();
-        let now = self
-            .calendar_time
-            .map_or_else(chrono::Local::now, chrono::DateTime::<chrono::Local>::from);
+        let now = (!self.texts.is_empty()).then(|| {
+            self.calendar_time
+                .map_or_else(chrono::Local::now, chrono::DateTime::<chrono::Local>::from)
+        });
         let (mut work, mut draws) = (0, 0);
         for id in &self.plan.draw_order {
             if let Some((point, effects)) = self
@@ -661,7 +662,7 @@ impl ImagePlayback {
             }
             if let Some(text) = self.texts.iter().find(|text| text.id == *id) {
                 let start = layers.len();
-                let value = text.value(now);
+                let value = text.value(now.expect("text clock prepared"));
                 text.append(&value, &mut layers)?;
                 text_values.insert(text.id, value);
                 for layer in &mut layers[start..] {

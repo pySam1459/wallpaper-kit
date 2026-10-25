@@ -61,6 +61,8 @@ The [initial RTX 5080 baseline](docs/performance-baseline-2026-10-25.md) records
 the first matrix and a longer sprite-loop observation.
 The [first measured optimization](docs/performance-climb-2026-10-25.md) reduces
 Yuta's playback memory by 19.6% through bounded sprite prefetch windows.
+The [CPU/GPU follow-up](docs/cpu-gpu-climb-2026-10-25.md) reduces Gojo particle
+CPU usage by 61.6% at 60 fps and raises uncapped throughput by 37.5% in 4K tests.
 
 ## Build and run
 

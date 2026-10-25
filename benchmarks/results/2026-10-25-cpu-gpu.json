@@ -1,0 +1,2084 @@
+{
+  "schema_version": 1,
+  "machine": {
+    "cpu": [
+      {
+        "Name": "AMD Ryzen 9 9950X3D 16-Core Processor          ",
+        "NumberOfCores": 16,
+        "NumberOfLogicalProcessors": 32
+      }
+    ],
+    "gpu": [
+      {
+        "Name": "AMD Radeon(TM) Graphics",
+        "DriverVersion": "32.0.21030.2001"
+      },
+      {
+        "Name": "NVIDIA GeForce RTX 5080",
+        "DriverVersion": "32.0.16.1664"
+      }
+    ],
+    "os": {
+      "Caption": "Microsoft Windows 11 Home",
+      "Version": "10.0.26200",
+      "BuildNumber": "26200",
+      "TotalVisibleMemorySize": 64545140
+    },
+    "power_plan": "Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Balanced)"
+  },
+  "logical_cpus": 32,
+  "before_binary_provenance": {
+    "path": "artifacts/utilization-profile-before-20261025/report.json",
+    "sha256": "bf36d0bd764fa0e82439c4b19b58cc42a1a78f49e75ea32e60355ed7edaeabc8",
+    "executable_sha256": "44c8b53ba945839d45526756a3be53cdcf2985646ccd1f4a89ddfe4379915841"
+  },
+  "versions": {
+    "before": {
+      "executable_sha256": "44c8b53ba945839d45526756a3be53cdcf2985646ccd1f4a89ddfe4379915841",
+      "source_hashes": {
+        "benchmarks/workloads.json": "0b18e917151aec391b42988af7efe921522cb79ca905570fa9a095ce34178d6c",
+        "Cargo.lock": "9aca5a82ae8f06742a6161930dda921e13d13d3e0141bd179a3e92416452446a",
+        "Cargo.toml": "14d112b0dbca994e8dbc5570af543ac0f7c4cd501c24df85a7e691f09f894173",
+        "examples/benchmark/main.rs": "e60f5a5cd9a9b1ce7078f22f7a678d800208e69f68b70122e6e77028aaa5bef9",
+        "examples/benchmark/metrics.rs": "62e87f17787d9f4bd5de33650671ee4470d2d9f0b1f3d3263c4cbb34880e3025",
+        "examples/browser-worker/main.rs": "ddafaf4067f90e87659a11465993d97ae011b830082690c19655a2a4c3e29c64",
+        "examples/headless/main.rs": "e5b3720e58c724c25a991909402073bb34b9dba5e628770d42e71154992c7531",
+        "examples/motion-checks/main.rs": "d923597ce9fcc9ebdd23b267b8e35ebecd6fb5b6af13cef884d1cec55d568d47",
+        "examples/motion-checks/timing.rs": "0cc63df06d30a88ea369b0e089ac4f7d1b168252754f3c3ace13052fce356f97",
+        "examples/native-viewer/fixture.rs": "bc15c572666746b94e2f00020a62255a15c53d0c59cbc28b9c90c0954c49a1b0",
+        "examples/native-viewer/images.rs": "7118842b214af809447157c75990cb78bdacadec0d6cc22101007789316c0d78",
+        "examples/native-viewer/main.rs": "df584efbfaf3980b79814196df68e55b304069902e79a253da75e205502daf6c",
+        "examples/native-viewer/presentation.rs": "7c2170dca7a49aeb1f0c2e9e43b4bd3f1ad8386a3ed271eb7b74dc16575d91c2",
+        "examples/scene-inspect/main.rs": "c94574d2f3a9f557986a881e36f9b528228d6266649e9201cf58e848ef37f8b7",
+        "examples/sprite-profile/main.rs": "c1145315739382a1bade4a0adb085d270006fb1e0bd1c24641398024b0f7589a",
+        "examples/support/image_playback.rs": "898f0e56f6168f356a99b16e96cd013332ee7fdbfdeba9071ea0b29dee93ffc6",
+        "examples/support/layers.rs": "f4948cb1aa084d5d2bca06954c8f7661c4f4828e764b341cbb7413256a9a1a2d",
+        "examples/support/mod.rs": "6ef8e94b5fe29bf194452f1aef686cf6a75856cf0fd0baad55a42ec473582b1e",
+        "examples/support/motion.rs": "0a1008a01c39ad386c90f1f2218428488b962a42b247fb6eacfb77a083bf6e8a",
+        "examples/support/paging.rs": "45c72e8fe91b5b5ee3a4a55d9d7ef95173e684b599f47ecb1528e424f219f05b",
+        "examples/support/sprite.rs": "f1d6274dccb090ae66d144bd7c7ddd3a749ed9c19d5762f6148b9ce18fda31f8",
+        "examples/support/texture.rs": "7d2c0c9a24358c9a1e4bfc0f8b9ec0e8cbd02198fccff31bdbfda1562fcd6f66",
+        "examples/texture-checks/main.rs": "c2314130ca06ec26b73bd55ba3b3c752be32f941f0fd3d359978cc8747f2956f",
+        "examples/workshop-check/main.rs": "42bbebf3aee63291ddb18371b868a34879b1c02bb6f25db5e65831c48922ec02",
+        "scripts/benchmark.ps1": "82d8b1216bf87ec29cf38ba5a32cdfbbc8d0ee688f35a69a1f3223a9526108c2",
+        "scripts/benchmark.py": "34306a639a0c1c968bea6b80b6a3a42d9fe24acc57a4c47825209c04b0537311",
+        "scripts/benchmark_windows.py": "0a7464ef60e4ed005a142b4aef73423e488361d968d3b629641192de7683f997",
+        "scripts/check-boundaries.ps1": "a78539d8ceb27b33130131fa9254a137eefe02936415a6c4eb22e246b6e99d78",
+        "scripts/inspect-workshop-inputs.py": "ad8ac471c494339cae227e4d411efa10bdad8137c79ff53bc551d0ac72997dce",
+        "scripts/inventory-bindings.py": "69673e5da7cc6935e0eae7adce017d82651743a93c933a17bb56a60a17b1844c",
+        "scripts/inventory-composition.py": "bc5bd52440735d218d38080ad70b1d2888fa7ea664ff4cc070c7f355fd540663",
+        "scripts/inventory-particle-gaps.py": "b1d2317dd7cfc350276798aa5fd81013a862e2f9a176afe12f1bc78d72ee0eb8",
+        "scripts/inventory-workshop.py": "95d2ff534c34c4253c12ddebb6b57800ad7a3c1de868a1ee3e3cb19ebc80ce9e",
+        "scripts/measure-blur-reference.ps1": "517ff2a270b1e8d3d6fb3ca770d8946a975d9c018ab23b78aa147446ae757626",
+        "scripts/measure-cloud-reference.ps1": "4552603880701adc3ae43cfe8442cb90dcb868ac1b2059f274c943ac529c006a",
+        "scripts/measure-light-shafts-reference.ps1": "947952ea6a106fc0448dffc93a8c1eb56b5790822a6f0610d6f89208d5280e40",
+        "scripts/prepare-background-reference.py": "5ab69a44de9695eef05107ca93c57bfa213e2fa25db27839df3a4300a6e25ea6",
+        "scripts/prepare-binding-browser.py": "42c0d9eea8d170ab8e0efd1fade23ffddd0d20df7b765512c998be08763f5e7e",
+        "scripts/prepare-blur-reference.ps1": "1d641b02639b50b09b1b7d408fb6b2e7510b9e78ec05206e931c7a99c7e85866",
+        "scripts/prepare-cloud-reference.ps1": "1cef0ce5e18453f1a3c40d31db1669172280d4fc02c2189c1ea3a021ca7ae07b",
+        "scripts/prepare-composition-browser.py": "8f2bfbd829251a141cb86a6d3fabb205317777861d7f65e5c3366e6d6e465653",
+        "scripts/prepare-effect-chain-browser.py": "aec867f281f1e16c4e8a8f0d67a5eb6865b9c89360368a2ec72cba98153c4ca0",
+        "scripts/prepare-foliage-browser.py": "e80111a11d2e3c69027b2dd10cdd1de90ac7658cf1eae8ef48e3e0813c7ed853",
+        "scripts/prepare-light-shafts-reference.ps1": "af3c4ec2c1770b1a7bf6084ca7ad949f22dbed2224e64ff22ea77b9e8a74b36a",
+        "scripts/prepare-particle-motion-reference.py": "0b7a6684843608e579734833798cc76059e53068a633c0c376cbf75402a5cb27",
+        "scripts/prepare-particle-render-reference.ps1": "df548f2c07371f2b49c6ea7f1e0583109c751c32bdae4ebef347d65cb738a147",
+        "scripts/prepare-pulse-browser.py": "4b08d328e9f12881e4cd18715f4fed8028bfa9a6c130b30564e4938cb9fa1b76",
+        "scripts/prepare-ripple-browser.py": "6ce9839ee06d5850413360b48819591702b8465d4c6b34af8b8552937621bda2",
+        "scripts/prepare-shake-reference.py": "c73e2f75dd40ebfc5b3120a8897f57ac830084d923a1f446564db836369c02a4",
+        "scripts/setup-browser-mcp.ps1": "b8b44e8e9531fd21b023b4219a6e2979dd6af0a45947dcac62ea1ddc02ddb9f0",
+        "scripts/start-browser-test.ps1": "9d9faa725ad9636657e9fe27cb5c158c89556effe9f5ec9eda7d0647adfa1f61",
+        "scripts/summarize-benchmark.py": "e078562657ca6becefcaeee787a2892896c46395f8c386c892ce82d40ecc8d03",
+        "scripts/test_benchmark.py": "6e025f5394b0617542f40247c120bc109da066c7e7874645fab0f08a4cc61e53",
+        "scripts/test_benchmark_windows.py": "90c0ceac163a8d2373c7ce020ce707f3cf8b99979ad8787637f2630dfbc9d00e",
+        "scripts/test_workshop_fidelity.py": "0c56fcb1cd3f6dc422428ff13ece4f464a8b80b62b47ff6649e29c1f26e6151a",
+        "scripts/verify-browser.ps1": "ee649d85c3b23f3a9beceeda1b091700b8fb1139e9dc1cc01ecd561793f841ce",
+        "scripts/verify-gojo-particles.ps1": "488726e2473e768bdf84f581be8b588178cff5a6fe00e3a92c2a1272d1a8131b",
+        "scripts/verify-image-motion.ps1": "c324f667c89703aad5b2cb97fc932dea880c5c6d004e7cd1fef6b45d5105dbb0",
+        "scripts/verify-image-playback.ps1": "d412ca3a938b85a212e5549fd14d5d6d8f5db6dd9d28f009ba469788fc40a8da",
+        "scripts/verify-native.ps1": "44a0220f84e2f112d71ff9b419f078b04f471a5ce0b1879692ea2f13f17f3009",
+        "scripts/verify-particle-material.py": "6423b17f4cc8f6772e444d1a2aaec449c4b807ceec7dcc8c905a00cdb164fd4d",
+        "scripts/verify-particle-profiles.ps1": "fdf94dbfebc872c3a32b501cf2ab25c379179921d698ac596295468bb9b1d902",
+        "scripts/verify-particle-reference.py": "062078f43fc0d4bcd70865e0c9ed49d9a0311670e48c03e94d5dcf20916d057e",
+        "scripts/verify-particle-velocity.py": "4dd2009ac53a9fa359ad2b0777af928657d8707161970bb5ac45afecdc01f0dd",
+        "scripts/verify-scene-inspection.ps1": "ffbf2189e8d29156f826692dab357e9310b0e14c2fc51f6ec80e13ab2864f0dd",
+        "scripts/verify-shake-reference.py": "0f1bf943aa59b22979db7cd0e13fc4fbb2315465aa3d125b010f9ebe24aaef0c",
+        "scripts/verify-workshop-playback.ps1": "73595ca0ff37d3f6434a7cdcc8259ea19fba1ab32dcca02dbb64b7200f28eda6",
+        "scripts/verify.ps1": "7dfb9bb6e3db8ab8b00cf95a43626a1cd7471c6cb4d892eacde247cac4e205fe",
+        "scripts/workshop-fidelity.py": "6c2251a82f2f250a5dc86e929744acb016ad8de16035581bed87f70dd41863c0",
+        "scripts/workshop-support.ps1": "52754d20a0ff9afe6480b48efc133f86d63934ee97b1037e701b6af8025fcc5a",
+        "src/assets/mod.rs": "002ac40506def953d9e3f7e67fb2a3806ee34a819e6982f0ea2800771c63bb9d",
+        "src/assets/package.rs": "f8f9fa14f4da407eea73aeb45838822d02f0bd48af0eb025b8b88c9fd32642e3",
+        "src/assets/texture/pager.rs": "30f1cd254920d3956c3bb0ef478e106b95bdb138c8b164f81067ed539c4206e2",
+        "src/assets/texture/sprite.rs": "65c9b752ff478c95f3cc5f12fa51ca122b1753161478c79a54b3eb1091bcc3a1",
+        "src/assets/texture/worker.rs": "d7d8d5299cc103cf0f3a456755e4a0391a2be2f99c22c01f7f2003215cfc16bc",
+        "src/assets/texture.rs": "c46ed0a011598598d0f78d8a4132a9bd5e615fc68377d305244c4babd053aa7b",
+        "src/assets/video.rs": "4cc77b89f76f6e175028c3141eb60ddace53e602dd05bebe346c10dde11b14ed",
+        "src/gpu/image.rs": "5e81cc7ebaa3fa2f82a055db6eed096414bcd15a0b111e396b19f885d54c08b4",
+        "src/gpu/profile.rs": "6839de1268b32dafb5a437a388543ddea382e5d3626c438d742ac74a6ea18051",
+        "src/gpu/shaders/texture.hlsl": "69b6d00db9fd1ac30330e9a3a2b9d8415dd46aa1113a5af640b72482d8a90076",
+        "src/gpu.rs": "612a0d9e2d792ea9390ce1c15d6987ce5db970887eef2e2bf3640a27e8bb0e89",
+        "src/lib.rs": "701f772513c8980fd836c6d377bc83704ce5974adcdbfd87927d767a7a0aa27e",
+        "src/motion.rs": "c8a9d21da71b5c999758294daa9be4b67e2ec529a55c3dc7e69eeea0f9b96b51",
+        "src/scene/bindings.rs": "04bd0fa22f43837e8ee6bf9ec8b31531b574f6fe7ec0ff94605907f977c90fc5",
+        "src/scene/cloud.rs": "34a41c0362d7ac2e8cf85317696b157c93b64936a1ade822a44a1c56c81c01bd",
+        "src/scene/composite.rs": "0bcda45f965b3e231455a5670182ebd99bd5cb5b158f38a40984fd322d838839",
+        "src/scene/flow.rs": "60ae10bfbe19104a6875edaf3f5b6c85f81ebdcc58e99284ba162a87800b10b1",
+        "src/scene/hdr.rs": "6d223bea1ddd03e12dfd14ebe909a555c6342cd698f3bbd31fe64fb74700a325",
+        "src/scene/inspect.rs": "13e0c6efd60fc6925ec1542a4fe508e8850f0116f2148fe3cf320f759d14090f",
+        "src/scene/layers.rs": "012f9ee71a9022447be3ebc0dd060c7ff809f65edce27e421b5b22ecda5bd174",
+        "src/scene/motion.rs": "44b3a830c8e55fa74fba53f8896d21c0ce4b91b394c98384e746a004068b507f",
+        "src/scene/particles/turbulence.rs": "ce55285079975e1796f6699c8414f79e68682a209196687a719a5025675b5694",
+        "src/scene/particles.rs": "cfe9f6fb74d74c81749922f72902c3be1bc5cdd2bade22d3a532ff602440adc1",
+        "src/scene/playback.rs": "d7d5e15e32c6bf9bb1c064cbc3b64a351a6a8f9f56a9b9c2dc1c8a3060b7cc0a",
+        "src/scene/precise.rs": "2e65cbd7d1bdc3fc69a76cfb94f87d885a59d76db64205fb22eb956b17d3893f",
+        "src/scene/rays.rs": "32ac015dfd464c8daf332d5dfb739cf395e41e079db781b90c2691d5391296e8",
+        "src/scene/settings.rs": "7d0dc6cccaf0862c83030c72d90af4e78dd5e9cdb3efd78230c1ecc3f02c0157",
+        "src/scene/snapshot.rs": "dac6b61035c4b7e575dd2a6057ce1d4b9beccc87ee06572f0f8f8b94b560ab61",
+        "src/scene/text.rs": "746e9561e72a0bbb98e6fcf1c9e23979a45fb9f84ce8db33b5a1bff409779b44",
+        "src/scene.rs": "beb9dac6c2336806b82afb1c65b3ede8c255c614d40153b87f26d3b0bce36f2c"
+      },
+      "configuration": {
+        "seconds": 20,
+        "warmup": 2,
+        "idle": 2,
+        "profile_gpu": false,
+        "target_fps": 60,
+        "repeats": 1,
+        "software": false,
+        "resolutions": [
+          [
+            3840,
+            2160
+          ]
+        ]
+      },
+      "cases": [
+        {
+          "path": "artifacts/utilization-before1-20261025/report.json",
+          "sha256": "9a8ccdb6509731b5e96570a44a4b790f303ea88b63569d101d24254640ac66ba",
+          "executable_sha256": "44c8b53ba945839d45526756a3be53cdcf2985646ccd1f4a89ddfe4379915841",
+          "workload": "gojo-particles",
+          "repeat": 1,
+          "initial_png_sha256": "23d23d6b78aed2f53c2a5c60e11dc9798c38a61278545259fbd675b4269a988a",
+          "phases": {
+            "paced": {
+              "fps": 59.99936310676062,
+              "cpu_machine_percent": 0.28184137797302355,
+              "gpu_busiest_engine_percent": 3.6008269786221248,
+              "private_mib": 298.808349609375,
+              "gpu_dedicated_mib": 236.68359375,
+              "effect_payload_mib": 63.28125,
+              "ready_gap_p95_ms": 17.27140000000054,
+              "sample_wait_mean_ms": 0.4555007500000004,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "source_uploads": 0,
+              "output_allocations": 0
+            },
+            "uncapped": {
+              "fps": 385.9439638364056,
+              "cpu_machine_percent": 2.11133504874484,
+              "gpu_busiest_engine_percent": 22.127236378399854,
+              "private_mib": 296.890478515625,
+              "gpu_dedicated_mib": 236.68359375,
+              "effect_payload_mib": 63.28125,
+              "ready_gap_p95_ms": 2.9868999999998778,
+              "sample_wait_mean_ms": 0.4294479077600724,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "source_uploads": 0,
+              "output_allocations": 0
+            }
+          }
+        },
+        {
+          "path": "artifacts/utilization-before1-20261025/report.json",
+          "sha256": "9a8ccdb6509731b5e96570a44a4b790f303ea88b63569d101d24254640ac66ba",
+          "executable_sha256": "44c8b53ba945839d45526756a3be53cdcf2985646ccd1f4a89ddfe4379915841",
+          "workload": "gojo-composition",
+          "repeat": 1,
+          "initial_png_sha256": "bb3c5b68b31999976583c214fb63554e6d2b86c1770dfc80a8a112c4c31690c0",
+          "phases": {
+            "paced": {
+              "fps": 59.99873342673737,
+              "cpu_machine_percent": 0.07169675117245702,
+              "gpu_busiest_engine_percent": 10.482125128216554,
+              "private_mib": 414.381884765625,
+              "gpu_dedicated_mib": 369.08203125,
+              "effect_payload_mib": 190.634765625,
+              "ready_gap_p95_ms": 17.236600000002,
+              "sample_wait_mean_ms": 0.016719916666666654,
+              "skipped_slots": 0,
+              "deadline_misses": 1,
+              "source_uploads": 0,
+              "output_allocations": 0
+            },
+            "uncapped": {
+              "fps": 315.0558512235681,
+              "cpu_machine_percent": 0.26948219676392615,
+              "gpu_busiest_engine_percent": 55.29106491269693,
+              "private_mib": 411.74951171875,
+              "gpu_dedicated_mib": 369.08203125,
+              "effect_payload_mib": 190.634765625,
+              "ready_gap_p95_ms": 3.3263000000000034,
+              "sample_wait_mean_ms": 0.01308086321802599,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "source_uploads": 0,
+              "output_allocations": 0
+            }
+          }
+        },
+        {
+          "path": "artifacts/utilization-before2-20261025/report.json",
+          "sha256": "5adae6463680d8868ade951a24c95148cf0155541feac3305ec87b26736d6da8",
+          "executable_sha256": "44c8b53ba945839d45526756a3be53cdcf2985646ccd1f4a89ddfe4379915841",
+          "workload": "gojo-particles",
+          "repeat": 2,
+          "initial_png_sha256": "23d23d6b78aed2f53c2a5c60e11dc9798c38a61278545259fbd675b4269a988a",
+          "phases": {
+            "paced": {
+              "fps": 59.99905771479859,
+              "cpu_machine_percent": 0.3362342980892214,
+              "gpu_busiest_engine_percent": 3.552845236018099,
+              "private_mib": 299.27353515625,
+              "gpu_dedicated_mib": 236.68359375,
+              "effect_payload_mib": 63.28125,
+              "ready_gap_p95_ms": 17.339500000000044,
+              "sample_wait_mean_ms": 0.43622058333333297,
+              "skipped_slots": 0,
+              "deadline_misses": 2,
+              "source_uploads": 0,
+              "output_allocations": 0
+            },
+            "uncapped": {
+              "fps": 385.625497355898,
+              "cpu_machine_percent": 1.948199437576406,
+              "gpu_busiest_engine_percent": 22.130831710674745,
+              "private_mib": 297.36279296875,
+              "gpu_dedicated_mib": 236.68359375,
+              "effect_payload_mib": 63.28125,
+              "ready_gap_p95_ms": 2.972300000003088,
+              "sample_wait_mean_ms": 0.42561328925191455,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "source_uploads": 0,
+              "output_allocations": 0
+            }
+          }
+        },
+        {
+          "path": "artifacts/utilization-before2-20261025/report.json",
+          "sha256": "5adae6463680d8868ade951a24c95148cf0155541feac3305ec87b26736d6da8",
+          "executable_sha256": "44c8b53ba945839d45526756a3be53cdcf2985646ccd1f4a89ddfe4379915841",
+          "workload": "gojo-composition",
+          "repeat": 2,
+          "initial_png_sha256": "bb3c5b68b31999976583c214fb63554e6d2b86c1770dfc80a8a112c4c31690c0",
+          "phases": {
+            "paced": {
+              "fps": 59.99902351589228,
+              "cpu_machine_percent": 0.1137270270740896,
+              "gpu_busiest_engine_percent": 10.478028087855515,
+              "private_mib": 413.26357421875,
+              "gpu_dedicated_mib": 369.07421875,
+              "effect_payload_mib": 190.634765625,
+              "ready_gap_p95_ms": 17.141699999999673,
+              "sample_wait_mean_ms": 0.016545250000000015,
+              "skipped_slots": 0,
+              "deadline_misses": 1,
+              "source_uploads": 0,
+              "output_allocations": 0
+            },
+            "uncapped": {
+              "fps": 316.28849500599415,
+              "cpu_machine_percent": 0.3115197606471244,
+              "gpu_busiest_engine_percent": 55.65153389188335,
+              "private_mib": 410.69931640625,
+              "gpu_dedicated_mib": 369.07421875,
+              "effect_payload_mib": 190.634765625,
+              "ready_gap_p95_ms": 3.332499999999982,
+              "sample_wait_mean_ms": 0.012952592475497954,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "source_uploads": 0,
+              "output_allocations": 0
+            }
+          }
+        }
+      ],
+      "summary": {
+        "gojo-particles": {
+          "paced": {
+            "fps": {
+              "median": 59.999210410779604,
+              "min": 59.99905771479859,
+              "max": 59.99936310676062
+            },
+            "cpu_machine_percent": {
+              "median": 0.3090378380311225,
+              "min": 0.28184137797302355,
+              "max": 0.3362342980892214
+            },
+            "gpu_busiest_engine_percent": {
+              "median": 3.576836107320112,
+              "min": 3.552845236018099,
+              "max": 3.6008269786221248
+            },
+            "private_mib": {
+              "median": 299.0409423828125,
+              "min": 298.808349609375,
+              "max": 299.27353515625
+            },
+            "gpu_dedicated_mib": {
+              "median": 236.68359375,
+              "min": 236.68359375,
+              "max": 236.68359375
+            },
+            "effect_payload_mib": {
+              "median": 63.28125,
+              "min": 63.28125,
+              "max": 63.28125
+            },
+            "ready_gap_p95_ms": {
+              "median": 17.30545000000029,
+              "min": 17.27140000000054,
+              "max": 17.339500000000044
+            },
+            "sample_wait_mean_ms": {
+              "median": 0.4458606666666667,
+              "min": 0.43622058333333297,
+              "max": 0.4555007500000004
+            },
+            "skipped_slots": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "deadline_misses": {
+              "median": 1.0,
+              "min": 0,
+              "max": 2
+            },
+            "source_uploads": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "output_allocations": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            }
+          },
+          "uncapped": {
+            "fps": {
+              "median": 385.7847305961518,
+              "min": 385.625497355898,
+              "max": 385.9439638364056
+            },
+            "cpu_machine_percent": {
+              "median": 2.029767243160623,
+              "min": 1.948199437576406,
+              "max": 2.11133504874484
+            },
+            "gpu_busiest_engine_percent": {
+              "median": 22.1290340445373,
+              "min": 22.127236378399854,
+              "max": 22.130831710674745
+            },
+            "private_mib": {
+              "median": 297.1266357421875,
+              "min": 296.890478515625,
+              "max": 297.36279296875
+            },
+            "gpu_dedicated_mib": {
+              "median": 236.68359375,
+              "min": 236.68359375,
+              "max": 236.68359375
+            },
+            "effect_payload_mib": {
+              "median": 63.28125,
+              "min": 63.28125,
+              "max": 63.28125
+            },
+            "ready_gap_p95_ms": {
+              "median": 2.979600000001483,
+              "min": 2.972300000003088,
+              "max": 2.9868999999998778
+            },
+            "sample_wait_mean_ms": {
+              "median": 0.4275305985059935,
+              "min": 0.42561328925191455,
+              "max": 0.4294479077600724
+            },
+            "skipped_slots": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "deadline_misses": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "source_uploads": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "output_allocations": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            }
+          }
+        },
+        "gojo-composition": {
+          "paced": {
+            "fps": {
+              "median": 59.998878471314825,
+              "min": 59.99873342673737,
+              "max": 59.99902351589228
+            },
+            "cpu_machine_percent": {
+              "median": 0.09271188912327331,
+              "min": 0.07169675117245702,
+              "max": 0.1137270270740896
+            },
+            "gpu_busiest_engine_percent": {
+              "median": 10.480076608036034,
+              "min": 10.478028087855515,
+              "max": 10.482125128216554
+            },
+            "private_mib": {
+              "median": 413.8227294921875,
+              "min": 413.26357421875,
+              "max": 414.381884765625
+            },
+            "gpu_dedicated_mib": {
+              "median": 369.078125,
+              "min": 369.07421875,
+              "max": 369.08203125
+            },
+            "effect_payload_mib": {
+              "median": 190.634765625,
+              "min": 190.634765625,
+              "max": 190.634765625
+            },
+            "ready_gap_p95_ms": {
+              "median": 17.189150000000836,
+              "min": 17.141699999999673,
+              "max": 17.236600000002
+            },
+            "sample_wait_mean_ms": {
+              "median": 0.016632583333333333,
+              "min": 0.016545250000000015,
+              "max": 0.016719916666666654
+            },
+            "skipped_slots": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "deadline_misses": {
+              "median": 1.0,
+              "min": 1,
+              "max": 1
+            },
+            "source_uploads": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "output_allocations": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            }
+          },
+          "uncapped": {
+            "fps": {
+              "median": 315.6721731147811,
+              "min": 315.0558512235681,
+              "max": 316.28849500599415
+            },
+            "cpu_machine_percent": {
+              "median": 0.29050097870552527,
+              "min": 0.26948219676392615,
+              "max": 0.3115197606471244
+            },
+            "gpu_busiest_engine_percent": {
+              "median": 55.47129940229014,
+              "min": 55.29106491269693,
+              "max": 55.65153389188335
+            },
+            "private_mib": {
+              "median": 411.2244140625,
+              "min": 410.69931640625,
+              "max": 411.74951171875
+            },
+            "gpu_dedicated_mib": {
+              "median": 369.078125,
+              "min": 369.07421875,
+              "max": 369.08203125
+            },
+            "effect_payload_mib": {
+              "median": 190.634765625,
+              "min": 190.634765625,
+              "max": 190.634765625
+            },
+            "ready_gap_p95_ms": {
+              "median": 3.3293999999999926,
+              "min": 3.3263000000000034,
+              "max": 3.332499999999982
+            },
+            "sample_wait_mean_ms": {
+              "median": 0.013016727846761972,
+              "min": 0.012952592475497954,
+              "max": 0.01308086321802599
+            },
+            "skipped_slots": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "deadline_misses": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "source_uploads": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "output_allocations": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            }
+          }
+        }
+      }
+    },
+    "after": {
+      "executable_sha256": "dcb830f2b20d3b713fd94bf1866f7dbe7569a0e5ddf2da599fbfdac28ee95c2a",
+      "source_hashes": {
+        "benchmarks/workloads.json": "0b18e917151aec391b42988af7efe921522cb79ca905570fa9a095ce34178d6c",
+        "Cargo.lock": "9aca5a82ae8f06742a6161930dda921e13d13d3e0141bd179a3e92416452446a",
+        "Cargo.toml": "14d112b0dbca994e8dbc5570af543ac0f7c4cd501c24df85a7e691f09f894173",
+        "examples/benchmark/main.rs": "e60f5a5cd9a9b1ce7078f22f7a678d800208e69f68b70122e6e77028aaa5bef9",
+        "examples/benchmark/metrics.rs": "62e87f17787d9f4bd5de33650671ee4470d2d9f0b1f3d3263c4cbb34880e3025",
+        "examples/browser-worker/main.rs": "ddafaf4067f90e87659a11465993d97ae011b830082690c19655a2a4c3e29c64",
+        "examples/headless/main.rs": "e5b3720e58c724c25a991909402073bb34b9dba5e628770d42e71154992c7531",
+        "examples/motion-checks/main.rs": "d923597ce9fcc9ebdd23b267b8e35ebecd6fb5b6af13cef884d1cec55d568d47",
+        "examples/motion-checks/timing.rs": "0cc63df06d30a88ea369b0e089ac4f7d1b168252754f3c3ace13052fce356f97",
+        "examples/native-viewer/fixture.rs": "bc15c572666746b94e2f00020a62255a15c53d0c59cbc28b9c90c0954c49a1b0",
+        "examples/native-viewer/images.rs": "7118842b214af809447157c75990cb78bdacadec0d6cc22101007789316c0d78",
+        "examples/native-viewer/main.rs": "df584efbfaf3980b79814196df68e55b304069902e79a253da75e205502daf6c",
+        "examples/native-viewer/presentation.rs": "7c2170dca7a49aeb1f0c2e9e43b4bd3f1ad8386a3ed271eb7b74dc16575d91c2",
+        "examples/scene-inspect/main.rs": "c94574d2f3a9f557986a881e36f9b528228d6266649e9201cf58e848ef37f8b7",
+        "examples/sprite-profile/main.rs": "c1145315739382a1bade4a0adb085d270006fb1e0bd1c24641398024b0f7589a",
+        "examples/support/image_playback.rs": "898f0e56f6168f356a99b16e96cd013332ee7fdbfdeba9071ea0b29dee93ffc6",
+        "examples/support/layers.rs": "f4948cb1aa084d5d2bca06954c8f7661c4f4828e764b341cbb7413256a9a1a2d",
+        "examples/support/mod.rs": "6ef8e94b5fe29bf194452f1aef686cf6a75856cf0fd0baad55a42ec473582b1e",
+        "examples/support/motion.rs": "0a1008a01c39ad386c90f1f2218428488b962a42b247fb6eacfb77a083bf6e8a",
+        "examples/support/paging.rs": "45c72e8fe91b5b5ee3a4a55d9d7ef95173e684b599f47ecb1528e424f219f05b",
+        "examples/support/sprite.rs": "f1d6274dccb090ae66d144bd7c7ddd3a749ed9c19d5762f6148b9ce18fda31f8",
+        "examples/support/texture.rs": "7d2c0c9a24358c9a1e4bfc0f8b9ec0e8cbd02198fccff31bdbfda1562fcd6f66",
+        "examples/texture-checks/main.rs": "c2314130ca06ec26b73bd55ba3b3c752be32f941f0fd3d359978cc8747f2956f",
+        "examples/workshop-check/main.rs": "42bbebf3aee63291ddb18371b868a34879b1c02bb6f25db5e65831c48922ec02",
+        "scripts/benchmark.ps1": "82d8b1216bf87ec29cf38ba5a32cdfbbc8d0ee688f35a69a1f3223a9526108c2",
+        "scripts/benchmark.py": "34306a639a0c1c968bea6b80b6a3a42d9fe24acc57a4c47825209c04b0537311",
+        "scripts/benchmark_windows.py": "0a7464ef60e4ed005a142b4aef73423e488361d968d3b629641192de7683f997",
+        "scripts/check-boundaries.ps1": "a78539d8ceb27b33130131fa9254a137eefe02936415a6c4eb22e246b6e99d78",
+        "scripts/inspect-workshop-inputs.py": "ad8ac471c494339cae227e4d411efa10bdad8137c79ff53bc551d0ac72997dce",
+        "scripts/inventory-bindings.py": "69673e5da7cc6935e0eae7adce017d82651743a93c933a17bb56a60a17b1844c",
+        "scripts/inventory-composition.py": "bc5bd52440735d218d38080ad70b1d2888fa7ea664ff4cc070c7f355fd540663",
+        "scripts/inventory-particle-gaps.py": "b1d2317dd7cfc350276798aa5fd81013a862e2f9a176afe12f1bc78d72ee0eb8",
+        "scripts/inventory-workshop.py": "95d2ff534c34c4253c12ddebb6b57800ad7a3c1de868a1ee3e3cb19ebc80ce9e",
+        "scripts/measure-blur-reference.ps1": "517ff2a270b1e8d3d6fb3ca770d8946a975d9c018ab23b78aa147446ae757626",
+        "scripts/measure-cloud-reference.ps1": "4552603880701adc3ae43cfe8442cb90dcb868ac1b2059f274c943ac529c006a",
+        "scripts/measure-light-shafts-reference.ps1": "947952ea6a106fc0448dffc93a8c1eb56b5790822a6f0610d6f89208d5280e40",
+        "scripts/prepare-background-reference.py": "5ab69a44de9695eef05107ca93c57bfa213e2fa25db27839df3a4300a6e25ea6",
+        "scripts/prepare-binding-browser.py": "42c0d9eea8d170ab8e0efd1fade23ffddd0d20df7b765512c998be08763f5e7e",
+        "scripts/prepare-blur-reference.ps1": "1d641b02639b50b09b1b7d408fb6b2e7510b9e78ec05206e931c7a99c7e85866",
+        "scripts/prepare-cloud-reference.ps1": "1cef0ce5e18453f1a3c40d31db1669172280d4fc02c2189c1ea3a021ca7ae07b",
+        "scripts/prepare-composition-browser.py": "8f2bfbd829251a141cb86a6d3fabb205317777861d7f65e5c3366e6d6e465653",
+        "scripts/prepare-effect-chain-browser.py": "aec867f281f1e16c4e8a8f0d67a5eb6865b9c89360368a2ec72cba98153c4ca0",
+        "scripts/prepare-foliage-browser.py": "e80111a11d2e3c69027b2dd10cdd1de90ac7658cf1eae8ef48e3e0813c7ed853",
+        "scripts/prepare-light-shafts-reference.ps1": "af3c4ec2c1770b1a7bf6084ca7ad949f22dbed2224e64ff22ea77b9e8a74b36a",
+        "scripts/prepare-particle-motion-reference.py": "0b7a6684843608e579734833798cc76059e53068a633c0c376cbf75402a5cb27",
+        "scripts/prepare-particle-render-reference.ps1": "df548f2c07371f2b49c6ea7f1e0583109c751c32bdae4ebef347d65cb738a147",
+        "scripts/prepare-pulse-browser.py": "4b08d328e9f12881e4cd18715f4fed8028bfa9a6c130b30564e4938cb9fa1b76",
+        "scripts/prepare-ripple-browser.py": "6ce9839ee06d5850413360b48819591702b8465d4c6b34af8b8552937621bda2",
+        "scripts/prepare-shake-reference.py": "c73e2f75dd40ebfc5b3120a8897f57ac830084d923a1f446564db836369c02a4",
+        "scripts/setup-browser-mcp.ps1": "b8b44e8e9531fd21b023b4219a6e2979dd6af0a45947dcac62ea1ddc02ddb9f0",
+        "scripts/start-browser-test.ps1": "9d9faa725ad9636657e9fe27cb5c158c89556effe9f5ec9eda7d0647adfa1f61",
+        "scripts/summarize-benchmark.py": "e078562657ca6becefcaeee787a2892896c46395f8c386c892ce82d40ecc8d03",
+        "scripts/test_benchmark.py": "6e025f5394b0617542f40247c120bc109da066c7e7874645fab0f08a4cc61e53",
+        "scripts/test_benchmark_windows.py": "90c0ceac163a8d2373c7ce020ce707f3cf8b99979ad8787637f2630dfbc9d00e",
+        "scripts/test_workshop_fidelity.py": "0c56fcb1cd3f6dc422428ff13ece4f464a8b80b62b47ff6649e29c1f26e6151a",
+        "scripts/verify-browser.ps1": "ee649d85c3b23f3a9beceeda1b091700b8fb1139e9dc1cc01ecd561793f841ce",
+        "scripts/verify-gojo-particles.ps1": "488726e2473e768bdf84f581be8b588178cff5a6fe00e3a92c2a1272d1a8131b",
+        "scripts/verify-image-motion.ps1": "c324f667c89703aad5b2cb97fc932dea880c5c6d004e7cd1fef6b45d5105dbb0",
+        "scripts/verify-image-playback.ps1": "d412ca3a938b85a212e5549fd14d5d6d8f5db6dd9d28f009ba469788fc40a8da",
+        "scripts/verify-native.ps1": "44a0220f84e2f112d71ff9b419f078b04f471a5ce0b1879692ea2f13f17f3009",
+        "scripts/verify-particle-material.py": "6423b17f4cc8f6772e444d1a2aaec449c4b807ceec7dcc8c905a00cdb164fd4d",
+        "scripts/verify-particle-profiles.ps1": "fdf94dbfebc872c3a32b501cf2ab25c379179921d698ac596295468bb9b1d902",
+        "scripts/verify-particle-reference.py": "062078f43fc0d4bcd70865e0c9ed49d9a0311670e48c03e94d5dcf20916d057e",
+        "scripts/verify-particle-velocity.py": "4dd2009ac53a9fa359ad2b0777af928657d8707161970bb5ac45afecdc01f0dd",
+        "scripts/verify-scene-inspection.ps1": "ffbf2189e8d29156f826692dab357e9310b0e14c2fc51f6ec80e13ab2864f0dd",
+        "scripts/verify-shake-reference.py": "0f1bf943aa59b22979db7cd0e13fc4fbb2315465aa3d125b010f9ebe24aaef0c",
+        "scripts/verify-workshop-playback.ps1": "73595ca0ff37d3f6434a7cdcc8259ea19fba1ab32dcca02dbb64b7200f28eda6",
+        "scripts/verify.ps1": "7dfb9bb6e3db8ab8b00cf95a43626a1cd7471c6cb4d892eacde247cac4e205fe",
+        "scripts/workshop-fidelity.py": "6c2251a82f2f250a5dc86e929744acb016ad8de16035581bed87f70dd41863c0",
+        "scripts/workshop-support.ps1": "52754d20a0ff9afe6480b48efc133f86d63934ee97b1037e701b6af8025fcc5a",
+        "src/assets/mod.rs": "002ac40506def953d9e3f7e67fb2a3806ee34a819e6982f0ea2800771c63bb9d",
+        "src/assets/package.rs": "f8f9fa14f4da407eea73aeb45838822d02f0bd48af0eb025b8b88c9fd32642e3",
+        "src/assets/texture/pager.rs": "30f1cd254920d3956c3bb0ef478e106b95bdb138c8b164f81067ed539c4206e2",
+        "src/assets/texture/sprite.rs": "65c9b752ff478c95f3cc5f12fa51ca122b1753161478c79a54b3eb1091bcc3a1",
+        "src/assets/texture/worker.rs": "d7d8d5299cc103cf0f3a456755e4a0391a2be2f99c22c01f7f2003215cfc16bc",
+        "src/assets/texture.rs": "c46ed0a011598598d0f78d8a4132a9bd5e615fc68377d305244c4babd053aa7b",
+        "src/assets/video.rs": "4cc77b89f76f6e175028c3141eb60ddace53e602dd05bebe346c10dde11b14ed",
+        "src/gpu/image.rs": "de2880ead5ea47d9d62fcd9897e3a1dd0325e362662e02ba6729c33836c2053c",
+        "src/gpu/profile.rs": "550125ea023271a780c58b5aac53f9067e5173811d3d5d5bdb26bc8d1b90a959",
+        "src/gpu/shaders/texture.hlsl": "b449f31acb4fad806bbb7081843925de36bfeed60f0db5c79025d926475e2538",
+        "src/gpu.rs": "612a0d9e2d792ea9390ce1c15d6987ce5db970887eef2e2bf3640a27e8bb0e89",
+        "src/lib.rs": "701f772513c8980fd836c6d377bc83704ce5974adcdbfd87927d767a7a0aa27e",
+        "src/motion.rs": "c8a9d21da71b5c999758294daa9be4b67e2ec529a55c3dc7e69eeea0f9b96b51",
+        "src/scene/bindings.rs": "04bd0fa22f43837e8ee6bf9ec8b31531b574f6fe7ec0ff94605907f977c90fc5",
+        "src/scene/cloud.rs": "34a41c0362d7ac2e8cf85317696b157c93b64936a1ade822a44a1c56c81c01bd",
+        "src/scene/composite.rs": "0bcda45f965b3e231455a5670182ebd99bd5cb5b158f38a40984fd322d838839",
+        "src/scene/flow.rs": "60ae10bfbe19104a6875edaf3f5b6c85f81ebdcc58e99284ba162a87800b10b1",
+        "src/scene/hdr.rs": "6d223bea1ddd03e12dfd14ebe909a555c6342cd698f3bbd31fe64fb74700a325",
+        "src/scene/inspect.rs": "13e0c6efd60fc6925ec1542a4fe508e8850f0116f2148fe3cf320f759d14090f",
+        "src/scene/layers.rs": "012f9ee71a9022447be3ebc0dd060c7ff809f65edce27e421b5b22ecda5bd174",
+        "src/scene/motion.rs": "44b3a830c8e55fa74fba53f8896d21c0ce4b91b394c98384e746a004068b507f",
+        "src/scene/particles/turbulence.rs": "ce55285079975e1796f6699c8414f79e68682a209196687a719a5025675b5694",
+        "src/scene/particles.rs": "cfe9f6fb74d74c81749922f72902c3be1bc5cdd2bade22d3a532ff602440adc1",
+        "src/scene/playback.rs": "7b0010fa68a86eaa810b882cf8b470864f994eb480cf0f4d823c5e1e6eb36273",
+        "src/scene/precise.rs": "2e65cbd7d1bdc3fc69a76cfb94f87d885a59d76db64205fb22eb956b17d3893f",
+        "src/scene/rays.rs": "32ac015dfd464c8daf332d5dfb739cf395e41e079db781b90c2691d5391296e8",
+        "src/scene/settings.rs": "7d0dc6cccaf0862c83030c72d90af4e78dd5e9cdb3efd78230c1ecc3f02c0157",
+        "src/scene/snapshot.rs": "dac6b61035c4b7e575dd2a6057ce1d4b9beccc87ee06572f0f8f8b94b560ab61",
+        "src/scene/text.rs": "746e9561e72a0bbb98e6fcf1c9e23979a45fb9f84ce8db33b5a1bff409779b44",
+        "src/scene.rs": "beb9dac6c2336806b82afb1c65b3ede8c255c614d40153b87f26d3b0bce36f2c"
+      },
+      "configuration": {
+        "seconds": 20,
+        "warmup": 2,
+        "idle": 2,
+        "profile_gpu": false,
+        "target_fps": 60,
+        "repeats": 1,
+        "software": false,
+        "resolutions": [
+          [
+            3840,
+            2160
+          ]
+        ]
+      },
+      "cases": [
+        {
+          "path": "artifacts/utilization-after1-20261025/report.json",
+          "sha256": "5a985b61ce14b7af641f26bc1bc59b8e76101f1ccabf5969dad5964bccce931f",
+          "executable_sha256": "dcb830f2b20d3b713fd94bf1866f7dbe7569a0e5ddf2da599fbfdac28ee95c2a",
+          "workload": "gojo-particles",
+          "repeat": 1,
+          "initial_png_sha256": "23d23d6b78aed2f53c2a5c60e11dc9798c38a61278545259fbd675b4269a988a",
+          "phases": {
+            "paced": {
+              "fps": 59.99913451248466,
+              "cpu_machine_percent": 0.10878172818864222,
+              "gpu_busiest_engine_percent": 3.2328565367632467,
+              "private_mib": 298.806494140625,
+              "gpu_dedicated_mib": 236.68359375,
+              "effect_payload_mib": 63.28125,
+              "ready_gap_p95_ms": 17.311599999999544,
+              "sample_wait_mean_ms": 0.4495389166666671,
+              "skipped_slots": 0,
+              "deadline_misses": 2,
+              "source_uploads": 0,
+              "output_allocations": 0
+            },
+            "uncapped": {
+              "fps": 531.730605126178,
+              "cpu_machine_percent": 1.1891842958819079,
+              "gpu_busiest_engine_percent": 26.96866983050946,
+              "private_mib": 297.69482421875,
+              "gpu_dedicated_mib": 236.68359375,
+              "effect_payload_mib": 63.28125,
+              "ready_gap_p95_ms": 2.2193999999999505,
+              "sample_wait_mean_ms": 0.42654271744240807,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "source_uploads": 0,
+              "output_allocations": 0
+            }
+          }
+        },
+        {
+          "path": "artifacts/utilization-after1-20261025/report.json",
+          "sha256": "5a985b61ce14b7af641f26bc1bc59b8e76101f1ccabf5969dad5964bccce931f",
+          "executable_sha256": "dcb830f2b20d3b713fd94bf1866f7dbe7569a0e5ddf2da599fbfdac28ee95c2a",
+          "workload": "gojo-composition",
+          "repeat": 1,
+          "initial_png_sha256": "bb3c5b68b31999976583c214fb63554e6d2b86c1770dfc80a8a112c4c31690c0",
+          "phases": {
+            "paced": {
+              "fps": 59.999899800167334,
+              "cpu_machine_percent": 0.09641786145963697,
+              "gpu_busiest_engine_percent": 10.275901049314557,
+              "private_mib": 382.333935546875,
+              "gpu_dedicated_mib": 337.19140625,
+              "effect_payload_mib": 158.994140625,
+              "ready_gap_p95_ms": 17.241700000000492,
+              "sample_wait_mean_ms": 0.013712250000000002,
+              "skipped_slots": 0,
+              "deadline_misses": 3,
+              "source_uploads": 0,
+              "output_allocations": 0
+            },
+            "uncapped": {
+              "fps": 316.9944462573016,
+              "cpu_machine_percent": 0.2744284152198398,
+              "gpu_busiest_engine_percent": 54.90586982829704,
+              "private_mib": 380.089453125,
+              "gpu_dedicated_mib": 337.19140625,
+              "effect_payload_mib": 158.994140625,
+              "ready_gap_p95_ms": 3.3287000000009357,
+              "sample_wait_mean_ms": 0.010619132492113543,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "source_uploads": 0,
+              "output_allocations": 0
+            }
+          }
+        },
+        {
+          "path": "artifacts/utilization-after2-20261025/report.json",
+          "sha256": "c1053157e528e26105734fb1bbcfdf03faa1e75330507605b0eafbbea5cd715a",
+          "executable_sha256": "dcb830f2b20d3b713fd94bf1866f7dbe7569a0e5ddf2da599fbfdac28ee95c2a",
+          "workload": "gojo-particles",
+          "repeat": 2,
+          "initial_png_sha256": "23d23d6b78aed2f53c2a5c60e11dc9798c38a61278545259fbd675b4269a988a",
+          "phases": {
+            "paced": {
+              "fps": 59.999933700073264,
+              "cpu_machine_percent": 0.12855966051287632,
+              "gpu_busiest_engine_percent": 3.220971578120759,
+              "private_mib": 298.385791015625,
+              "gpu_dedicated_mib": 236.68359375,
+              "effect_payload_mib": 63.28125,
+              "ready_gap_p95_ms": 17.214699999999993,
+              "sample_wait_mean_ms": 0.4467394999999996,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "source_uploads": 0,
+              "output_allocations": 0
+            },
+            "uncapped": {
+              "fps": 529.424172041767,
+              "cpu_machine_percent": 1.2411147842976191,
+              "gpu_busiest_engine_percent": 26.862170769339617,
+              "private_mib": 297.22607421875,
+              "gpu_dedicated_mib": 236.68359375,
+              "effect_payload_mib": 63.28125,
+              "ready_gap_p95_ms": 2.191999999999098,
+              "sample_wait_mean_ms": 0.42089787515346416,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "source_uploads": 0,
+              "output_allocations": 0
+            }
+          }
+        },
+        {
+          "path": "artifacts/utilization-after2-20261025/report.json",
+          "sha256": "c1053157e528e26105734fb1bbcfdf03faa1e75330507605b0eafbbea5cd715a",
+          "executable_sha256": "dcb830f2b20d3b713fd94bf1866f7dbe7569a0e5ddf2da599fbfdac28ee95c2a",
+          "workload": "gojo-composition",
+          "repeat": 2,
+          "initial_png_sha256": "bb3c5b68b31999976583c214fb63554e6d2b86c1770dfc80a8a112c4c31690c0",
+          "phases": {
+            "paced": {
+              "fps": 59.99962770231011,
+              "cpu_machine_percent": 0.002472296269205351,
+              "gpu_busiest_engine_percent": 10.371676841989922,
+              "private_mib": 382.6552734375,
+              "gpu_dedicated_mib": 337.19140625,
+              "effect_payload_mib": 158.994140625,
+              "ready_gap_p95_ms": 17.30289999999968,
+              "sample_wait_mean_ms": 0.012040833333333336,
+              "skipped_slots": 0,
+              "deadline_misses": 1,
+              "source_uploads": 0,
+              "output_allocations": 0
+            },
+            "uncapped": {
+              "fps": 316.80809579316946,
+              "cpu_machine_percent": 0.28432139705224363,
+              "gpu_busiest_engine_percent": 54.86553932654668,
+              "private_mib": 380.1787109375,
+              "gpu_dedicated_mib": 337.19140625,
+              "effect_payload_mib": 158.994140625,
+              "ready_gap_p95_ms": 3.3016000000006898,
+              "sample_wait_mean_ms": 0.010979422439640212,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "source_uploads": 0,
+              "output_allocations": 0
+            }
+          }
+        }
+      ],
+      "summary": {
+        "gojo-particles": {
+          "paced": {
+            "fps": {
+              "median": 59.99953410627896,
+              "min": 59.99913451248466,
+              "max": 59.999933700073264
+            },
+            "cpu_machine_percent": {
+              "median": 0.11867069435075928,
+              "min": 0.10878172818864222,
+              "max": 0.12855966051287632
+            },
+            "gpu_busiest_engine_percent": {
+              "median": 3.226914057442003,
+              "min": 3.220971578120759,
+              "max": 3.2328565367632467
+            },
+            "private_mib": {
+              "median": 298.59614257812495,
+              "min": 298.385791015625,
+              "max": 298.806494140625
+            },
+            "gpu_dedicated_mib": {
+              "median": 236.68359375,
+              "min": 236.68359375,
+              "max": 236.68359375
+            },
+            "effect_payload_mib": {
+              "median": 63.28125,
+              "min": 63.28125,
+              "max": 63.28125
+            },
+            "ready_gap_p95_ms": {
+              "median": 17.26314999999977,
+              "min": 17.214699999999993,
+              "max": 17.311599999999544
+            },
+            "sample_wait_mean_ms": {
+              "median": 0.44813920833333337,
+              "min": 0.4467394999999996,
+              "max": 0.4495389166666671
+            },
+            "skipped_slots": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "deadline_misses": {
+              "median": 1.0,
+              "min": 0,
+              "max": 2
+            },
+            "source_uploads": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "output_allocations": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            }
+          },
+          "uncapped": {
+            "fps": {
+              "median": 530.5773885839725,
+              "min": 529.424172041767,
+              "max": 531.730605126178
+            },
+            "cpu_machine_percent": {
+              "median": 1.2151495400897634,
+              "min": 1.1891842958819079,
+              "max": 1.2411147842976191
+            },
+            "gpu_busiest_engine_percent": {
+              "median": 26.915420299924538,
+              "min": 26.862170769339617,
+              "max": 26.96866983050946
+            },
+            "private_mib": {
+              "median": 297.46044921875,
+              "min": 297.22607421875,
+              "max": 297.69482421875
+            },
+            "gpu_dedicated_mib": {
+              "median": 236.68359375,
+              "min": 236.68359375,
+              "max": 236.68359375
+            },
+            "effect_payload_mib": {
+              "median": 63.28125,
+              "min": 63.28125,
+              "max": 63.28125
+            },
+            "ready_gap_p95_ms": {
+              "median": 2.205699999999524,
+              "min": 2.191999999999098,
+              "max": 2.2193999999999505
+            },
+            "sample_wait_mean_ms": {
+              "median": 0.4237202962979361,
+              "min": 0.42089787515346416,
+              "max": 0.42654271744240807
+            },
+            "skipped_slots": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "deadline_misses": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "source_uploads": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "output_allocations": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            }
+          }
+        },
+        "gojo-composition": {
+          "paced": {
+            "fps": {
+              "median": 59.99976375123872,
+              "min": 59.99962770231011,
+              "max": 59.999899800167334
+            },
+            "cpu_machine_percent": {
+              "median": 0.04944507886442116,
+              "min": 0.002472296269205351,
+              "max": 0.09641786145963697
+            },
+            "gpu_busiest_engine_percent": {
+              "median": 10.32378894565224,
+              "min": 10.275901049314557,
+              "max": 10.371676841989922
+            },
+            "private_mib": {
+              "median": 382.4946044921875,
+              "min": 382.333935546875,
+              "max": 382.6552734375
+            },
+            "gpu_dedicated_mib": {
+              "median": 337.19140625,
+              "min": 337.19140625,
+              "max": 337.19140625
+            },
+            "effect_payload_mib": {
+              "median": 158.994140625,
+              "min": 158.994140625,
+              "max": 158.994140625
+            },
+            "ready_gap_p95_ms": {
+              "median": 17.272300000000087,
+              "min": 17.241700000000492,
+              "max": 17.30289999999968
+            },
+            "sample_wait_mean_ms": {
+              "median": 0.012876541666666668,
+              "min": 0.012040833333333336,
+              "max": 0.013712250000000002
+            },
+            "skipped_slots": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "deadline_misses": {
+              "median": 2.0,
+              "min": 1,
+              "max": 3
+            },
+            "source_uploads": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "output_allocations": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            }
+          },
+          "uncapped": {
+            "fps": {
+              "median": 316.90127102523553,
+              "min": 316.80809579316946,
+              "max": 316.9944462573016
+            },
+            "cpu_machine_percent": {
+              "median": 0.2793749061360417,
+              "min": 0.2744284152198398,
+              "max": 0.28432139705224363
+            },
+            "gpu_busiest_engine_percent": {
+              "median": 54.88570457742186,
+              "min": 54.86553932654668,
+              "max": 54.90586982829704
+            },
+            "private_mib": {
+              "median": 380.13408203125,
+              "min": 380.089453125,
+              "max": 380.1787109375
+            },
+            "gpu_dedicated_mib": {
+              "median": 337.19140625,
+              "min": 337.19140625,
+              "max": 337.19140625
+            },
+            "effect_payload_mib": {
+              "median": 158.994140625,
+              "min": 158.994140625,
+              "max": 158.994140625
+            },
+            "ready_gap_p95_ms": {
+              "median": 3.3151500000008127,
+              "min": 3.3016000000006898,
+              "max": 3.3287000000009357
+            },
+            "sample_wait_mean_ms": {
+              "median": 0.010799277465876878,
+              "min": 0.010619132492113543,
+              "max": 0.010979422439640212
+            },
+            "skipped_slots": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "deadline_misses": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "source_uploads": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "output_allocations": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0
+            }
+          }
+        }
+      }
+    }
+  },
+  "profiles": {
+    "before": {
+      "path": "artifacts/utilization-profile-before-repeat-20261025/report.json",
+      "sha256": "d2bcccf316de0514a07504c143c55112b58f3498fd709704a6efc9218c219407",
+      "executable_sha256": "44c8b53ba945839d45526756a3be53cdcf2985646ccd1f4a89ddfe4379915841",
+      "configuration": {
+        "seconds": 8,
+        "warmup": 2,
+        "idle": 2,
+        "profile_gpu": true,
+        "target_fps": 60,
+        "repeats": 1,
+        "software": false,
+        "resolutions": [
+          [
+            3840,
+            2160
+          ]
+        ]
+      },
+      "workloads": {
+        "gojo-particles": {
+          "paced": {
+            "fps": 59.999088763839396,
+            "cpu_machine_percent": 0.3024209157208159,
+            "gpu_busiest_engine_percent": 3.526994777299084,
+            "private_mib": 302.9747314453125,
+            "gpu_dedicated_mib": 236.68359375,
+            "effect_payload_mib": 63.28125,
+            "ready_gap_p95_ms": 17.38269999999966,
+            "sample_wait_mean_ms": 0.39470791666666677,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 255666304,
+              "gpu_frames": 480,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 480,
+              "worker_prepare_ns": 16217700,
+              "worker_submit_ns": 358979500,
+              "gpu_interval_mean_ms": 0.5326381333333333,
+              "worker_prepare_mean_us": 33.786875,
+              "worker_submit_mean_us": 747.8739583333333
+            }
+          },
+          "uncapped": {
+            "fps": 392.8320438160087,
+            "cpu_machine_percent": 2.0035440473414696,
+            "gpu_busiest_engine_percent": 22.619100049417757,
+            "private_mib": 297.75390625,
+            "gpu_dedicated_mib": 236.68359375,
+            "effect_payload_mib": 63.28125,
+            "ready_gap_p95_ms": 2.8744000000001506,
+            "sample_wait_mean_ms": 0.36637655106586053,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 1704467808,
+              "gpu_frames": 3143,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 3143,
+              "worker_prepare_ns": 90473000,
+              "worker_submit_ns": 2373724000,
+              "gpu_interval_mean_ms": 0.5423060159083678,
+              "worker_prepare_mean_us": 28.78555520203627,
+              "worker_submit_mean_us": 755.2414890232262
+            }
+          }
+        },
+        "gojo-composition": {
+          "paced": {
+            "fps": 59.99977725082695,
+            "cpu_machine_percent": 0.03780292810905403,
+            "gpu_busiest_engine_percent": 10.455968982048855,
+            "private_mib": 418.6031494140625,
+            "gpu_dedicated_mib": 369.07421875,
+            "effect_payload_mib": 190.634765625,
+            "ready_gap_p95_ms": 17.170000000000073,
+            "sample_wait_mean_ms": 0.01705625,
+            "skipped_slots": 0,
+            "deadline_misses": 1,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 804324736,
+              "gpu_frames": 480,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 480,
+              "worker_prepare_ns": 11716100,
+              "worker_submit_ns": 36725300,
+              "gpu_interval_mean_ms": 1.6756765333333334,
+              "worker_prepare_mean_us": 24.408541666666668,
+              "worker_submit_mean_us": 76.51104166666667
+            }
+          },
+          "uncapped": {
+            "fps": 316.402247525627,
+            "cpu_machine_percent": 0.23942147648502343,
+            "gpu_busiest_engine_percent": 55.854807402377475,
+            "private_mib": 412.125,
+            "gpu_dedicated_mib": 369.07421875,
+            "effect_payload_mib": 190.634765625,
+            "ready_gap_p95_ms": 3.3484000000003107,
+            "sample_wait_mean_ms": 0.01292867298578201,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 4338313056,
+              "gpu_frames": 2532,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 2532,
+              "worker_prepare_ns": 63479900,
+              "worker_submit_ns": 193560500,
+              "gpu_interval_mean_ms": 1.7133937819905214,
+              "worker_prepare_mean_us": 25.071050552922593,
+              "worker_submit_mean_us": 76.44569510268562
+            }
+          }
+        }
+      }
+    },
+    "after": {
+      "path": "artifacts/utilization-profile-after-final-20261025/report.json",
+      "sha256": "5e97b155e855df0832c6006e94534823e1e82c0dd0a89ffd0b028cced7eb91c0",
+      "executable_sha256": "dcb830f2b20d3b713fd94bf1866f7dbe7569a0e5ddf2da599fbfdac28ee95c2a",
+      "configuration": {
+        "seconds": 8,
+        "warmup": 2,
+        "idle": 2,
+        "profile_gpu": true,
+        "target_fps": 60,
+        "repeats": 1,
+        "software": false,
+        "resolutions": [
+          [
+            3840,
+            2160
+          ]
+        ]
+      },
+      "workloads": {
+        "gojo-particles": {
+          "paced": {
+            "fps": 59.99953800355737,
+            "cpu_machine_percent": 0.17640980848016807,
+            "gpu_busiest_engine_percent": 3.2684226565257757,
+            "private_mib": 299.6441650390625,
+            "gpu_dedicated_mib": 236.67578125,
+            "effect_payload_mib": 63.28125,
+            "ready_gap_p95_ms": 17.31600000000003,
+            "sample_wait_mean_ms": 0.40395208333333293,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 224757600,
+              "gpu_frames": 480,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 480,
+              "worker_prepare_ns": 15155700,
+              "worker_submit_ns": 66010200,
+              "gpu_interval_mean_ms": 0.468245,
+              "worker_prepare_mean_us": 31.574375,
+              "worker_submit_mean_us": 137.52125
+            }
+          },
+          "uncapped": {
+            "fps": 539.8687780123335,
+            "cpu_machine_percent": 1.1466500546186345,
+            "gpu_busiest_engine_percent": 27.355375756378773,
+            "private_mib": 296.7890625,
+            "gpu_dedicated_mib": 236.67578125,
+            "effect_payload_mib": 63.28125,
+            "ready_gap_p95_ms": 2.129800000000614,
+            "sample_wait_mean_ms": 0.35696170409817074,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 1945631840,
+              "gpu_frames": 4319,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 4319,
+              "worker_prepare_ns": 111372100,
+              "worker_submit_ns": 576345500,
+              "gpu_interval_mean_ms": 0.45048201898587636,
+              "worker_prepare_mean_us": 25.78654781199352,
+              "worker_submit_mean_us": 133.44420004630703
+            }
+          }
+        },
+        "gojo-composition": {
+          "paced": {
+            "fps": 59.99798256783616,
+            "cpu_machine_percent": 0.08190943886940935,
+            "gpu_busiest_engine_percent": 10.350830168386244,
+            "private_mib": 386.3883056640625,
+            "gpu_dedicated_mib": 337.19140625,
+            "effect_payload_mib": 158.994140625,
+            "ready_gap_p95_ms": 17.191499999999905,
+            "sample_wait_mean_ms": 0.013541250000000017,
+            "skipped_slots": 0,
+            "deadline_misses": 1,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 795836064,
+              "gpu_frames": 480,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 480,
+              "worker_prepare_ns": 10955900,
+              "worker_submit_ns": 33689400,
+              "gpu_interval_mean_ms": 1.6579918,
+              "worker_prepare_mean_us": 22.824791666666666,
+              "worker_submit_mean_us": 70.18625
+            }
+          },
+          "uncapped": {
+            "fps": 319.516017080524,
+            "cpu_machine_percent": 0.270911658304432,
+            "gpu_busiest_engine_percent": 55.420975823758035,
+            "private_mib": 380.71875,
+            "gpu_dedicated_mib": 337.19140625,
+            "effect_payload_mib": 158.994140625,
+            "ready_gap_p95_ms": 3.3332999999999995,
+            "sample_wait_mean_ms": 0.010600039108329998,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 4308311424,
+              "gpu_frames": 2557,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 2557,
+              "worker_prepare_ns": 64174600,
+              "worker_submit_ns": 182804200,
+              "gpu_interval_mean_ms": 1.6849086523269456,
+              "worker_prepare_mean_us": 25.097614391865466,
+              "worker_submit_mean_us": 71.49166992569418
+            }
+          }
+        }
+      }
+    }
+  },
+  "limits": [
+    "Two alternating ordinary repetitions per version at 4K; profiling disabled.",
+    "GPU timestamp and worker wall-time profiles are separate eight-second runs.",
+    "GPU intervals include scheduling/pipeline bubbles, exclude upload/readback/presentation.",
+    "Before source identity belongs to the original pinned binary, not later collecting checkouts."
+  ],
+  "exploratory_profiles": {
+    "before": {
+      "path": "artifacts/utilization-profile-before-20261025/report.json",
+      "sha256": "bf36d0bd764fa0e82439c4b19b58cc42a1a78f49e75ea32e60355ed7edaeabc8",
+      "executable_sha256": "44c8b53ba945839d45526756a3be53cdcf2985646ccd1f4a89ddfe4379915841",
+      "workloads": {
+        "gojo-particles": {
+          "paced": {
+            "fps": 59.99664618747812,
+            "cpu_machine_percent": 0.3024245370291962,
+            "gpu_busiest_engine_percent": 3.4978523182591155,
+            "private_mib": 301.50390625,
+            "gpu_dedicated_mib": 236.6796875,
+            "effect_payload_mib": 63.28125,
+            "ready_gap_p95_ms": 17.345500000000357,
+            "sample_wait_mean_ms": 0.3355354166666663,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 248314560,
+              "gpu_frames": 480,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 480,
+              "worker_prepare_ns": 12348000,
+              "worker_submit_ns": 358313300,
+              "gpu_interval_mean_ms": 0.517322,
+              "worker_prepare_mean_us": 25.725,
+              "worker_submit_mean_us": 746.4860416666667
+            }
+          },
+          "uncapped": {
+            "fps": 394.834519590879,
+            "cpu_machine_percent": 2.0413735535172886,
+            "gpu_busiest_engine_percent": 22.45879980602162,
+            "private_mib": 296.8671875,
+            "gpu_dedicated_mib": 236.68359375,
+            "effect_payload_mib": 63.28125,
+            "ready_gap_p95_ms": 2.776900000000751,
+            "sample_wait_mean_ms": 0.33996470402025936,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 1650386720,
+              "gpu_frames": 3159,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 3159,
+              "worker_prepare_ns": 80230000,
+              "worker_submit_ns": 2307242800,
+              "gpu_interval_mean_ms": 0.5224396074707186,
+              "worker_prepare_mean_us": 25.39727761949984,
+              "worker_submit_mean_us": 730.3712567268124
+            }
+          }
+        },
+        "gojo-composition": {
+          "paced": {
+            "fps": 59.99843554079327,
+            "cpu_machine_percent": 0.08820469368876582,
+            "gpu_busiest_engine_percent": 10.868389856191731,
+            "private_mib": 422.422119140625,
+            "gpu_dedicated_mib": 369.08984375,
+            "effect_payload_mib": 190.634765625,
+            "ready_gap_p95_ms": 17.53789999999981,
+            "sample_wait_mean_ms": 0.01631270833333331,
+            "skipped_slots": 0,
+            "deadline_misses": 1,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 903295648,
+              "gpu_frames": 480,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 480,
+              "worker_prepare_ns": 13482700,
+              "worker_submit_ns": 37328300,
+              "gpu_interval_mean_ms": 1.8818659333333334,
+              "worker_prepare_mean_us": 28.08895833333333,
+              "worker_submit_mean_us": 77.76729166666667
+            }
+          },
+          "uncapped": {
+            "fps": 317.94606839814793,
+            "cpu_machine_percent": 0.18901765023475656,
+            "gpu_busiest_engine_percent": 55.978630105762164,
+            "private_mib": 416.7734375,
+            "gpu_dedicated_mib": 369.08984375,
+            "effect_payload_mib": 190.634765625,
+            "ready_gap_p95_ms": 3.292899999999918,
+            "sample_wait_mean_ms": 0.013545518867924397,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 4334795744,
+              "gpu_frames": 2544,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 2544,
+              "worker_prepare_ns": 62515200,
+              "worker_submit_ns": 192098500,
+              "gpu_interval_mean_ms": 1.7039291446540878,
+              "worker_prepare_mean_us": 24.573584905660375,
+              "worker_submit_mean_us": 75.51041666666667
+            }
+          }
+        },
+        "yuta": {
+          "paced": {
+            "fps": 59.99715088529733,
+            "cpu_machine_percent": 0.5292328671318095,
+            "gpu_busiest_engine_percent": 3.273497333069592,
+            "private_mib": 743.08056640625,
+            "gpu_dedicated_mib": 261.1875,
+            "effect_payload_mib": 26.3671875,
+            "ready_gap_p95_ms": 17.970800000000054,
+            "sample_wait_mean_ms": 0.01763083333333335,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 266,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 227960384,
+              "gpu_frames": 480,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 480,
+              "worker_prepare_ns": 162956500,
+              "worker_submit_ns": 34943100,
+              "gpu_interval_mean_ms": 0.4749174666666667,
+              "worker_prepare_mean_us": 339.4927083333333,
+              "worker_submit_mean_us": 72.798125
+            }
+          },
+          "uncapped": {
+            "fps": 596.6927547888374,
+            "cpu_machine_percent": 0.9891766188554381,
+            "gpu_busiest_engine_percent": 28.0431318799652,
+            "private_mib": 736.6400146484375,
+            "gpu_dedicated_mib": 261.1875,
+            "effect_payload_mib": 26.3671875,
+            "ready_gap_p95_ms": 1.8332000000002608,
+            "sample_wait_mean_ms": 0.013867322999581103,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 266,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 2068750624,
+              "gpu_frames": 4774,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 4774,
+              "worker_prepare_ns": 259030900,
+              "worker_submit_ns": 284851200,
+              "gpu_interval_mean_ms": 0.4333369551738584,
+              "worker_prepare_mean_us": 54.2586719731881,
+              "worker_submit_mean_us": 59.66719731881022
+            }
+          }
+        }
+      }
+    },
+    "axis": {
+      "path": "artifacts/utilization-profile-axis-20261025/report.json",
+      "sha256": "7d24353f50fd3c94f1f4a93f9fc8ffc10532e4f4476f005820eeab631c2d805a",
+      "executable_sha256": "67f337b402a0a92ea216db10e1786b91545421b4316cb2da2fe2fd90de9692be",
+      "workloads": {
+        "gojo-particles": {
+          "paced": {
+            "fps": 59.99755284981315,
+            "cpu_machine_percent": 0.26460669264416603,
+            "gpu_busiest_engine_percent": 3.526130478244187,
+            "private_mib": 301.3905029296875,
+            "gpu_dedicated_mib": 236.68359375,
+            "effect_payload_mib": 63.28125,
+            "ready_gap_p95_ms": 17.224599999999555,
+            "sample_wait_mean_ms": 0.3799841666666664,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 254352480,
+              "gpu_frames": 480,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 480,
+              "worker_prepare_ns": 17607700,
+              "worker_submit_ns": 367630800,
+              "gpu_interval_mean_ms": 0.529901,
+              "worker_prepare_mean_us": 36.68270833333334,
+              "worker_submit_mean_us": 765.8975
+            }
+          },
+          "uncapped": {
+            "fps": 396.6893214096738,
+            "cpu_machine_percent": 2.022439508538175,
+            "gpu_busiest_engine_percent": 22.5824073105737,
+            "private_mib": 296.62890625,
+            "gpu_dedicated_mib": 236.68359375,
+            "effect_payload_mib": 63.28125,
+            "ready_gap_p95_ms": 2.778300000000854,
+            "sample_wait_mean_ms": 0.3466900441083803,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 1642086112,
+              "gpu_frames": 3174,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 3174,
+              "worker_prepare_ns": 80966100,
+              "worker_submit_ns": 2418992500,
+              "gpu_interval_mean_ms": 0.517355422810334,
+              "worker_prepare_mean_us": 25.509168241965973,
+              "worker_submit_mean_us": 762.1274417139257
+            }
+          }
+        },
+        "gojo-composition": {
+          "paced": {
+            "fps": 59.9975461003645,
+            "cpu_machine_percent": 0.0,
+            "gpu_busiest_engine_percent": 10.282761940247887,
+            "private_mib": 421.730712890625,
+            "gpu_dedicated_mib": 369.08984375,
+            "effect_payload_mib": 190.634765625,
+            "ready_gap_p95_ms": 17.14559999999983,
+            "sample_wait_mean_ms": 0.016296249999999988,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 792067456,
+              "gpu_frames": 480,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 480,
+              "worker_prepare_ns": 13295300,
+              "worker_submit_ns": 41241400,
+              "gpu_interval_mean_ms": 1.6501405333333334,
+              "worker_prepare_mean_us": 27.698541666666667,
+              "worker_submit_mean_us": 85.91958333333334
+            }
+          },
+          "uncapped": {
+            "fps": 313.573033109088,
+            "cpu_machine_percent": 0.422135965411477,
+            "gpu_busiest_engine_percent": 54.12478239747025,
+            "private_mib": 416.078125,
+            "gpu_dedicated_mib": 369.08984375,
+            "effect_payload_mib": 190.634765625,
+            "ready_gap_p95_ms": 3.293699999999262,
+            "sample_wait_mean_ms": 0.014082303706656077,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 4200649216,
+              "gpu_frames": 2509,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 2509,
+              "worker_prepare_ns": 62128000,
+              "worker_submit_ns": 194829500,
+              "gpu_interval_mean_ms": 1.6742324495815066,
+              "worker_prepare_mean_us": 24.76205659625349,
+              "worker_submit_mean_us": 77.65225189318454
+            }
+          }
+        },
+        "yuta": {
+          "paced": {
+            "fps": 59.995629318404156,
+            "cpu_machine_percent": 0.5292374424672343,
+            "gpu_busiest_engine_percent": 3.1821219186371845,
+            "private_mib": 736.320068359375,
+            "gpu_dedicated_mib": 261.1875,
+            "effect_payload_mib": 26.3671875,
+            "ready_gap_p95_ms": 17.997300000000223,
+            "sample_wait_mean_ms": 0.018135624999999995,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 266,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 220731488,
+              "gpu_frames": 480,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 480,
+              "worker_prepare_ns": 164546100,
+              "worker_submit_ns": 37589600,
+              "gpu_interval_mean_ms": 0.45985726666666665,
+              "worker_prepare_mean_us": 342.804375,
+              "worker_submit_mean_us": 78.31166666666667
+            }
+          },
+          "uncapped": {
+            "fps": 591.9962334239649,
+            "cpu_machine_percent": 0.8694878442598116,
+            "gpu_busiest_engine_percent": 27.73170444300149,
+            "private_mib": 733.7313232421875,
+            "gpu_dedicated_mib": 261.1875,
+            "effect_payload_mib": 26.3671875,
+            "ready_gap_p95_ms": 1.8349000000007436,
+            "sample_wait_mean_ms": 0.013646875000000041,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 266,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 2006368256,
+              "gpu_frames": 4736,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 4736,
+              "worker_prepare_ns": 259640000,
+              "worker_submit_ns": 279143800,
+              "gpu_interval_mean_ms": 0.4236419459459459,
+              "worker_prepare_mean_us": 54.82263513513513,
+              "worker_submit_mean_us": 58.94083614864865
+            }
+          }
+        }
+      }
+    },
+    "candidate": {
+      "path": "artifacts/utilization-profile-candidate-20261025/report.json",
+      "sha256": "c6d41e361d675fca82a92acc9968a55512155a9f3a95531314027a7eb97c405f",
+      "executable_sha256": "1e35def3eeb93446ef91e871176523b005359e09d561cd6a5e2aa42829f440a9",
+      "workloads": {
+        "gojo-particles": {
+          "paced": {
+            "fps": 59.99980050066333,
+            "cpu_machine_percent": 0.06930499886643793,
+            "gpu_busiest_engine_percent": 3.1640894120151737,
+            "private_mib": 298.3941650390625,
+            "gpu_dedicated_mib": 236.68359375,
+            "effect_payload_mib": 63.28125,
+            "ready_gap_p95_ms": 17.43739999999889,
+            "sample_wait_mean_ms": 0.37156104166666654,
+            "skipped_slots": 0,
+            "deadline_misses": 1,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 219376704,
+              "gpu_frames": 480,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 480,
+              "worker_prepare_ns": 11097400,
+              "worker_submit_ns": 59684300,
+              "gpu_interval_mean_ms": 0.45703479999999996,
+              "worker_prepare_mean_us": 23.11958333333333,
+              "worker_submit_mean_us": 124.34229166666667
+            }
+          },
+          "uncapped": {
+            "fps": 550.0940434577044,
+            "cpu_machine_percent": 1.2727310142217587,
+            "gpu_busiest_engine_percent": 27.669047602487066,
+            "private_mib": 295.53515625,
+            "gpu_dedicated_mib": 236.68359375,
+            "effect_payload_mib": 63.28125,
+            "ready_gap_p95_ms": 2.1385999999999967,
+            "sample_wait_mean_ms": 0.3540441263349223,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 1975477440,
+              "gpu_frames": 4401,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 4401,
+              "worker_prepare_ns": 111004300,
+              "worker_submit_ns": 581561800,
+              "gpu_interval_mean_ms": 0.44887012951601907,
+              "worker_prepare_mean_us": 25.222517609634174,
+              "worker_submit_mean_us": 132.14310384003636
+            }
+          }
+        },
+        "gojo-composition": {
+          "paced": {
+            "fps": 59.99712238801746,
+            "cpu_machine_percent": 0.006300201538066418,
+            "gpu_busiest_engine_percent": 10.278393378884068,
+            "private_mib": 387.7867431640625,
+            "gpu_dedicated_mib": 337.19140625,
+            "effect_payload_mib": 158.994140625,
+            "ready_gap_p95_ms": 17.289999999999964,
+            "sample_wait_mean_ms": 0.013226041666666672,
+            "skipped_slots": 0,
+            "deadline_misses": 1,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 790196096,
+              "gpu_frames": 480,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 480,
+              "worker_prepare_ns": 11022100,
+              "worker_submit_ns": 34207200,
+              "gpu_interval_mean_ms": 1.6462418666666667,
+              "worker_prepare_mean_us": 22.96270833333333,
+              "worker_submit_mean_us": 71.265
+            }
+          },
+          "uncapped": {
+            "fps": 317.8598261665484,
+            "cpu_machine_percent": 0.2835173074133847,
+            "gpu_busiest_engine_percent": 54.88409135376665,
+            "private_mib": 381.2138671875,
+            "gpu_dedicated_mib": 337.19140625,
+            "effect_payload_mib": 158.994140625,
+            "ready_gap_p95_ms": 3.3095000000002983,
+            "sample_wait_mean_ms": 0.010603539127015315,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 0,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 4270890944,
+              "gpu_frames": 2543,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 2543,
+              "worker_prepare_ns": 63956800,
+              "worker_submit_ns": 185190300,
+              "gpu_interval_mean_ms": 1.6794695021627999,
+              "worker_prepare_mean_us": 25.15013763271726,
+              "worker_submit_mean_us": 72.82355485646873
+            }
+          }
+        },
+        "yuta": {
+          "paced": {
+            "fps": 59.99846928905227,
+            "cpu_machine_percent": 0.49140203089795265,
+            "gpu_busiest_engine_percent": 3.068769936303806,
+            "private_mib": 743.7821044921875,
+            "gpu_dedicated_mib": 261.1875,
+            "effect_payload_mib": 26.3671875,
+            "ready_gap_p95_ms": 17.99120000000039,
+            "sample_wait_mean_ms": 0.01557520833333333,
+            "skipped_slots": 0,
+            "deadline_misses": 1,
+            "source_uploads": 266,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 212354560,
+              "gpu_frames": 480,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 480,
+              "worker_prepare_ns": 167173600,
+              "worker_submit_ns": 36307600,
+              "gpu_interval_mean_ms": 0.4424053333333333,
+              "worker_prepare_mean_us": 348.2783333333333,
+              "worker_submit_mean_us": 75.64083333333333
+            }
+          },
+          "uncapped": {
+            "fps": 588.3988615906783,
+            "cpu_machine_percent": 0.8379211285038964,
+            "gpu_busiest_engine_percent": 27.819529573536105,
+            "private_mib": 738.5506591796875,
+            "gpu_dedicated_mib": 261.1875,
+            "effect_payload_mib": 26.3671875,
+            "ready_gap_p95_ms": 1.89679999999953,
+            "sample_wait_mean_ms": 0.011496516567544577,
+            "skipped_slots": 0,
+            "deadline_misses": 0,
+            "source_uploads": 266,
+            "output_allocations": 0,
+            "profile": {
+              "gpu_draw_ns": 2017604288,
+              "gpu_frames": 4708,
+              "invalid_gpu_frames": 0,
+              "submitted_frames": 4708,
+              "worker_prepare_ns": 274678300,
+              "worker_submit_ns": 291250600,
+              "gpu_interval_mean_ms": 0.4285480645709431,
+              "worker_prepare_mean_us": 58.3428844519966,
+              "worker_submit_mean_us": 61.86291418861513
+            }
+          }
+        }
+      }
+    }
+  },
+  "playback": {
+    "gojo-particles": {
+      "animated_assets": [],
+      "background_color": [
+        0.699999988079071,
+        0.699999988079071,
+        0.699999988079071,
+        1.0
+      ],
+      "cloud_motions": {},
+      "composition_layers": {},
+      "effect_chains": {
+        "13": [
+          "waterwaves",
+          "waterwaves",
+          "waterripple",
+          "waterflow"
+        ]
+      },
+      "hdr_bloom": false,
+      "image_motions": {
+        "13": "waterwaves"
+      },
+      "object_ids": [
+        13
+      ],
+      "omissions": [
+        "General scene camera, lighting and other postprocessing settings are omitted.",
+        "scene.json object 13: effect effects/pulse/effect.json is omitted: effects/pulse/effect.json: unsupported masked image-motion profile",
+        "Object 13: parallax is omitted.",
+        "Particle particles/presets/snowperspective.json: operator component oscillateposition is omitted.",
+        "Object 127: particle parallax is omitted.",
+        "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced.",
+        "Particle particles/presets/snowperspective.json: operator component oscillateposition is omitted.",
+        "Object 132: particle parallax is omitted.",
+        "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced.",
+        "Particle particles/presets/snowperspective.json: operator component oscillateposition is omitted.",
+        "Object 152: particle parallax is omitted.",
+        "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced.",
+        "Particle particles/presets/snowperspective.json: operator component oscillateposition is omitted.",
+        "Object 155: particle parallax is omitted.",
+        "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced."
+      ],
+      "package_sha256": "d8d291216701a49352a12210245c4210e7353de80ab54a84d0cb1aad56a342c6",
+      "particle_objects": [
+        127,
+        132,
+        152,
+        155
+      ],
+      "precise_blurs": {},
+      "resolved_bindings": [],
+      "settings": {
+        "allow_unsupported_features": true,
+        "animation": true,
+        "image_quality": "Linear",
+        "reduce_flashing": false,
+        "visual_effects": true
+      },
+      "shape_objects": [],
+      "text_objects": [],
+      "user_properties": {},
+      "water_flow_objects": [
+        13
+      ]
+    },
+    "gojo-composition": {
+      "animated_assets": [],
+      "background_color": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "cloud_motions": {},
+      "composition_layers": {
+        "156": [
+          "waterripple",
+          "blurprecise",
+          "blurprecise",
+          "blurprecise",
+          "blurprecise",
+          "blurprecise"
+        ],
+        "800": []
+      },
+      "effect_chains": {
+        "119": [
+          "foliagesway",
+          "foliagesway"
+        ],
+        "382": [
+          "foliagesway",
+          "foliagesway"
+        ]
+      },
+      "hdr_bloom": false,
+      "image_motions": {
+        "119": "foliagesway",
+        "382": "foliagesway"
+      },
+      "object_ids": [
+        243,
+        119,
+        382
+      ],
+      "omissions": [
+        "General scene camera, lighting and other postprocessing settings are omitted.",
+        "scene.json object 243: unsupported image property clampuvs is omitted.",
+        "scene.json object 243: effect effects/spin/effect.json is omitted: effects/spin/effect.json: unsupported masked image-motion profile",
+        "Object 243: effect effects/fluidsimulation/effect.json is omitted.",
+        "Object 243: effect effects/cursorripple/effect.json is omitted.",
+        "Object 243: effect effects/fisheye/effect.json is omitted.",
+        "scene.json object 243: material materials/ninjuras-screenshot-2023-10-24-215149.json uses base-image translucent rendering; custom shader/state is omitted.",
+        "scene.json object 243: unsupported material combinations are omitted.",
+        "Object 156: parallax is omitted.",
+        "Object 156: effect effects/tint/effect.json is omitted.",
+        "Object 173 (): non-image content is omitted.",
+        "Object 269 is invisible.",
+        "Object 403 (): non-image content is omitted.",
+        "scene.json object 119: unsupported image property clampuvs is omitted.",
+        "scene.json object 119: unsupported image property dependencies is omitted.",
+        "Object 119: effect effects/opacity/effect.json is omitted.",
+        "Object 119: effect effects/blend/effect.json is omitted.",
+        "Object 119: effect effects/iris/effect.json is omitted.",
+        "scene.json object 119: effect effects/waterwaves/effect.json is omitted: effects/waterwaves/effect.json: unsupported masked image-motion profile",
+        "scene.json object 119: alpha 2 is clamped to the SDR range.",
+        "scene.json object 119: material materials/Gojo.json uses base-image translucent rendering; custom shader/state is omitted.",
+        "scene.json object 119: unsupported material combinations are omitted.",
+        "scene.json object 382: unsupported image property clampuvs is omitted.",
+        "scene.json object 382: unsupported image property dependencies is omitted.",
+        "Object 382: effect effects/opacity/effect.json is omitted.",
+        "Object 382: effect effects/opacity/effect.json is omitted.",
+        "Object 382: effect effects/blend/effect.json is omitted.",
+        "Object 382: effect effects/iris/effect.json is omitted.",
+        "scene.json object 382: effect effects/waterwaves/effect.json is omitted: effects/waterwaves/effect.json: unsupported masked image-motion profile",
+        "Object 382: effect effects/twirl/effect.json is omitted.",
+        "scene.json object 382: effect effects/waterwaves/effect.json is omitted: effects/waterwaves/effect.json: unsupported masked image-motion profile",
+        "scene.json object 382: material materials/aaaa.json uses base-image translucent rendering; custom shader/state is omitted.",
+        "scene.json object 382: unsupported material combinations are omitted.",
+        "scene.json object 608: text binding uses its authored default; interactive/script updates are omitted.",
+        "Object 608 is invisible.",
+        "scene.json object 420: text binding uses its authored default; interactive/script updates are omitted.",
+        "Object 420 is invisible.",
+        "scene.json object 606: text binding uses its authored default; interactive/script updates are omitted.",
+        "Object 606 is invisible.",
+        "scene.json object 585: text binding uses its authored default; interactive/script updates are omitted.",
+        "Object 585 is invisible.",
+        "scene.json object 656: text binding uses its authored default; interactive/script updates are omitted.",
+        "Object 656 is invisible.",
+        "scene.json object 634: text binding uses its authored default; interactive/script updates are omitted.",
+        "Object 634 is invisible.",
+        "scene.json object 658: text binding uses its authored default; interactive/script updates are omitted.",
+        "Object 658 is invisible.",
+        "scene.json object 633: text binding uses its authored default; interactive/script updates are omitted.",
+        "Object 633 is invisible.",
+        "scene.json object 660: origin binding uses its authored default; interactive/script updates are omitted.",
+        "Object 660 is invisible.",
+        "scene.json object 632: origin binding uses its authored default; interactive/script updates are omitted.",
+        "Object 632 is invisible.",
+        "Object 800: parallax is omitted.",
+        "Object 800: effect effects/workshop/2116673772/crt_scan_line/effect.json is omitted.",
+        "Object 572 (Jujutsu Kaisen\u00ef\u00bc\u0161 Gojo Satoru Hollow Purple Theme \u00ef\u00bd\u0153 EPIC VERSION (Besto Quality Remix).mp3): non-image content is omitted.",
+        "Object 386 is invisible.",
+        "Object 558: unsupported particle layer properties/effects.",
+        "Object 133: unsupported particle layer properties/effects.",
+        "Object 528: unsupported particle layer properties/effects."
+      ],
+      "package_sha256": "8458d78e4e8e4f765b59811468d212c27dd51ad96aa409b4dbac323244568af2",
+      "particle_objects": [],
+      "precise_blurs": {},
+      "resolved_bindings": [
+        "scene.json object 243 effect effects/fluidsimulation/effect.json: visible uses user property liquid.",
+        "scene.json object 243 effect effects/cursorripple/effect.json: visible uses user property liquid.",
+        "scene.json object 243 effect effects/fisheye/effect.json: visible uses user property audioresponsiveblackhole.",
+        "scene.json object 133: visible uses user property lightning.",
+        "scene.json object 528: visible uses user property lightning.",
+        "scene.json object 156 effect effects/tint/effect.json: visible uses user property redbackground.",
+        "scene.json object 156 effect effects/blurradial/effect.json: visible uses user property radialblur.",
+        "scene.json object 156 effect effects/blurprecise/effect.json: visible uses user property blur.",
+        "scene.json object 156 effect effects/blurprecise/effect.json: visible uses user property blur.",
+        "scene.json object 156 effect effects/blurprecise/effect.json: visible uses user property blur.",
+        "scene.json object 156 effect effects/blurprecise/effect.json: visible uses user property blur.",
+        "scene.json object 156 effect effects/blurprecise/effect.json: visible uses user property blur.",
+        "scene.json object 269: visible uses user property bluelight.",
+        "scene.json object 119 effect effects/blend/effect.json: visible uses user property blendclothes.",
+        "scene.json object 382 effect effects/blend/effect.json: visible uses user property blendclothes.",
+        "scene.json object 608: color uses user property textshadow.",
+        "scene.json object 608: visible uses user property media.",
+        "scene.json object 420: color uses user property text.",
+        "scene.json object 420: visible uses user property media.",
+        "scene.json object 606: color uses user property textshadow.",
+        "scene.json object 606: visible uses user property media.",
+        "scene.json object 585: color uses user property text.",
+        "scene.json object 585: visible uses user property media.",
+        "scene.json object 656: color uses user property textshadow.",
+        "scene.json object 656: visible uses user property tod.",
+        "scene.json object 634: color uses user property text.",
+        "scene.json object 634: visible uses user property tod.",
+        "scene.json object 658: color uses user property textshadow.",
+        "scene.json object 658: visible uses user property tod.",
+        "scene.json object 633: color uses user property text.",
+        "scene.json object 633: visible uses user property tod.",
+        "scene.json object 660: color uses user property textshadow.",
+        "scene.json object 660: text uses a checked clock/calendar profile.",
+        "scene.json object 660: visible uses user property tod.",
+        "scene.json object 632: color uses user property text.",
+        "scene.json object 632: text uses a checked clock/calendar profile.",
+        "scene.json object 632: visible uses user property tod.",
+        "scene.json object 800 effect effects/workshop/2116673772/crt_scan_line/effect.json: visible uses user property crt."
+      ],
+      "settings": {
+        "allow_unsupported_features": true,
+        "animation": true,
+        "image_quality": "Linear",
+        "reduce_flashing": false,
+        "visual_effects": true
+      },
+      "shape_objects": [],
+      "text_objects": [],
+      "user_properties": {},
+      "water_flow_objects": []
+    }
+  },
+  "verification": {
+    "collection": {
+      "path": "artifacts/workshop-support-utilization-20261025/report.json",
+      "sha256": "9bcde1235c20d9acd1264dfa7bde590c8620f0e201ca707841c805cd50326e44",
+      "supported": 65,
+      "total": 65,
+      "unchanged_pixel_hashes": 65,
+      "unchanged_playback_reports": 65,
+      "comparison": "artifacts/workshop-support-sprite-windows-20261025/report.json"
+    },
+    "gate": "artifacts/20261025-201802-c17f339a/manifest.json",
+    "browser_particles": "artifacts/browser-utilization-particles-20261025/report.json",
+    "browser_composition": "artifacts/browser-utilization-composition-20261025/report.json",
+    "responsiveness": "benchmarks/results/2026-10-25-cpu-gpu-browser.json",
+    "native_windows": "skipped"
+  }
+}

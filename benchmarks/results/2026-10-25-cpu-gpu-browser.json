@@ -1,0 +1,212 @@
+{
+  "passed": true,
+  "phases": [
+    {
+      "playing": false,
+      "elapsed_seconds": 7.806132399999999,
+      "keyboard_round_trip_ms": {
+        "count": 40,
+        "mean": 1.460519999999906,
+        "p50": 1.4056000000000495,
+        "p95": 1.7786999999989348,
+        "p99": 1.8439000000007582,
+        "max": 1.8439000000007582
+      },
+      "event_to_handler_ms": {
+        "count": 40,
+        "mean": 0.05999999940395355,
+        "p50": 0.09999999403953552,
+        "p95": 0.10000000894069672,
+        "p99": 0.19999998807907104,
+        "max": 0.19999998807907104
+      },
+      "animation_frame_gap_ms": {
+        "count": 2810,
+        "mean": 2.7780071174377223,
+        "p50": 2.7999999999992724,
+        "p95": 2.899999999999636,
+        "p99": 2.900000000001455,
+        "max": 3.7999999999992724
+      },
+      "animation_gaps_over_25ms": 0,
+      "long_tasks_available": true,
+      "long_task_ms": null,
+      "native_completed_frames": 0
+    },
+    {
+      "playing": true,
+      "elapsed_seconds": 7.803025900000001,
+      "keyboard_round_trip_ms": {
+        "count": 40,
+        "mean": 1.656082499999593,
+        "p50": 1.517199999998411,
+        "p95": 1.8044999999983702,
+        "p99": 8.175699999999779,
+        "max": 8.175699999999779
+      },
+      "event_to_handler_ms": {
+        "count": 40,
+        "mean": 0.06749999970197677,
+        "p50": 0.09999999403953552,
+        "p95": 0.10000000894069672,
+        "p99": 0.20000000298023224,
+        "max": 0.20000000298023224
+      },
+      "animation_frame_gap_ms": {
+        "count": 2808,
+        "mean": 2.777991452991454,
+        "p50": 2.7999999999992724,
+        "p95": 2.900000000001455,
+        "p99": 2.900000000001455,
+        "max": 3.3000000000029104
+      },
+      "animation_gaps_over_25ms": 0,
+      "long_tasks_available": true,
+      "long_task_ms": null,
+      "native_completed_frames": 4
+    },
+    {
+      "playing": false,
+      "elapsed_seconds": 7.8025759000000035,
+      "keyboard_round_trip_ms": {
+        "count": 40,
+        "mean": 1.4397824999992737,
+        "p50": 1.4237999999968451,
+        "p95": 1.7125000000014552,
+        "p99": 2.243399999999383,
+        "max": 2.243399999999383
+      },
+      "event_to_handler_ms": {
+        "count": 40,
+        "mean": 0.06000000089406967,
+        "p50": 0.09999999403953552,
+        "p95": 0.10000000894069672,
+        "p99": 0.20000000298023224,
+        "max": 0.20000000298023224
+      },
+      "animation_frame_gap_ms": {
+        "count": 2808,
+        "mean": 2.777991452991454,
+        "p50": 2.7999999999992724,
+        "p95": 2.900000000001455,
+        "p99": 2.900000000001455,
+        "max": 3.100000000002183
+      },
+      "animation_gaps_over_25ms": 0,
+      "long_tasks_available": true,
+      "long_task_ms": null,
+      "native_completed_frames": 0
+    },
+    {
+      "playing": true,
+      "elapsed_seconds": 7.8134693999999945,
+      "keyboard_round_trip_ms": {
+        "count": 40,
+        "mean": 1.4541150000000926,
+        "p50": 1.4256999999997788,
+        "p95": 1.8372000000017579,
+        "p99": 1.9590000000025611,
+        "max": 1.9590000000025611
+      },
+      "event_to_handler_ms": {
+        "count": 40,
+        "mean": 0.06749999932944775,
+        "p50": 0.09999999403953552,
+        "p95": 0.10000000894069672,
+        "p99": 0.20000000298023224,
+        "max": 0.20000000298023224
+      },
+      "animation_frame_gap_ms": {
+        "count": 2812,
+        "mean": 2.7780227596017055,
+        "p50": 2.7999999999956344,
+        "p95": 2.900000000001455,
+        "p99": 2.900000000001455,
+        "max": 3.599999999998545
+      },
+      "animation_gaps_over_25ms": 0,
+      "long_tasks_available": true,
+      "long_task_ms": null,
+      "native_completed_frames": 4
+    }
+  ],
+  "limits": [
+    "Headless Chrome debug consumer with PNG transport, not T3 or native monitor presentation.",
+    "Paused versus playing retains the same loaded renderer. Browser keyboard round trips include Playwright/CDP overhead.",
+    "Event-to-handler delay and animation-frame gaps describe this page, not end-to-end device input latency."
+  ],
+  "adapter": {
+    "name": "NVIDIA GeForce RTX 5080",
+    "software": false
+  },
+  "renderer_sha256": "7d4bbb220bd14a901cd6dc6f02a9ce4d51040f5909e9b93e5dc603460a8fbe4e",
+  "playback": {
+    "animated_assets": [],
+    "background_color": [
+      0.699999988079071,
+      0.699999988079071,
+      0.699999988079071,
+      1
+    ],
+    "cloud_motions": {},
+    "composition_layers": {},
+    "effect_chains": {
+      "13": [
+        "waterwaves",
+        "waterwaves",
+        "waterripple",
+        "waterflow"
+      ]
+    },
+    "hdr_bloom": false,
+    "image_motions": {
+      "13": "waterwaves"
+    },
+    "object_ids": [
+      13
+    ],
+    "omissions": [
+      "General scene camera, lighting and other postprocessing settings are omitted.",
+      "scene.json object 13: effect effects/pulse/effect.json is omitted: effects/pulse/effect.json: unsupported masked image-motion profile",
+      "Object 13: parallax is omitted.",
+      "Particle particles/presets/snowperspective.json: operator component oscillateposition is omitted.",
+      "Object 127: particle parallax is omitted.",
+      "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced.",
+      "Particle particles/presets/snowperspective.json: operator component oscillateposition is omitted.",
+      "Object 132: particle parallax is omitted.",
+      "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced.",
+      "Particle particles/presets/snowperspective.json: operator component oscillateposition is omitted.",
+      "Object 152: particle parallax is omitted.",
+      "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced.",
+      "Particle particles/presets/snowperspective.json: operator component oscillateposition is omitted.",
+      "Object 155: particle parallax is omitted.",
+      "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced."
+    ],
+    "package_sha256": "d8d291216701a49352a12210245c4210e7353de80ab54a84d0cb1aad56a342c6",
+    "particle_objects": [
+      127,
+      132,
+      152,
+      155
+    ],
+    "precise_blurs": {},
+    "resolved_bindings": [],
+    "settings": {
+      "allow_unsupported_features": true,
+      "animation": true,
+      "image_quality": "Linear",
+      "reduce_flashing": false,
+      "visual_effects": true
+    },
+    "shape_objects": [],
+    "text_objects": [],
+    "user_properties": {},
+    "water_flow_objects": [
+      13
+    ]
+  },
+  "cleanup": {
+    "code": 0,
+    "signal": null
+  }
+}

@@ -65,6 +65,53 @@ fn wait_for(renderer: &Renderer, id: u64) -> Arc<wallpaper_kit::Frame> {
 }
 
 #[test]
+fn opt_in_profiling_preserves_pixels_and_stays_idle_without_requests() {
+    let size = Size::new(64, 33).unwrap();
+    let (plain, _) = Renderer::new(size, DeviceMode::Software).unwrap();
+    let (profiled, _) = Renderer::new_profiled(size, DeviceMode::Software).unwrap();
+    let expected = wait_for(&plain, 1).readback().unwrap().rgba;
+    assert_eq!(wait_for(&profiled, 1).readback().unwrap().rgba, expected);
+    for time in [0, 125, 900] {
+        let time = Duration::from_millis(time);
+        let a = plain.render_fixture_at(time).unwrap();
+        let b = profiled.render_fixture_at(time).unwrap();
+        assert_eq!(
+            wait_for(&plain, a).readback().unwrap().rgba,
+            wait_for(&profiled, b).readback().unwrap().rgba
+        );
+    }
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let profile = loop {
+        if let Some(stats) = profiled.try_output_stats().unwrap()
+            && let Some(profile) = stats.profile
+            && profile.gpu_frames + profile.invalid_gpu_frames == 4
+        {
+            break profile;
+        }
+        assert!(Instant::now() < deadline, "profile completion timed out");
+        std::thread::sleep(Duration::from_millis(1));
+    };
+    assert_eq!(profile.submitted_frames, 4);
+    assert!(profile.worker_submit_ns > 0 && profile.worker_prepare_ns > 0);
+    // WARP can report disjoint timestamps. Such samples remain explicitly invalid.
+    if profile.gpu_frames > 0 {
+        assert!(profile.gpu_draw_ns > 0);
+    }
+    std::thread::sleep(Duration::from_millis(30));
+    let after = profiled
+        .try_output_stats()
+        .unwrap()
+        .unwrap()
+        .profile
+        .unwrap();
+    assert_eq!(after.submitted_frames, profile.submitted_frames);
+    assert_eq!(after.gpu_draw_ns, profile.gpu_draw_ns);
+    assert!(plain.try_output_stats().unwrap().unwrap().profile.is_none());
+    plain.shutdown().unwrap();
+    profiled.shutdown().unwrap();
+}
+
+#[test]
 fn retained_frames_bound_output_and_resume_on_release() {
     let (renderer, _events) =
         Renderer::new(Size::new(64, 33).unwrap(), DeviceMode::Software).unwrap();

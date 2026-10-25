@@ -184,6 +184,7 @@ def main():
     parser.add_argument('--idle',type=int,default=2)
     parser.add_argument('--fps',type=int,default=60)
     parser.add_argument('--software',action='store_true')
+    parser.add_argument('--profile-gpu',action='store_true',help='Opt-in timestamp queries and worker timings; separate from production performance runs')
     parser.add_argument('--retry-failed',action='store_true',help='Append retries for failed cases in an existing output; preserve original reports')
     args=parser.parse_args()
     if not (1<=args.repeat<=10 and 1<=args.seconds<=120 and 1<=args.warmup<=60 and 1<=args.idle<=60 and 1<=args.fps<=240):
@@ -239,7 +240,7 @@ def main():
         working_tree=command(['git','status','--porcelain']).splitlines(),sources=source_hashes(),
         executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),rustc=command(['rustc','--version']),
         machine=machine,logical_cpus=os.cpu_count(),configuration=dict(seconds=args.seconds,warmup=args.warmup,idle=args.idle,
-            target_fps=args.fps,repeats=args.repeat,software=args.software,resolutions=resolutions),runs=[])
+            profile_gpu=args.profile_gpu,target_fps=args.fps,repeats=args.repeat,software=args.software,resolutions=resolutions),runs=[])
     for repeat in range(1,args.repeat+1):
         for width,height in resolutions:
             for workload in workloads:
@@ -253,7 +254,7 @@ def main():
                 row=dict(name=workload['name'],description=workload['description'],resolution=f'{width}x{height}',repeat=repeat,
                     folder=str(folder.relative_to(output)),status='failed')
                 config=dict(source=source,width=width,height=height,warmup_seconds=args.warmup,measure_seconds=args.seconds,
-                    idle_seconds=args.idle,target_fps=args.fps,software=args.software)
+                    idle_seconds=args.idle,target_fps=args.fps,software=args.software,profile_gpu=args.profile_gpu)
                 try:
                     row['metrics']=run_case(executable,folder,config,.25)
                     row['status']='passed'

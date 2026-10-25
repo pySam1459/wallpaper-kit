@@ -2,6 +2,17 @@
 
 ## Status
 
+The [CPU/GPU optimization](../../../../docs/cpu-gpu-climb-2026-10-25.md)
+is verified on 25 October 2026. Composition capture reads the unbound scene
+directly into a separate intermediate, removing a redundant snapshot copy and
+allocation. Refraction retains its required snapshot. Existing GPU pixel,
+HDR/refraction, draw-order and resize contracts pass; resource checks expect
+one fewer shared texture. The required software gate, actual Gojo composition
+hardware browser route and all-65 collection sweep pass. All fixed-time hashes
+and playback reports are unchanged. Composition speedup is small; the measured
+4K effect payload saving is 31.64 MiB. See the comparison for raw receipts and
+profiling limits. Native windows are skipped.
+
 [Periodic Pulse](../../../../docs/pulse.md) is verified through headless Chrome
 on 25 October 2026. Image and composition passes support additive/hard-light
 tint, alpha, painted opacity, noise, bounds, power and continuous timing. Both

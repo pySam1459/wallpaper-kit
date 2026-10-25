@@ -39,11 +39,12 @@ selected-image snapshots remain image-only.
 
 ## GPU ownership and limits
 
-The renderer unbinds the accumulated scene, copies it to a separate background
-snapshot and captures the requested rectangle into a shared intermediate.
+The renderer unbinds the accumulated scene and captures the requested rectangle
+directly into a separate shared intermediate.
 Effects alternate between two shared targets. The final pass applies geometry,
 brightness and opacity while blending into the scene. No pass samples its own
-destination. Refraction and composition points share the background snapshot.
+destination. Refraction retains its own background snapshot because it reads
+the previous scene while drawing back into it.
 
 There are at most 32 admitted points, with up to 16 supported effects per point.
 Adjustable captures pass the existing `Size` bound of 64 MiB at RGBA8. Shared
@@ -52,7 +53,8 @@ capture; their merged extent must also pass `Size`. This bounds their combined
 payload to 128 MiB in SDR or 256 MiB in HDR. Targets use RGBA8 in SDR and RGBA16F
 in HDR. Blur scratch is shared too; there are no per-point GPU targets.
 
-Active points require output-sized scene and snapshot targets. These, the
+Active points require an output-sized scene target. A snapshot target is only
+needed for refraction. These, the
 shared intermediates, blur scratch and bloom contribute to
 `OutputStats::effect_texture_bytes`. Masks, noise and normal pages share the
 existing 256 MiB unique source-page budget. Output frames retain their separate

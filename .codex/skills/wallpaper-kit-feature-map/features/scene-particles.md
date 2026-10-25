@@ -2,6 +2,17 @@
 
 ## Status
 
+The [particle submission optimization](../../../../docs/cpu-gpu-climb-2026-10-25.md)
+is verified on 25 October 2026. Consecutive plain quads reuse compatible graphics
+state while preserving per-quad constants, sprite interpolation and draw order.
+Effects, composition points and source/blend changes invalidate reuse. Two
+ordinary 4K repetitions per version show 61.6% lower paced machine CPU and 37.5%
+higher uncapped throughput for the Gojo particle workload. The software gate,
+actual Gojo hardware Playwright/DevTools checks and owned cleanup pass. All 65
+wallpapers preserve fixed-time pixel hashes and complete playback reports.
+Native windows and monitor cadence are unverified. This changes rendering cost,
+not particle feature/fidelity coverage.
+
 The [browser turbulence batch](../../../../docs/particle-profiles.md#browser-turbulence-approximation-24-october)
 adds an explicitly reported harmonic approximation in 16 folders under tolerant
 playback. Strict playback omits it. Independent constant-force GPU pixels, axis
