@@ -424,7 +424,7 @@ float4 blur_vertical(LayerVertex input) : SV_Target {
     uint2 texel = min(uint2(saturate(input.uv) * layer_source_extent),layer_source_extent - 1);
     if (blur_profile != 0) {
         float4 precise = precise_filter(float2(texel),false);
-        return float4(precise.rgb * layer_brightness,precise.a * layer_opacity);
+        return float4(precise.rgb * particle_color.rgb * layer_brightness,precise.a * layer_opacity);
     }
     float4 color = horizontal_image.Load(int3(texel,0));
     if (blur_sigma.y != 0) {
@@ -445,5 +445,5 @@ float4 blur_vertical(LayerVertex input) : SV_Target {
         color = lerp(original_premultiplied(int2(texel)),color,saturate(blur_mask.Load(int3(mask_texel,0)).r));
     }
     float3 straight_rgb = color.a > 0 ? color.rgb / color.a : 0;
-    return float4(straight_rgb * layer_brightness,color.a * layer_opacity);
+    return float4(straight_rgb * particle_color.rgb * layer_brightness,color.a * layer_opacity);
 }

@@ -1,5 +1,10 @@
 # Selected image playback
 
+[Scene property bindings](property-bindings.md) resolve user-option visibility
+and text/color links. Checked clocks/calendars retain their update behavior;
+`ImagePlaybackSample::text_values` exposes submitted text for verification.
+Prepare property changes as a replacement playback outside the host UI thread.
+
 Scene discovery supports basic masked UV Spin, planar single-wave Water Waves
 and [periodic Shake](shake.md). Their masks decode once, share asset identity, and are sampled on
 the GPU at the common playback time. `ImagePlaybackReport::image_motions` records

@@ -2,6 +2,18 @@
 
 ## Status
 
+[Property bindings](../../../../docs/property-bindings.md) are verified through
+headless Chrome on 25 October 2026. Direct checkbox/combo visibility and text/color
+links resolve during preparation. Eight checked clock/calendar profiles retain
+script options, including nested user links, without a JavaScript runtime.
+Nine WARP/hardware reference cases compare installed-script formatting and exact
+literal-text pixels, including blurred tint, failed updates, rewind, bounds and
+cleanup. Actual `3299011444` passes Playwright/DevTools controls and property
+replacement. The collection retains 65/65 loading and all previous objects/effect
+inputs; saved-default binding notices fall from 106 in 13 folders to 29 in seven.
+Recognized bindings can still belong to hidden or unrenderable optional objects.
+Arbitrary scripts, media text, localized profiles and native cadence remain open.
+
 [Ordered image effects](../../../../docs/image-effect-chains.md) are verified on
 25 October 2026. Scene snapshots/playback apply up to 16 supported passes in
 authored order; unsupported optional passes remain named omissions. WARP and

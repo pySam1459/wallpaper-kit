@@ -81,6 +81,8 @@ await window.wallpaperTest.play();
 await window.wallpaperTest.pause();
 await window.wallpaperTest.capture();
 await window.wallpaperTest.inspect();
+await window.wallpaperTest.setProperties({ clock: true, _24h: false });
+await window.wallpaperTest.setCalendarTime(Date.UTC(2026, 9, 25, 13, 4, 5));
 window.wallpaperTest.pixel(40, 100); // displayed native RGBA
 ```
 
@@ -88,6 +90,12 @@ Use snapshot, screenshot, console and network tools on the same page. Clients
 saving files through DevTools MCP must provide a workspace root containing the
 destination. The verifier grants only its evidence directory. Disconnecting
 stops the owned Chrome, HTTP server and renderer.
+
+`setProperties` merges a bounded update and prepares a replacement playback in
+the native debug process. Failed preparation retains the previous playback.
+`setCalendarTime` fixes wall time for text captures and pauses scene playback.
+Property names vary by scene. See [property binding verification](property-bindings.md)
+for the installed-script formatting oracle and literal-text pixel comparison.
 
 For manual browsing, run `pwsh -File scripts/start-browser-test.ps1` and open its
 printed local URL in Chrome. Scene and software arguments match the verifier.

@@ -874,6 +874,128 @@ fn image_chain_limit_is_explicit_in_strict_and_tolerant_playback() {
     playback.shutdown().unwrap();
 }
 
+#[test]
+fn direct_user_visibility_selects_authored_layers_and_all_hidden_clear() {
+    let mut first = object(1);
+    let mut second = object(2);
+    for image in [&mut first, &mut second] {
+        image["size"] = json!("2 2");
+        image["scale"] = json!("1 1 1");
+        image["angles"] = json!("0 0 0");
+        image["alpha"] = json!(1);
+        image["brightness"] = json!(1);
+    }
+    first["origin"] = json!("2 2 0");
+    first["visible"] = json!({"user":"show","value":true});
+    second["origin"] = json!("6 2 0");
+    second["visible"] = json!({"user":{"name":"mode","condition":"b"},"value":false});
+    let tex = texture_checks::tex(0, [1, 1], &[200, 40, 80, 255], false, false);
+    let package = snapshot_package(
+        json!([first.clone(), second.clone()]),
+        model(),
+        material(false),
+        &tex,
+    );
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    let size = Size::new(16, 12).unwrap();
+    let (renderer, events) = Renderer::new(size, DeviceMode::Software).unwrap();
+    for (properties, ids, left, right) in [
+        (json!({}), vec![1], true, false),
+        (json!({"show":false,"mode":"b"}), vec![2], false, true),
+        (json!({"show":true,"mode":"b"}), vec![1, 2], true, true),
+        (json!({"show":false,"mode":"a"}), vec![], false, false),
+    ] {
+        let properties = serde_json::from_value(properties).unwrap();
+        let playback = ImagePlayback::open_scene_images_with_properties(
+            &source,
+            PlaybackSettings::default(),
+            &properties,
+        )
+        .unwrap();
+        assert_eq!(playback.report().object_ids, ids);
+        assert_eq!(playback.report().resolved_bindings.len(), 2);
+        assert!(
+            !playback
+                .report()
+                .omissions
+                .iter()
+                .any(|s| s.contains("binding uses"))
+        );
+        let id = renderer
+            .render_images(playback_sample(&playback).composition)
+            .unwrap();
+        let pixels = wait(&renderer, &events, id).readback().unwrap().rgba;
+        for (x, visible) in [(1, left), (5, right)] {
+            let offset = (9 * 16 + x) * 4;
+            assert_eq!(
+                &pixels[offset..offset + 4],
+                if visible {
+                    &[200, 40, 80, 255]
+                } else {
+                    &wallpaper_kit::BLANK_RGBA
+                }
+            );
+        }
+        playback.shutdown().unwrap();
+    }
+    first["visible"]["value"] = json!(false);
+    let hidden = snapshot_package(json!([first, second]), model(), material(false), &tex);
+    let playback = ImagePlayback::open_scene_images(&SceneSource {
+        package: hidden.root.join("scene.pkg"),
+        engine_assets: hidden.root.join("engine"),
+    })
+    .unwrap();
+    assert!(playback_sample(&playback).composition.layers().is_empty());
+    playback.shutdown().unwrap();
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn user_overrides_reject_invalid_inputs_without_changing_existing_playback() {
+    let mut image = object(1);
+    image["visible"] = json!({"user":"show","value":true});
+    let tex = texture_checks::tex(0, [1, 1], &[200, 40, 80, 255], false, false);
+    let package = snapshot_package(json!([image]), model(), material(false), &tex);
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    let playback = ImagePlayback::open_scene_images(&source).unwrap();
+    let retained = playback_sample(&playback);
+    for value in [
+        json!({"show":"false"}),
+        json!({"show":null}),
+        json!({"show":{"value":false}}),
+        json!({"bad/key":true}),
+        json!({"show":"x".repeat(257)}),
+    ] {
+        let properties = serde_json::from_value(value).unwrap();
+        assert!(
+            ImagePlayback::open_scene_images_with_properties(
+                &source,
+                PlaybackSettings::default(),
+                &properties
+            )
+            .is_err()
+        );
+        assert_eq!(playback.report().object_ids, [1]);
+        assert_eq!(retained.composition.layers().len(), 1);
+    }
+    let properties = (0..129).map(|i| (format!("key{i}"), json!(true))).collect();
+    assert!(
+        ImagePlayback::open_scene_images_with_properties(
+            &source,
+            PlaybackSettings::default(),
+            &properties
+        )
+        .is_err()
+    );
+    playback.shutdown().unwrap();
+}
+
 fn background_package(general: Value, texture: &[u8]) -> Package {
     let mut general = general;
     general["orthogonalprojection"] = json!({"width":6,"height":1});

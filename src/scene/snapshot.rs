@@ -32,6 +32,7 @@ pub(crate) struct ImagePlan {
     pub(super) text_objects: Vec<super::RawObject>,
     pub(super) hdr: Option<super::hdr::HdrBloom>,
     pub omissions: Vec<String>,
+    pub resolved_bindings: Vec<String>,
 }
 
 pub(crate) struct LayerDescription {
@@ -74,6 +75,7 @@ pub(super) fn video_plan(size: Size) -> ImagePlan {
         text_objects: Vec::new(),
         hdr: None,
         omissions: Vec::new(),
+        resolved_bindings: Vec::new(),
     }
 }
 
@@ -239,6 +241,16 @@ pub(crate) fn plan(
     selection: Option<&[u64]>,
     settings: super::PlaybackSettings,
 ) -> Result<ImagePlan, InspectionError> {
+    plan_with_properties(decoder, selection, settings, &BTreeMap::new())
+}
+
+pub(super) fn plan_with_properties(
+    decoder: &TextureDecoder,
+    selection: Option<&[u64]>,
+    settings: super::PlaybackSettings,
+    properties: &BTreeMap<String, Value>,
+) -> Result<ImagePlan, InspectionError> {
+    super::bindings::validate(properties)?;
     let tolerant = selection.is_none() && settings.allow_unsupported_features;
     let selected: Option<BTreeSet<_>> = selection.map(|ids| ids.iter().copied().collect());
     if let (Some(ids), Some(selected)) = (selection, &selected)
@@ -344,6 +356,8 @@ pub(crate) fn plan(
     if hdr.is_some() {
         omissions.push("HDR bloom uses a bounded floating-point filter pyramid; exact Wallpaper Engine bloom filtering is unverified.".into());
     }
+    let mut resolved_bindings = Vec::new();
+    let mut bound_visibility = false;
     for mut object in raw.objects {
         if !seen.insert(object.id) {
             return Err(InspectionError::invalid(
@@ -362,19 +376,29 @@ pub(crate) fn plan(
             continue;
         }
         let context = format!("scene.json object {}", object.id);
-        if tolerant {
-            for (key, value) in &mut object.properties {
-                if let Some(default) = value.get("value").cloned() {
-                    omissions.push(format!("{context}: {key} binding uses its authored default; interactive/script updates are omitted."));
-                    *value = default;
-                }
-            }
-            for effect in &mut object.effects {
-                for value in effect.properties.values_mut() {
-                    if let Some(default) = value.get("value").cloned() {
-                        *value = default;
-                    }
-                }
+        for (key, value) in &mut object.properties {
+            let resolved = super::bindings::resolve(
+                value,
+                key,
+                &context,
+                properties,
+                tolerant,
+                &mut resolved_bindings,
+                &mut omissions,
+            )?;
+            bound_visibility |= key == "visible" && resolved;
+        }
+        for effect in &mut object.effects {
+            for (key, value) in &mut effect.properties {
+                super::bindings::resolve(
+                    value,
+                    key,
+                    &format!("{context} effect {}", effect.file),
+                    properties,
+                    tolerant,
+                    &mut resolved_bindings,
+                    &mut omissions,
+                )?;
             }
         }
         let discovered_model = if selected.is_none() {
@@ -846,7 +870,7 @@ pub(crate) fn plan(
             "selected object ID is missing",
         ));
     }
-    if layers.is_empty() || layers.len() > 32 {
+    if (layers.is_empty() && !(selection.is_none() && bound_visibility)) || layers.len() > 32 {
         return Err(InspectionError::invalid(
             "scene.json",
             "image plan requires 1..=32 visible image layers",
@@ -864,6 +888,7 @@ pub(crate) fn plan(
         text_objects,
         hdr,
         omissions,
+        resolved_bindings,
     })
 }
 

@@ -84,9 +84,18 @@ omissions fall to zero folders, Shake to three, Water Waves to seven and Foliage
 Sway to one. Remaining profiles are still explicit. Installed-shader browser checks
 pass on WARP and hardware, and actual-scene Playwright/DevTools checks pass.
 
-Bindings now lead at 13 folders, followed by composition layers, optional-object
-failures and particle flags at 12 each. Next, inventory the 106 binding defaults
-and implement the most common concrete property updates. Arbitrary SceneScript
+Bindings then led at 13 folders with 106 saved defaults. The
+[property-binding batch](property-bindings.md) resolves 77 of those notices,
+including visibility, text/color links and checked clock/calendar profiles.
+Nested clock options also resolve. The
+[latest audit](../artifacts/workshop-fidelity-bindings-final-20261025/report.md)
+retains 65/65 loading and all previous objects/effect inputs. Remaining binding
+fallbacks total 29 across seven folders; they remain explicitly reported.
+
+Composition layers, optional-object preparation failures and particle flags now
+lead at 12 folders each. Next, inventory the 17 composition points and implement
+the most common supported passes at their authored draw positions. These process
+the accumulated scene, separately from per-image chains. Arbitrary SceneScript
 execution remains a separate design. The baseline table below retains historical
 counts; use the latest catalog for current priorities.
 

@@ -2,6 +2,7 @@ use crate::assets::package::Package;
 use serde::{Deserialize, Serialize};
 use std::{fmt, path::PathBuf};
 
+mod bindings;
 mod cloud;
 mod flow;
 pub(crate) mod hdr;

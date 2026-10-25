@@ -37,6 +37,11 @@ distortion and scrolling, with headless browser shader comparisons. Perspective 
 authored order, adding 70 passes across 21 local wallpapers. Browser shader
 comparisons pass on WARP and hardware; all 65 wallpapers still load.
 
+[Property bindings](docs/property-bindings.md) support user-option visibility,
+text/color links and checked clocks/calendars. Nested clock options update too.
+Browser references pass on WARP and hardware; 77 of the collection's 106 original
+default-only binding notices are resolved. General SceneScript remains omitted.
+
 ## Build and run
 
 Requires Windows, Rust 1.91 or newer with the MSVC toolchain and C++ build tools, and PowerShell 7 for verification scripts. Hardware runs require a Direct3D 11 feature-level 11.0 adapter. Software WARP runs are available explicitly for CI.

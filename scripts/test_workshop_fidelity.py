@@ -16,6 +16,16 @@ def fixtures(messages):
 
 
 class FidelityAudit(unittest.TestCase):
+    def test_resolved_bindings_do_not_hide_remaining_script_fallbacks(self):
+        report, inventory = fixtures(["scene.json object 1: origin binding uses its authored default; interactive/script updates are omitted."])
+        report["wallpapers"][0]["evidence"]["playback"]["resolved_bindings"] = [
+            "scene.json object 1: visible uses user property clock.",
+            "scene.json object 2: text uses a checked clock/calendar profile."]
+        result = audit["summarize"](report, inventory)
+        self.assertEqual(result["applied_features"]["recognized-user-property-links"], ["1"])
+        self.assertEqual(result["applied_features"]["recognized-clock-calendar-bindings"], ["1"])
+        self.assertEqual(result["groups"][0]["key"], "bindings")
+
     def test_applied_chains_count_wallpapers_once_and_keep_every_effect(self):
         report, inventory = fixtures([])
         report["wallpapers"][0]["evidence"]["playback"]["effect_chains"] = {

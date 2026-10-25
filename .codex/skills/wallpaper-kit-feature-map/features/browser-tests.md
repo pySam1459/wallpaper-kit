@@ -7,6 +7,11 @@ and video scene `2630394084`. See [browser verification](../../../../docs/browse
 for receipts and setup. The required software/headless gate passed; native
 window scenarios were skipped in that run.
 
+The [property-binding route](../../../../docs/property-bindings.md) also passes
+nine WARP/hardware cases with installed-script formatting and literal-text pixel
+oracles. Actual `3299011444` passes Playwright/DevTools controls and replacement
+preparation while paused. It retains the frame hash and cleans up owned processes.
+
 ## Consumer outcome
 
 Agents inspect real native renderer pixels, omissions, errors and controls in
@@ -24,9 +29,9 @@ and isolated Chrome and exposes the official DevTools tools.
 ## Drive and observe
 
 Use `window.wallpaperTest.ready`, `inspect`, `seek`, `play`, `pause`, `resize`,
-`capture` and `pixel`. Tests compare native/canvas hashes and independent sprite
+`capture`, `pixel`, `setProperties` and `setCalendarTime`. Tests compare native/canvas hashes and independent sprite
 colours, rewind, live advancement, paused inactivity, bounds, error recovery,
-MCP snapshots/screenshots and process cleanup. Retain the run's `report.json`,
+MCP property replacement, snapshots/screenshots and process cleanup. Property updates prepare a replacement in the native process; invalid preparation retains the prior playback. Retain the run's `report.json`,
 `renderer-transcript.json`, `trace.zip`, screenshots and `cleanup.json`.
 
 ## Evidence and limits

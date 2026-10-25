@@ -11,12 +11,13 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeMap,
     error::Error,
     fs,
     io::{self, BufRead, Write},
     path::PathBuf,
     sync::mpsc::{Receiver, RecvTimeoutError},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use wallpaper_kit::{
     DeviceMode, Frame, ImagePlayback, ImagePlaybackSample, ImageQuality, PlaybackSettings,
@@ -41,10 +42,14 @@ enum Command {
     Pause,
     Seek { time_ms: u64 },
     Resize { width: u32, height: u32 },
+    SetProperties { properties: BTreeMap<String, Value> },
+    SetCalendarTime { unix_ms: u64 },
     Stop,
 }
 
 struct Viewer {
+    source: SceneSource,
+    calendar_time: Option<SystemTime>,
     playback: ImagePlayback,
     renderer: Renderer,
     events: Receiver<()>,
@@ -107,6 +112,8 @@ impl Viewer {
         let size = Size::new(640, 360)?;
         let (renderer, events) = Renderer::new(size, mode)?;
         Ok(Self {
+            source,
+            calendar_time: None,
             playback,
             renderer,
             events,
@@ -171,7 +178,7 @@ impl Viewer {
     }
 
     fn command(&mut self, command: &Command) -> Result<Vec<u8>> {
-        match *command {
+        match command {
             Command::Frame => return self.frame(),
             Command::Inspect | Command::Stop => (),
             Command::Play => self.playback.play(),
@@ -183,15 +190,46 @@ impl Viewer {
                 }
             }
             Command::Seek { time_ms } => {
-                if time_ms > 86_400_000 {
+                if *time_ms > 86_400_000 {
                     return Err("seek must be within one day".into());
                 }
-                self.playback.seek(Duration::from_millis(time_ms));
+                self.playback.seek(Duration::from_millis(*time_ms));
             }
             Command::Resize { width, height } => {
-                let size = Size::new(width, height)?;
+                let size = Size::new(*width, *height)?;
                 self.renderer.resize(size)?;
                 self.size = size;
+            }
+            Command::SetProperties { properties } => {
+                let mut merged = self.playback.report().user_properties.clone();
+                merged.extend(properties.clone());
+                let mut replacement = ImagePlayback::open_scene_images_with_properties(
+                    &self.source,
+                    self.playback.report().settings,
+                    &merged,
+                )?;
+                replacement.seek(self.playback.time());
+                if let Some(time) = self.calendar_time {
+                    replacement.set_calendar_time(time);
+                }
+                if self.playback.playing() {
+                    replacement.play();
+                }
+                let previous = std::mem::replace(&mut self.playback, replacement);
+                self.last_sample = None;
+                self.last_frame = None;
+                previous.shutdown()?;
+            }
+            Command::SetCalendarTime { unix_ms } => {
+                if *unix_ms > 4_102_444_800_000 {
+                    return Err("calendar time must be within 1970..=2100".into());
+                }
+                let time = SystemTime::UNIX_EPOCH + Duration::from_millis(*unix_ms);
+                self.calendar_time = Some(time);
+                self.playback.set_calendar_time(time);
+                self.playback.seek(self.playback.time());
+                self.last_sample = None;
+                self.last_frame = None;
             }
         }
         Ok(Vec::new())
@@ -205,6 +243,7 @@ fn frame_info(frame: &Frame, sample: &ImagePlaybackSample, rgba: &[u8]) -> Value
         "width": frame.size().width(), "height": frame.size().height(),
         "sha256": format!("{:x}", Sha256::digest(rgba)),
         "adapter": {"name": adapter.name, "software": adapter.software},
+        "text_values": sample.text_values,
     })
 }
 

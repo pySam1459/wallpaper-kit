@@ -14,6 +14,7 @@ use std::{collections::BTreeMap, sync::Arc};
 enum Content {
     Static(String),
     Clock {
+        dashes: bool,
         twenty_four: bool,
         seconds: bool,
         delimiter: String,
@@ -42,7 +43,39 @@ pub(super) struct TextLayer {
     angle: f32,
     brightness: f32,
     opacity: f32,
+    color: [f32; 3],
     blur: Option<PreciseBlur>,
+}
+
+pub(super) fn supported(value: &Value) -> bool {
+    value.get("script").is_some() && content(value, "text binding").is_ok()
+}
+
+fn clock_style(hash: &str) -> Option<bool> {
+    match hash {
+        "ebf5e5f476ec0a0e35c9dd5c77a9691e23468d24b58a465488157c9e026e4912"
+        | "b73c5f496cbb5bdd2c582c7ace579f0afb0798843e93b8468d8768167d6cda02" => Some(true),
+        "25048b0e1368f6f68ac7264964ce0b8ded11107a06ae797f1fb0da0fafca682b"
+        | "7398f676f302c25a0db2c2b0ee8bcbbb31be0edcdc8d7c516854e942fe790d2d"
+        | "21da5a871a27f7c017c9810b364beb5effe027548767d18b6bb4683fc687e11c"
+        | "d5ccb4c690159bee3cc362bf7d7703c56d581b89aa5e7f595c3304ab0bebb328" => Some(false),
+        _ => None,
+    }
+}
+
+pub(super) fn known_script(value: &Value) -> bool {
+    value
+        .get("script")
+        .and_then(Value::as_str)
+        .is_some_and(|script| {
+            let hash = format!("{:x}", Sha256::digest(script.as_bytes()));
+            clock_style(&hash).is_some()
+                || matches!(
+                    hash.as_str(),
+                    "dca4b368c3630dec922fd4015afec4962069827b2d45d18af83ff3ab80608f67"
+                        | "2bca0f3a950267440fe733611caee5481f7d60617b318a78ffd60235e29ce1bb"
+                )
+        })
 }
 
 fn content(value: &Value, asset: &str) -> Result<Content, InspectionError> {
@@ -59,6 +92,9 @@ fn content(value: &Value, asset: &str) -> Result<Content, InspectionError> {
     }
     let hash = format!("{:x}", Sha256::digest(script.as_bytes()));
     let props = &value["scriptproperties"];
+    if !props.is_null() && !props.is_object() {
+        return Err(invalid());
+    }
     let boolean = |name, default| {
         props
             .get(name)
@@ -71,8 +107,9 @@ fn content(value: &Value, asset: &str) -> Result<Content, InspectionError> {
                 .and_then(|s| checked_string(s, asset))
         })
     };
-    if hash == "ebf5e5f476ec0a0e35c9dd5c77a9691e23468d24b58a465488157c9e026e4912" {
+    if let Some(dashes) = clock_style(&hash) {
         return Ok(Content::Clock {
+            dashes,
             twenty_four: boolean("use24hFormat", true)?,
             seconds: boolean("showSeconds", false)?,
             delimiter: string("delimiter", ":")?,
@@ -107,7 +144,7 @@ fn content(value: &Value, asset: &str) -> Result<Content, InspectionError> {
         vertical: boolean("alignVertical", false)?,
     })
 }
-fn checked_string(text: &str, asset: &str) -> Result<String, InspectionError> {
+pub(super) fn checked_string(text: &str, asset: &str) -> Result<String, InspectionError> {
     if text.len() > 256
         || text
             .chars()
@@ -125,6 +162,7 @@ impl Content {
         match self {
             Self::Static(text) => text.clone(),
             Self::Clock {
+                dashes,
                 twenty_four,
                 seconds,
                 delimiter,
@@ -135,7 +173,8 @@ impl Content {
                     let h = now.hour() % 12;
                     if h == 0 { 12 } else { h }
                 };
-                let mut text = format!("-{hour:02}{delimiter}{:02}-", now.minute());
+                let border = if *dashes { "-" } else { "" };
+                let mut text = format!("{border}{hour:02}{delimiter}{:02}{border}", now.minute());
                 if *seconds {
                     text += &format!("{delimiter}{:02}", now.second());
                 }
@@ -390,6 +429,13 @@ pub(super) fn prepare(
                 blur = Some(super::precise::load(&decoder.package, effect)?);
             }
         }
+        let color = snapshot::vector(p.get("color"), [1.; 3], &asset)?;
+        if color.iter().any(|v| !(0. ..=1.).contains(v)) {
+            return Err(InspectionError::invalid(
+                &asset,
+                "text color requires components in 0..=1",
+            ));
+        }
         result.push(TextLayer {
             id: object.id,
             content: content(&p["text"], &asset)?,
@@ -400,6 +446,7 @@ pub(super) fn prepare(
             brightness: snapshot::scalar(p.get("brightness"), 1., &asset)?,
             opacity: snapshot::scalar(p.get("alpha"), 1., &asset)?,
             blur,
+            color,
         });
     }
     Ok(result)
@@ -409,12 +456,14 @@ impl TextLayer {
     pub(super) fn page(&self) -> Arc<TexturePage> {
         self.glyphs.page.clone()
     }
+    pub(super) fn value(&self, now: chrono::DateTime<Local>) -> String {
+        self.content.value(now)
+    }
     pub(super) fn append(
         &self,
-        now: chrono::DateTime<Local>,
+        text: &str,
         layers: &mut Vec<ImageLayer>,
     ) -> Result<(), InspectionError> {
-        let text = self.content.value(now);
         if text.len() > 256 {
             return Err(InspectionError::invalid(
                 "text sample",
@@ -425,7 +474,7 @@ impl TextLayer {
         layout.reset(&LayoutSettings::default());
         layout.append(
             &[&self.glyphs.font],
-            &TextStyle::new(&text, self.glyphs.pixels, 0),
+            &TextStyle::new(text, self.glyphs.pixels, 0),
         );
         let width = layout
             .glyphs()
@@ -468,6 +517,7 @@ impl TextLayer {
             )
             .map_err(|e| InspectionError::invalid("text sample", e.to_string()))?
             .with_image_quality(super::ImageQuality::Linear);
+            layer.particle_color = Some((self.color, false));
             if let Some(blur) = self.blur {
                 layer = layer.with_precise_blur(blur);
             }

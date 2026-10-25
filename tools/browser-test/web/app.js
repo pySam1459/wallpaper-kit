@@ -64,6 +64,8 @@ const api = {
   capture: () => serial(draw),
   seek: time => { stopPolling(); return serial(async () => { await command('seek', { time_ms: time }); return draw(); }); },
   resize: (width, height) => serial(async () => { await command('resize', { width, height }); return draw(); }),
+  setProperties: properties => serial(async () => { await command('set_properties', { properties }); return draw(); }),
+  setCalendarTime: unixMs => { stopPolling(); return serial(async () => { await command('set_calendar_time', { unix_ms: unixMs }); return draw(); }); },
   play: () => serial(async () => { const next = await command('play'); if (!playing) { playing = true; animationFrame = requestAnimationFrame(tick); } return next; }),
   pause: () => { stopPolling(); return serial(() => command('pause')); },
   pixel: (x, y) => [...context.getImageData(x, y, 1, 1).data],

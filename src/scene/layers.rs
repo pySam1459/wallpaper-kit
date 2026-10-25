@@ -390,8 +390,7 @@ impl ImageComposition {
         layers: Vec<ImageLayer>,
         retained: &[Arc<TexturePage>],
     ) -> Result<Self, Error> {
-        if layers.is_empty()
-            || layers.len() > 4096 + 32
+        if layers.len() > 4096 + 32
             || layers
                 .iter()
                 .filter(|layer| layer.particle_color.is_none())

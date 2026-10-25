@@ -35,7 +35,8 @@ try {
   page.on('console', message => consoleMessages.push({ type: message.type(), text: message.text() }));
   page.on('pageerror', e => pageErrors.push(e.message));
   await page.goto(harness.url);
-  const initial = await page.evaluate(() => window.wallpaperTest.ready);
+  let initial = await page.evaluate(() => window.wallpaperTest.ready);
+  if (!initial.fixture) initial = await page.evaluate(() => window.wallpaperTest.setCalendarTime(Date.UTC(2026, 9, 25, 13, 4, 5)));
   assert(initial.ready && initial.frame.sha256);
   assert.equal(initial.frame.adapter.software, !values.hardware, 'Use the explicitly selected rendering adapter');
   assert.match(initial.renderer_sha256, /^[a-f0-9]{64}$/);
@@ -118,9 +119,10 @@ try {
   const ownedPages = pages.content.filter(c => c.type === 'text').flatMap(c => c.text.split('\n')).filter(line => line.includes(`(${harness.url})`));
   assert.equal(ownedPages.length, 1, 'Select only the exact owned harness tab');
   const pageId = Number(ownedPages[0].match(/^(\d+):/)[1]);
-  const evaluation = await mcp.callTool({ name: 'evaluate_script', arguments: { pageId, function: 'async () => ({ title: document.title, state: await window.wallpaperTest.inspect() })' } });
+  const evaluation = await mcp.callTool({ name: 'evaluate_script', arguments: { pageId, function: 'async () => { const before = await window.wallpaperTest.inspect(); const state = await window.wallpaperTest.setProperties({}); if (!before.playing && state.frame.sha256 !== before.frame.sha256) throw Error("Property preparation changed paused pixels"); return {title:document.title,state}; }' } });
   assert(!evaluation.isError, JSON.stringify(evaluation));
   assert(JSON.stringify(evaluation).includes('wallpaper-kit browser test'));
+  report.checks.push('Chrome DevTools property replacement preserves paused pixels');
   const snapshot = await mcp.callTool({ name: 'take_snapshot', arguments: { pageId } });
   assert(!snapshot.isError, JSON.stringify(snapshot));
   const shot = await mcp.callTool({ name: 'take_screenshot', arguments: { pageId, filePath: path.join(harness.output, 'devtools.png') } });

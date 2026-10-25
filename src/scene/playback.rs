@@ -53,6 +53,11 @@ pub struct ImagePlaybackReport {
     pub text_objects: Vec<u64>,
     /// Unsupported and unselected behavior. This is not full scene support.
     pub omissions: Vec<String>,
+    /// Direct user-property overrides used during preparation.
+    pub user_properties: BTreeMap<String, serde_json::Value>,
+    /// Recognized direct links and checked clock/calendar bindings.
+    /// Recognition does not imply that an optional object could be rendered.
+    pub resolved_bindings: Vec<String>,
 }
 
 /// One complete selection at a common playback time.
@@ -64,6 +69,8 @@ pub struct ImagePlaybackSample {
     pub time: Duration,
     /// Frame indices in [`ImagePlaybackReport::animated_assets`] order.
     pub frame_indices: Vec<usize>,
+    /// Text values submitted for this sample, keyed by rendered text object ID.
+    pub text_values: BTreeMap<u64, String>,
 }
 
 enum Source {
@@ -196,7 +203,7 @@ impl ImagePlayback {
         objects: &[u64],
         settings: PlaybackSettings,
     ) -> Result<Self, InspectionError> {
-        Self::prepare(source, Some(objects), settings)
+        Self::prepare(source, Some(objects), settings, &BTreeMap::new())
     }
 
     /// Discover image objects in authored order without supplying object IDs.
@@ -219,16 +226,38 @@ impl ImagePlayback {
         source: &SceneSource,
         settings: PlaybackSettings,
     ) -> Result<Self, InspectionError> {
-        Self::prepare(source, None, settings)
+        Self::prepare(source, None, settings, &BTreeMap::new())
+    }
+
+    /// Prepare scene playback with direct user-property overrides.
+    ///
+    /// Values are raw Booleans or strings, not `{value: ...}` wrappers. Supported
+    /// links are checkbox/combo visibility and text/color strings. Unset links
+    /// retain their authored binding value; project.json is not read implicitly.
+    /// At most 128 keys of 1..=64 ASCII letters/digits/underscores and string
+    /// values of at most 256 bytes are admitted. Unsupported scripts remain
+    /// reported under tolerant settings; invalid overrides return an error.
+    ///
+    /// This blocks for package reads, decoding and font preparation. Prepare a
+    /// replacement on a background worker, retain the current playback until
+    /// success, then switch. Sampling still performs no asset I/O. The new
+    /// playback starts paused at zero; callers may restore its clock with seek.
+    pub fn open_scene_images_with_properties(
+        source: &SceneSource,
+        settings: PlaybackSettings,
+        properties: &BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self, InspectionError> {
+        Self::prepare(source, None, settings, properties)
     }
 
     fn prepare(
         source: &SceneSource,
         objects: Option<&[u64]>,
         settings: PlaybackSettings,
+        properties: &BTreeMap<String, serde_json::Value>,
     ) -> Result<Self, InspectionError> {
         let decoder = TextureDecoder::open(source)?;
-        let mut plan = snapshot::plan(&decoder, objects, settings)?;
+        let mut plan = snapshot::plan_with_properties(&decoder, objects, settings, properties)?;
         let mut indexed = BTreeMap::new();
         let mut sources = Vec::new();
         let mut layer_sources = Vec::new();
@@ -413,6 +442,8 @@ impl ImagePlayback {
                 .collect(),
             text_objects: texts.iter().map(|t| t.id).collect(),
             omissions: plan.omissions.clone(),
+            user_properties: properties.clone(),
+            resolved_bindings: plan.resolved_bindings.clone(),
         };
         Ok(Self {
             _decoder: Some(decoder),
@@ -557,6 +588,7 @@ impl ImagePlayback {
             .zip(image_layers)
             .collect();
         let mut layers = Vec::new();
+        let mut text_values = BTreeMap::new();
         let now = self
             .calendar_time
             .map_or_else(chrono::Local::now, chrono::DateTime::<chrono::Local>::from);
@@ -572,7 +604,9 @@ impl ImagePlayback {
             }
             if let Some(text) = self.texts.iter().find(|text| text.id == *id) {
                 let start = layers.len();
-                text.append(now, &mut layers)?;
+                let value = text.value(now);
+                text.append(&value, &mut layers)?;
+                text_values.insert(text.id, value);
                 for layer in &mut layers[start..] {
                     layer.scale_coordinates(self.plan.coordinate_scale);
                 }
@@ -596,6 +630,7 @@ impl ImagePlayback {
             composition,
             time,
             frame_indices,
+            text_values,
         }))
     }
 

@@ -155,7 +155,7 @@ export async function startHarness(options = {}) {
       if (request.method === 'GET' && route === '/api/state') { json(worker.state); return; }
       if (request.method === 'POST' && route === '/api/command') {
         const command = await body(request);
-        if (!['inspect', 'play', 'pause', 'seek', 'resize'].includes(command?.name)) throw error('Unknown browser command');
+        if (!['inspect', 'play', 'pause', 'seek', 'resize', 'set_properties', 'set_calendar_time'].includes(command?.name)) throw error('Unknown browser command');
         json((await worker.request(command)).state); return;
       }
       if (request.method === 'POST' && route === '/api/frame') {

@@ -88,6 +88,11 @@ def summarize(report, inventories):
         if probe["supported"] and source_hash != playback.get("package_sha256"):
             raise ValueError(f"{ident}: source bytes changed since the probe; rerun scripts/workshop-support.ps1")
         omissions = playback.get("omissions", [])
+        resolved = playback.get("resolved_bindings", [])
+        if any("uses user property" in message for message in resolved):
+            applied["recognized-user-property-links"].add(ident)
+        if any("checked clock/calendar profile" in message for message in resolved):
+            applied["recognized-clock-calendar-bindings"].add(ident)
         for chain in playback.get("effect_chains", {}).values():
             if len(chain) > 1:
                 applied["ordered-image-effect-chains"].add(ident)
