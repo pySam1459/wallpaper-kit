@@ -2,6 +2,21 @@
 
 ## Status
 
+[Composition layers](../../../../docs/composition-layers.md) are verified through
+headless Chrome on 25 October 2026. Scene discovery applies supported passes to
+earlier draws at the authored position. Full-screen captures use output
+resolution; adjustable captures retain authored source resolution. WARP and
+hardware pass nine independent capture/installed-shader cases: native-size
+comparisons allow two channel values, resized comparisons three. Fault checks
+reject reversed/missing passes, frozen motion and corrupt pixels. Public GPU
+contracts cover two points, opacity, resize, HDR, limits and target release.
+Actual Gojo and adjustable scenes pass Playwright/DevTools controls and cleanup.
+The collection retains 65/65 loading and previous objects/effect inputs, adding
+14 passes at six points across five folders. All 17 points are recognized;
+11 have no supported effect profiles and omissions remain explicit. The required
+software/headless gate passes with native windows skipped. Complete engine
+runtime agreement, display cadence and host responsiveness remain unverified.
+
 [Property bindings](../../../../docs/property-bindings.md) are verified through
 headless Chrome on 25 October 2026. Direct checkbox/combo visibility and text/color
 links resolve during preparation. Eight checked clock/calendar profiles retain
@@ -99,4 +114,4 @@ Inspect `textures/composition.png`, target composition captures, `textures/repor
 
 ## Selected image playback
 
-[Selected image playback](../../../../docs/image-playback.md) combines static layers and unique animated sources under a library clock. The native `--image-fixture` route checks independent generated pixels. Paired scene/engine roots also drive all seven target image layers, including the cropped wires through `scripts/verify-image-playback.ps1`. Inspect source identity, applied precise-blur scales, cloud settings and input identities, and omissions, exact seek replies, live observations, resize, paused idle and owned-process exit. The viewer uses `ImagePlayback::open_scene_images` to discover authored image IDs from either package. Unsupported visible image profiles fail; non-image objects and composition points are reported as omitted. [Gaussian blur](../../../../docs/gaussian-blur.md), [precise blur](../../../../docs/precise-blur.md) and [cloud motion](../../../../docs/cloud-motion.md) define their APIs, bounds and evidence. The target controller checks cloud pixel changes across repeated sprite indices and exact time-zero rewind. Precise-blur masks and nondefault kernels, full scene fidelity and host impact remain unverified.
+[Selected image playback](../../../../docs/image-playback.md) combines static layers and unique animated sources under a library clock. The native `--image-fixture` route checks independent generated pixels. Paired scene/engine roots also drive all seven target image layers, including the cropped wires through `scripts/verify-image-playback.ps1`. Inspect source identity, applied precise-blur scales, cloud settings and input identities, and omissions, exact seek replies, live observations, resize, paused idle and owned-process exit. The viewer uses `ImagePlayback::open_scene_images` to discover authored image IDs from either package. Unsupported visible image profiles fail in strict playback; tolerant scene discovery reports optional omissions. Supported composition points process earlier layers as described above. [Gaussian blur](../../../../docs/gaussian-blur.md), [precise blur](../../../../docs/precise-blur.md) and [cloud motion](../../../../docs/cloud-motion.md) define their APIs, bounds and evidence. The target controller checks cloud pixel changes across repeated sprite indices and exact time-zero rewind. Precise-blur masks and nondefault kernels, full scene fidelity and host impact remain unverified.

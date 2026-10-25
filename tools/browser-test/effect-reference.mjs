@@ -54,8 +54,10 @@ vec2 rotateVec2(vec2 v, float a) { return mat2(cos(a),sin(a),-sin(a),cos(a))*v; 
     for (const key of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D, key, repeat ? gl.REPEAT : gl.CLAMP_TO_EDGE);
     gl.uniform1i(gl.getUniformLocation(program, `g_Texture${slot}`), slot);
   };
-  texture(0, input.width, input.height, input.rgba, false);
-  if (input.masked) texture(1, input.width, input.height, input.mask_rgba, false);
+  const sourceWidth = input.source_width ?? input.width, sourceHeight = input.source_height ?? input.height;
+  texture(0, sourceWidth, sourceHeight, input.rgba, false);
+  const maskWidth = input.mask_width ?? input.width, maskHeight = input.mask_height ?? input.height;
+  if (input.masked) texture(1, maskWidth, maskHeight, input.mask_rgba, false);
   texture(2, 8, 8, ripple ? input.normal_rgba : input.noise_rgba, true);
   const defaults = ripple ? { animationspeed: .15, scrollspeed: 0, scale: 1, ratio: 1, ripplestrength: .1, scrolldirection: 0 }
     : { speeduv: 5, strength: .4, phase: .5, power: 1, ratio: .3, scale: .05, scrolldirection: 0 };
@@ -67,8 +69,8 @@ vec2 rotateVec2(vec2 v, float a) { return mat2(cos(a),sin(a),-sin(a),cos(a))*v; 
     gl.uniform1f(gl.getUniformLocation(program, uniform), parameters[key]);
   }
   gl.uniform1f(gl.getUniformLocation(program, 'g_Time'), input.time / 1000);
-  gl.uniform4f(gl.getUniformLocation(program, 'g_Texture0Resolution'), input.width, input.height, input.width, input.height);
-  if (input.masked) gl.uniform4f(gl.getUniformLocation(program, 'g_Texture1Resolution'), input.width, input.height, input.width, input.height);
+  gl.uniform4f(gl.getUniformLocation(program, 'g_Texture0Resolution'), sourceWidth, sourceHeight, sourceWidth, sourceHeight);
+  if (input.masked) gl.uniform4f(gl.getUniformLocation(program, 'g_Texture1Resolution'), maskWidth, maskHeight, maskWidth, maskHeight);
   if (ripple && input.masked) gl.uniform4f(gl.getUniformLocation(program, 'g_Texture2Resolution'), 8, 8, 8, 8);
   gl.uniformMatrix4fv(gl.getUniformLocation(program, 'g_ModelViewProjectionMatrix'), false, new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]));
   gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);

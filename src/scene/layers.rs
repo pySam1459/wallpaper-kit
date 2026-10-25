@@ -144,7 +144,7 @@ impl LayerEffect {
             _ => None,
         }
     }
-    fn pages(&self) -> impl Iterator<Item = &Arc<TexturePage>> {
+    pub(crate) fn pages(&self) -> impl Iterator<Item = &Arc<TexturePage>> {
         let regions = match self {
             Self::Blur(blur) => [blur.mask(), None, None],
             Self::Cloud { motion, .. } => [Some(motion.noise()), motion.mask(), None],
@@ -330,24 +330,28 @@ impl ImageLayer {
     }
 
     pub(crate) fn axes(&self) -> [[f32; 2]; 2] {
-        let (sin, cos) = match self.angle {
-            0. => (0., 1.),
-            90. => (1., 0.),
-            180. => (0., -1.),
-            270. => (-1., 0.),
-            _ => self.angle.to_radians().sin_cos(),
-        };
-        [
-            [
-                self.size[0] * cos,
-                self.size[0] * sin * self.coordinate_scale[1] / self.coordinate_scale[0],
-            ],
-            [
-                self.size[1] * sin * self.coordinate_scale[0] / self.coordinate_scale[1],
-                -self.size[1] * cos,
-            ],
-        ]
+        axes(self.size, self.angle, self.coordinate_scale)
     }
+}
+
+pub(crate) fn axes(size: [f32; 2], angle: f32, coordinate_scale: [f32; 2]) -> [[f32; 2]; 2] {
+    let (sin, cos) = match angle {
+        0. => (0., 1.),
+        90. => (1., 0.),
+        180. => (0., -1.),
+        270. => (-1., 0.),
+        _ => angle.to_radians().sin_cos(),
+    };
+    [
+        [
+            size[0] * cos,
+            size[0] * sin * coordinate_scale[1] / coordinate_scale[0],
+        ],
+        [
+            size[1] * sin * coordinate_scale[0] / coordinate_scale[1],
+            -size[1] * cos,
+        ],
+    ]
 }
 
 /// Checked ordered image draws, independent of a GPU device or playback timer.
@@ -360,6 +364,12 @@ impl ImageLayer {
 /// 128 MiB; maximum crop width/height across blurred layers determine its size.
 /// Scene image chains admit up to 16 effects per image, using two reusable
 /// crop-sized targets, capped together at 128 MiB for SDR or 256 MiB for HDR.
+/// Scene composition points share those targets and may grow them to the
+/// largest admitted composition capture. Adjustable points retain their authored
+/// capture resolution; full-screen points capture the native output resolution.
+/// At most 32 points add an output-sized scene target and background snapshot
+/// in RGBA8 or RGBA16F. All effect target payloads are reported below; these are
+/// separate from the source and three-output budgets.
 /// Scene HDR/refraction additionally use output-sized RGBA16F targets and a
 /// shrinking bloom pyramid, reported in [`crate::OutputStats::effect_texture_bytes`].
 #[derive(Debug)]
@@ -371,6 +381,7 @@ pub struct ImageComposition {
     blur_extent: Option<Size>,
     pub(crate) chain_extent: Option<Size>,
     pub(crate) hdr: Option<super::hdr::HdrBloom>,
+    pub(crate) compositions: Vec<super::composite::Point>,
 }
 
 impl ImageComposition {
@@ -382,13 +393,14 @@ impl ImageComposition {
         if layers.is_empty() || layers.len() > 32 {
             return Err(Error::ImageCompositionLimit);
         }
-        Self::from_layers(canvas, layers, &[])
+        Self::from_layers(canvas, layers, &[], Vec::new())
     }
 
     pub(crate) fn scene(
         canvas: Size,
         layers: Vec<ImageLayer>,
         retained: &[Arc<TexturePage>],
+        compositions: Vec<super::composite::Point>,
     ) -> Result<Self, Error> {
         if layers.len() > 4096 + 32
             || layers
@@ -399,13 +411,14 @@ impl ImageComposition {
         {
             return Err(Error::ImageCompositionLimit);
         }
-        Self::from_layers(canvas, layers, retained)
+        Self::from_layers(canvas, layers, retained, compositions)
     }
 
     fn from_layers(
         canvas: Size,
         layers: Vec<ImageLayer>,
         retained: &[Arc<TexturePage>],
+        compositions: Vec<super::composite::Point>,
     ) -> Result<Self, Error> {
         let mut pages = Vec::new();
         let mut bytes = 0;
@@ -426,6 +439,11 @@ impl ImageComposition {
                 .flatten()
                 .chain(layer.effects.iter().flat_map(LayerEffect::pages))
             })
+            .chain(
+                compositions
+                    .iter()
+                    .flat_map(|point| point.effects.iter().flat_map(LayerEffect::pages)),
+            )
             .chain(retained)
         {
             if !pages.iter().any(|existing| Arc::ptr_eq(existing, page)) {
@@ -479,6 +497,7 @@ impl ImageComposition {
             blur_extent,
             chain_extent,
             hdr: None,
+            compositions,
         })
     }
     /// Logical canvas dimensions, independent of output resolution.

@@ -282,6 +282,16 @@ cbuffer Scene : register(b4) {
     uint2 scene_padding;
 };
 
+// Copy only the scene already accumulated at this draw position. The capture
+// rectangle follows the layer's checked 2D transform; masks remain crop-local.
+float4 capture_pixel(Vertex input) : SV_Target {
+    float2 uv = input.position.xy / output_extent;
+    float2 world = layer_center + layer_axis_x * (uv.x - 0.5) + layer_axis_y * (uv.y - 0.5);
+    float2 scene_uv = world / canvas_extent;
+    scene_uv.y = 1 - scene_uv.y;
+    return cloud_sample(scene_image, scene_uv, uint2(0,0), layer_source_extent, false);
+}
+
 float4 refract_pixel(LayerVertex input) : SV_Target {
     float4 normal = cloud_sample(scene_aux, input.uv, uint2(0,0), scene_source_extent, false);
     float2 offset = normal.xy * 2 - 1;

@@ -4,7 +4,8 @@ Scene snapshots and playback apply supported image effects in authored order.
 Each pass reads the previous pass's pixels. Supported profiles include Precise
 Blur, Cloud Motion, Water Flow, Spin, Water Waves, Shake, UV Foliage Sway and
 planar Water Ripple. Each profile retains its existing parameter restrictions.
-Composition layers that process the accumulated scene remain unsupported.
+[Composition layers](composition-layers.md) reuse these profiles to process the
+accumulated scene at their authored draw positions.
 
 `ImagePlaybackReport::effect_chains` records every applied pass by object ID,
 including repetitions. The older effect-specific fields record the first pass
@@ -19,7 +20,8 @@ chain; tolerant playback reports and omits excess passes. Manual public
 `ImageLayer::with_*` builders retain their documented replacement behavior.
 
 Layers with multiple effects use two reusable source-crop-sized GPU targets.
-Their dimensions cover the largest admitted crop across chained layers.
+Their dimensions cover the largest admitted crop across chained layers and
+active composition captures.
 They alternate as destinations, so a pass never reads its own destination.
 Intermediate draws preserve straight RGBA without blending or layer appearance.
 The last pass applies placement, brightness and opacity, then blends into the

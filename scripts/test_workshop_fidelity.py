@@ -16,6 +16,19 @@ def fixtures(messages):
 
 
 class FidelityAudit(unittest.TestCase):
+    def test_composition_effects_are_counted_separately_from_identity_points(self):
+        report, inventory = fixtures(["Object 7: effect effects/shine/effect.json is omitted."])
+        playback = report["wallpapers"][0]["evidence"]["playback"]
+        playback["composition_layers"] = {"7": [], "8": ["waterwaves", "waterwaves"]}
+        result = audit["summarize"](report, inventory)
+        self.assertEqual(result["applied_features"]["composition-effects"], ["1"])
+        self.assertEqual(result["applied_features"]["composition-effect:waterwaves"], ["1"])
+        self.assertEqual(result["groups"][0]["key"], "effect:shine")
+        playback["composition_layers"] = {"7": []}
+        applied = audit["summarize"](report, inventory)["applied_features"]
+        self.assertEqual(applied["recognized-composition-points"], ["1"])
+        self.assertNotIn("composition-effects", applied)
+
     def test_resolved_bindings_do_not_hide_remaining_script_fallbacks(self):
         report, inventory = fixtures(["scene.json object 1: origin binding uses its authored default; interactive/script updates are omitted."])
         report["wallpapers"][0]["evidence"]["playback"]["resolved_bindings"] = [

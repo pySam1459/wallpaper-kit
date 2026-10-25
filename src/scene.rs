@@ -4,6 +4,7 @@ use std::{fmt, path::PathBuf};
 
 mod bindings;
 mod cloud;
+pub(crate) mod composite;
 mod flow;
 pub(crate) mod hdr;
 mod inspect;
@@ -18,6 +19,7 @@ pub(crate) mod snapshot;
 mod text;
 pub use cloud::{CloudMotion, CloudMotionReport, CloudMotionSettings};
 pub use layers::{GaussianBlur, ImageComposition, ImageLayer, PreciseBlur};
+pub(crate) use layers::{LayerEffect, axes};
 pub use playback::{ImagePlayback, ImagePlaybackReport, ImagePlaybackSample};
 pub use settings::{ImageQuality, PlaybackSettings};
 pub use snapshot::ImageSnapshot;

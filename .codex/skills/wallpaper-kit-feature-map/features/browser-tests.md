@@ -2,6 +2,14 @@
 
 ## Status
 
+The [composition-layer route](../../../../docs/composition-layers.md) passes nine
+WARP/hardware cases with an independent capture/placement oracle and installed
+GLSL passes. It checks full-screen and rotated adjustable regions, authored
+capture resolution, foreground ordering, masks, HDR, resize and rewind. Native
+comparisons allow two channel values; resized comparisons allow three and
+retain counts above two. Actual Gojo and adjustable scenes pass Playwright and
+Chrome DevTools controls, bounds and owned cleanup. Native cadence remains open.
+
 Implemented and verified with the generated fixture, Workshop scene `2194681562`
 and video scene `2630394084`. See [browser verification](../../../../docs/browser-testing.md)
 for receipts and setup. The required software/headless gate passed; native

@@ -63,6 +63,13 @@ Existing limits apply: 1..=32 distinct selected objects, 256 MiB of static sourc
 
 ## Native controls
 
+Scene discovery also prepares [composition layers](composition-layers.md).
+`report.composition_layers` records each admitted point and its supported passes.
+They process earlier draws at the authored position, preserving later foreground
+content. Full-screen captures use output resolution and adjustable captures
+retain authored source dimensions. Optional unsupported effects remain named
+omissions. Explicit image selection stays image-only.
+
 Scene discovery also includes the [bounded 2D particle profile](scene-particles.md). Prepared particle IDs are recorded separately from image IDs; returned compositions can include up to 4,096 particle quads between the authored images. Explicit image selection remains image-only. Unsupported particle components are reported as omitted.
 
 Scene discovery additionally prepares translucent normal-map particle refraction and authored HDR bloom when VFX is enabled. `report.hdr_bloom` records activation. HDR accumulates into a float scene target before resolving to the existing eight-bit output; refraction samples an ordered background snapshot. SDR refraction retains eight-bit accumulation. Both paths run on the renderer worker. Generated pixel contracts and the native Gojo route verify the independent model. Exact engine refraction and bloom fidelity remain unverified; see [the particle guide](scene-particles.md).
@@ -113,4 +120,11 @@ Authored cloud motion passed the [hardware/native gate](../artifacts/20261010-19
 
 ## Remaining target features
 
-The report names omitted parallax, camera/color/postprocessing settings and other omitted content. The wire layer and first bird use authored unmasked precise blur. Background and clouds use authored cloud motion, including the painted cloud mask. Nonzero animated crop offsets remain unsupported. The particle layer, procedural light shafts, full-scene composition effect and muted audio remain omitted. Point placement sampling and straight-alpha SDR blending are the current image profile. Full scene and MVP acceptance still require those visible features and comparison with Wallpaper Engine, followed by resource and host-impact measurements.
+The report names omitted parallax, camera/color/postprocessing settings and other
+omitted content. The wire layer and first bird use authored unmasked precise
+blur. Background and clouds use authored cloud motion, including the painted
+cloud mask. Nonzero animated crop offsets remain unsupported. Later milestones
+add the [particle profile](scene-particles.md), procedural light shafts and
+composition capture; unsupported composition effect families and muted audio
+remain reported. Full scene and MVP acceptance still require visible-feature
+comparison with Wallpaper Engine, followed by resource and host-impact measurements.

@@ -98,6 +98,12 @@ def summarize(report, inventories):
                 applied["ordered-image-effect-chains"].add(ident)
             for name in chain:
                 applied[f"image-effect:{name}"].add(ident)
+        for chain in playback.get("composition_layers", {}).values():
+            applied["recognized-composition-points"].add(ident)
+            if chain:
+                applied["composition-effects"].add(ident)
+            for name in chain:
+                applied[f"composition-effect:{name}"].add(ident)
         values = item.get("json", {})
         scene = values.get("scene.json", values.get("gifscene.json", item.get("scene", {})))
         sound_ids = {str(o.get("id")) for o in scene.get("objects", []) if o.get("sound")}

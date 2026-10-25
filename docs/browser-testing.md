@@ -126,3 +126,11 @@ For sequential image-pass verification, use the
 GLSL passes executed in Chrome. It checks pass order and optional-pass fallback,
 in addition to the individual [Foliage Sway](foliage-sway.md) and
 [Water Ripple](water-ripple.md) references.
+
+For accumulated-scene effects, use the
+[composition-layer procedure](composition-layers.md#reproduce-browser-verification).
+`verify-effect.mjs --effect composition` also checks transformed capture,
+foreground order, authored source resolution, resize and HDR. Its independent
+capture oracle feeds the installed GLSL passes; it does not reuse native captures
+as reference inputs. Native-size tolerance is two channel values and resized
+tolerance is three, with both counts retained in reports.

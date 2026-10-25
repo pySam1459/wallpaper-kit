@@ -25,6 +25,7 @@ pub(super) struct ImageRenderer {
     cloud_pixel: ID3D11PixelShader,
     flow_pixel: ID3D11PixelShader,
     motion_pixel: ID3D11PixelShader,
+    capture_pixel: ID3D11PixelShader,
     ray_vertex: ID3D11VertexShader,
     ray_pixel: ID3D11PixelShader,
     ray_constants: ID3D11Buffer,
@@ -127,6 +128,8 @@ impl ImageRenderer {
         let (mut cloud_pixel, mut cloud_constants) = (None, None);
         let mut flow_pixel = None;
         let mut motion_pixel = None;
+        let mut capture_pixel = None;
+        let capture_code = compile(s!("capture_pixel"), s!("ps_5_0"))?;
         let (mut particle_pixel, mut additive) = (None, None);
         // SAFETY: live device and bytecode buffers; outputs are owned COM refs.
         unsafe {
@@ -165,6 +168,7 @@ impl ImageRenderer {
             device.CreatePixelShader(&cloud_pixel_code, None, Some(&mut cloud_pixel))?;
             device.CreatePixelShader(&flow_pixel_code, None, Some(&mut flow_pixel))?;
             device.CreatePixelShader(&motion_pixel_code, None, Some(&mut motion_pixel))?;
+            device.CreatePixelShader(&capture_code, None, Some(&mut capture_pixel))?;
             device.CreateVertexShader(&ray_vertex_code, None, Some(&mut ray_vertex))?;
             device.CreatePixelShader(&ray_pixel_code, None, Some(&mut ray_pixel))?;
             device.CreateBuffer(
@@ -245,6 +249,7 @@ impl ImageRenderer {
             cloud_pixel: cloud_pixel.expect("cloud pixel output"),
             flow_pixel: flow_pixel.expect("flow pixel output"),
             motion_pixel: motion_pixel.expect("motion pixel output"),
+            capture_pixel: capture_pixel.expect("composition capture shader output"),
             ray_vertex: ray_vertex.expect("ray vertex output"),
             ray_pixel: ray_pixel.expect("ray pixel output"),
             ray_constants: ray_constants.expect("ray constants output"),
@@ -308,6 +313,29 @@ impl ImageRenderer {
         for page in pages {
             self.upload(device, page)?;
         }
+        let compose =
+            composition.is_some_and(|c| c.compositions.iter().any(|point| point.active()));
+        let merge_extent = |extent: Option<Size>, blur_only: bool| -> Result<Option<Size>, Error> {
+            let mut result = extent;
+            if let Some(composition) = composition {
+                for point in composition.compositions.iter().filter(|point| {
+                    point.active()
+                        && (!blur_only
+                            || point
+                                .effects
+                                .iter()
+                                .any(|e| e.filter().is_some_and(|b| b.active())))
+                }) {
+                    let capture = point.capture_size(output_size);
+                    result = Some(Size::new(
+                        result.map_or(capture.width(), |s| s.width().max(capture.width())),
+                        result.map_or(capture.height(), |s| s.height().max(capture.height())),
+                    )?);
+                }
+            }
+            Ok(result)
+        };
+        let blur_extent = merge_extent(blur_extent, true)?;
         if self.blur.as_ref().map(|blur| blur.size) != blur_extent {
             // Previous submission completed. Release before replacement so two
             // scratch allocations cannot exceed the admitted scratch bound.
@@ -317,7 +345,10 @@ impl ImageRenderer {
                 .transpose()?;
         }
         let hdr = composition.and_then(|composition| composition.hdr);
-        let chain_extent = composition.and_then(|composition| composition.chain_extent);
+        let chain_extent = merge_extent(
+            composition.and_then(|composition| composition.chain_extent),
+            false,
+        )?;
         let chain_format = if hdr.is_some() {
             DXGI_FORMAT_R16G16B16A16_FLOAT
         } else {
@@ -343,7 +374,7 @@ impl ImageRenderer {
                 .iter()
                 .any(|layer| layer.refraction.is_some())
         });
-        let scene_size = (hdr.is_some() || refract).then_some(output_size);
+        let scene_size = (hdr.is_some() || refract || compose).then_some(output_size);
         let scene_format = if hdr.is_some() {
             DXGI_FORMAT_R16G16B16A16_FLOAT
         } else {
@@ -362,7 +393,7 @@ impl ImageRenderer {
                 .map(|size| BlurTarget::with_format(device, size, scene_format))
                 .transpose()?;
         }
-        let background_size = refract.then_some(output_size);
+        let background_size = (refract || compose).then_some(output_size);
         if self.background.as_ref().map(|target| target.size) != background_size {
             self.background = None;
             self.background = background_size
@@ -527,7 +558,18 @@ impl ImageRenderer {
                 .scene
                 .as_ref()
                 .map_or(&output.view, |scene| &scene.target);
-            for layer in composition.layers() {
+            for index in 0..=composition.layers().len() {
+                for point in composition
+                    .compositions
+                    .iter()
+                    .filter(|point| point.after == index && point.active())
+                {
+                    self.draw_composition(context, output.size, composition.canvas(), point);
+                }
+                let Some(layer) = composition.layers().get(index) else {
+                    continue;
+                };
+
                 let region = layer.region();
                 let source = Arc::downgrade(region.page());
                 let texture = self
@@ -750,198 +792,7 @@ impl ImageRenderer {
                             );
                         }
                         context.PSSetShader(&self.ray_pixel, None);
-                    } else if let Some((motion, time)) =
-                        effect.and_then(|effect| effect.image_motion())
-                    {
-                        let constants = motion.constants(time);
-                        context.UpdateSubresource(
-                            &self.cloud_constants,
-                            0,
-                            None,
-                            constants.as_ptr().cast(),
-                            0,
-                            0,
-                        );
-                        context
-                            .PSSetConstantBuffers(7, Some(&[Some(self.cloud_constants.clone())]));
-                        for (slot, mask) in [
-                            (4, &motion.mask),
-                            (3, &motion.phase_mask),
-                            (8, &motion.opacity_mask),
-                        ] {
-                            sources[slot] = mask.as_ref().map(|mask| {
-                                self.textures
-                                    .iter()
-                                    .find(|texture| {
-                                        texture.source.ptr_eq(&Arc::downgrade(mask.page()))
-                                    })
-                                    .expect("motion mask uploaded")
-                                    .view
-                                    .clone()
-                            });
-                        }
-                        context.PSSetShader(&self.motion_pixel, None);
-                    } else if let Some((motion, time)) =
-                        effect.and_then(|effect| effect.flow_motion())
-                    {
-                        let p = &motion.profile;
-                        let mask = motion.mask.extent();
-                        let phase = motion.phase.extent();
-                        let constants = [
-                            p.strength.to_bits(),
-                            p.feather.to_bits(),
-                            ((time.as_secs_f64() * f64::from(p.speed) * 0.1).rem_euclid(1.) as f32)
-                                .to_bits(),
-                            p.phase_scale.to_bits(),
-                            mask[0],
-                            mask[1],
-                            phase[0],
-                            phase[1],
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                        ];
-                        context.UpdateSubresource(
-                            &self.cloud_constants,
-                            0,
-                            None,
-                            constants.as_ptr().cast(),
-                            0,
-                            0,
-                        );
-                        context
-                            .PSSetConstantBuffers(5, Some(&[Some(self.cloud_constants.clone())]));
-                        for (slot, region) in [(3, &motion.mask), (4, &motion.phase)] {
-                            sources[slot] = Some(
-                                self.textures
-                                    .iter()
-                                    .find(|texture| {
-                                        texture.source.ptr_eq(&Arc::downgrade(region.page()))
-                                    })
-                                    .expect("flow input uploaded")
-                                    .view
-                                    .clone(),
-                            );
-                        }
-                        context.PSSetShader(&self.flow_pixel, None);
-                    } else if let Some((motion, time)) =
-                        effect.and_then(|effect| effect.cloud_motion())
-                    {
-                        let settings = motion.settings();
-                        let (sin, cos) = settings.direction_radians().sin_cos();
-                        let [grain, horizontal] = settings.granularity();
-                        let mask = motion.mask();
-                        let noise_origin = motion.noise().origin();
-                        let noise_extent = motion.noise().extent();
-                        let mask_origin = mask.map_or([0, 0], |mask| mask.origin());
-                        let mask_extent = mask.map_or([1, 1], |mask| mask.extent());
-                        let constants = [
-                            (-sin * settings.amount()).to_bits(),
-                            (cos * settings.amount()).to_bits(),
-                            (grain * horizontal).to_bits(),
-                            grain.to_bits(),
-                            settings.phase(time).to_bits(),
-                            u32::from(mask.is_some()),
-                            noise_origin[0],
-                            noise_origin[1],
-                            noise_extent[0],
-                            noise_extent[1],
-                            mask_origin[0],
-                            mask_origin[1],
-                            mask_extent[0],
-                            mask_extent[1],
-                            0,
-                            0,
-                        ];
-                        context.UpdateSubresource(
-                            &self.cloud_constants,
-                            0,
-                            None,
-                            constants.as_ptr().cast(),
-                            0,
-                            0,
-                        );
-                        context
-                            .PSSetConstantBuffers(3, Some(&[Some(self.cloud_constants.clone())]));
-                        sources[3] = Some(
-                            self.textures
-                                .iter()
-                                .find(|texture| {
-                                    texture
-                                        .source
-                                        .ptr_eq(&Arc::downgrade(motion.noise().page()))
-                                })
-                                .expect("cloud noise uploaded")
-                                .view
-                                .clone(),
-                        );
-                        sources[4] = mask.map(|mask| {
-                            self.textures
-                                .iter()
-                                .find(|texture| texture.source.ptr_eq(&Arc::downgrade(mask.page())))
-                                .expect("cloud mask uploaded")
-                                .view
-                                .clone()
-                        });
-                        context.PSSetShader(&self.cloud_pixel, None);
-                    } else if let Some(blur) = effect
-                        .and_then(|effect| effect.filter())
-                        .filter(|blur| blur.active())
-                    {
-                        let scratch = self.blur.as_ref().expect("blur target admitted");
-                        let mask = blur.mask();
-                        let mask_origin = mask.map_or([0, 0], |mask| mask.origin());
-                        let mask_extent = mask.map_or([1, 1], |mask| mask.extent());
-                        let (amount, profile) = blur.parameters();
-                        let constants = [
-                            amount[0].to_bits(),
-                            amount[1].to_bits(),
-                            u32::from(mask.is_some()),
-                            profile,
-                            mask_origin[0],
-                            mask_origin[1],
-                            mask_extent[0],
-                            mask_extent[1],
-                        ];
-                        context.UpdateSubresource(
-                            &self.blur_constants,
-                            0,
-                            None,
-                            constants.as_ptr().cast(),
-                            0,
-                            0,
-                        );
-                        context.PSSetConstantBuffers(2, Some(&[Some(self.blur_constants.clone())]));
-                        context.VSSetShader(&self.vertex, None);
-                        context.PSSetShader(&self.blur_horizontal, None);
-                        context.OMSetRenderTargets(Some(&[Some(scratch.target.clone())]), None);
-                        context.OMSetBlendState(None, None, u32::MAX);
-                        context.RSSetViewports(Some(&[D3D11_VIEWPORT {
-                            Width: region.extent()[0] as f32,
-                            Height: region.extent()[1] as f32,
-                            MinDepth: 0.,
-                            MaxDepth: 1.,
-                            ..Default::default()
-                        }]));
-                        context.PSSetShaderResources(0, Some(&[Some(input_view.clone())]));
-                        context.Draw(3, 0);
-                        context.OMSetRenderTargets(None, None);
-                        sources[1] = Some(scratch.source.clone());
-                        sources[2] = mask.map(|mask| {
-                            self.textures
-                                .iter()
-                                .find(|texture| texture.source.ptr_eq(&Arc::downgrade(mask.page())))
-                                .expect("mask source uploaded")
-                                .view
-                                .clone()
-                        });
-                        context.PSSetShader(&self.blur_vertical, None);
-                    } else {
+                    } else if !self.select_effect(context, effect, &mut sources, region.extent()) {
                         context.PSSetShader(
                             if layer.particle_color.is_some() {
                                 &self.particle_pixel
@@ -1056,6 +907,327 @@ impl ImageRenderer {
                 );
             }
         }
+    }
+
+    fn draw_composition(
+        &self,
+        context: &ID3D11DeviceContext,
+        output: Size,
+        canvas: Size,
+        point: &crate::scene::composite::Point,
+    ) {
+        let scene = self.scene.as_ref().expect("composition scene admitted");
+        let snapshot = self
+            .background
+            .as_ref()
+            .expect("composition snapshot admitted");
+        let capture = point.capture_size(output);
+        let axes = crate::scene::axes(
+            point.size,
+            point.angle.rem_euclid(360.),
+            point.coordinate_scale,
+        );
+        let mut geometry = [0_u32; 40];
+        geometry[..8].copy_from_slice(
+            &[
+                canvas.width() as f32,
+                canvas.height() as f32,
+                point.center[0],
+                point.center[1],
+                axes[0][0],
+                axes[0][1],
+                axes[1][0],
+                axes[1][1],
+            ]
+            .map(f32::to_bits),
+        );
+        geometry[10] = output.width();
+        geometry[11] = output.height();
+        geometry[12] = 1_f32.to_bits();
+        geometry[13] = 1_f32.to_bits();
+        geometry[15] = 1;
+        geometry[16..19].fill(1_f32.to_bits());
+        // SAFETY: the worker owns this context. Prior draws unbound all inputs.
+        // Snapshot, scene and alternating chain targets are distinct resources;
+        // every referenced COM object remains owned through GPU completion.
+        unsafe {
+            context.OMSetRenderTargets(None, None);
+            context.CopyResource(&snapshot.texture, &scene.texture);
+            context.UpdateSubresource(
+                &self.layer_constants,
+                0,
+                None,
+                geometry.as_ptr().cast(),
+                0,
+                0,
+            );
+            let dimensions = [capture.width(), capture.height(), 0, 0, 0, 0, 0, 0];
+            context.UpdateSubresource(&self.dimensions, 0, None, dimensions.as_ptr().cast(), 0, 0);
+            context.PSSetConstantBuffers(0, Some(&[Some(self.dimensions.clone())]));
+            self.fullscreen(
+                context,
+                &self.chain[0].target,
+                capture,
+                &self.capture_pixel,
+                &snapshot.source,
+                None,
+                false,
+            );
+            for pass in 0..point.effects.len().max(1) {
+                let final_pass = pass + 1 == point.effects.len().max(1);
+                let mut constants = geometry;
+                constants[10] = capture.width();
+                constants[11] = capture.height();
+                if final_pass {
+                    constants[12] = point.opacity.to_bits();
+                    constants[13] = point.brightness.to_bits();
+                } else {
+                    let [w, h] = [capture.width() as f32, capture.height() as f32];
+                    constants[..8]
+                        .copy_from_slice(&[w, h, w / 2., h / 2., w, 0., 0., -h].map(f32::to_bits));
+                }
+                context.UpdateSubresource(
+                    &self.layer_constants,
+                    0,
+                    None,
+                    constants.as_ptr().cast(),
+                    0,
+                    0,
+                );
+                let mut sources: [Option<ID3D11ShaderResourceView>; 9] =
+                    std::array::from_fn(|_| None);
+                sources[0] = Some(self.chain[pass % 2].source.clone());
+                if !self.select_effect(
+                    context,
+                    point.effects.get(pass),
+                    &mut sources,
+                    [capture.width(), capture.height()],
+                ) {
+                    context.PSSetShader(&self.layer_pixel, None);
+                }
+                context.VSSetShader(&self.layer_vertex, None);
+                let (target, size) = if final_pass {
+                    (&scene.target, output)
+                } else {
+                    (&self.chain[(pass + 1) % 2].target, capture)
+                };
+                context.OMSetRenderTargets(Some(&[Some(target.clone())]), None);
+                context.OMSetBlendState(
+                    if final_pass { Some(&self.blend) } else { None },
+                    None,
+                    u32::MAX,
+                );
+                context.RSSetViewports(Some(&[D3D11_VIEWPORT {
+                    Width: size.width() as f32,
+                    Height: size.height() as f32,
+                    MinDepth: 0.,
+                    MaxDepth: 1.,
+                    ..Default::default()
+                }]));
+                context.PSSetShaderResources(0, Some(&sources));
+                context.Draw(6, 0);
+                context.PSSetShaderResources(
+                    0,
+                    Some(&[None, None, None, None, None, None, None, None, None]),
+                );
+                context.OMSetRenderTargets(None, None);
+            }
+        }
+    }
+
+    fn select_effect(
+        &self,
+        context: &ID3D11DeviceContext,
+        effect: Option<&crate::scene::LayerEffect>,
+        sources: &mut [Option<ID3D11ShaderResourceView>; 9],
+        extent: [u32; 2],
+    ) -> bool {
+        // SAFETY: worker-owned context, retained shaders/views, initialized
+        // constants. Blur scratch is distinct from all caller input views.
+        unsafe {
+            if let Some((motion, time)) = effect.and_then(|effect| effect.image_motion()) {
+                let constants = motion.constants(time);
+                context.UpdateSubresource(
+                    &self.cloud_constants,
+                    0,
+                    None,
+                    constants.as_ptr().cast(),
+                    0,
+                    0,
+                );
+                context.PSSetConstantBuffers(7, Some(&[Some(self.cloud_constants.clone())]));
+                for (slot, mask) in [
+                    (4, &motion.mask),
+                    (3, &motion.phase_mask),
+                    (8, &motion.opacity_mask),
+                ] {
+                    sources[slot] = mask.as_ref().map(|mask| {
+                        self.textures
+                            .iter()
+                            .find(|texture| texture.source.ptr_eq(&Arc::downgrade(mask.page())))
+                            .expect("motion mask uploaded")
+                            .view
+                            .clone()
+                    });
+                }
+                context.PSSetShader(&self.motion_pixel, None);
+            } else if let Some((motion, time)) = effect.and_then(|effect| effect.flow_motion()) {
+                let p = &motion.profile;
+                let mask = motion.mask.extent();
+                let phase = motion.phase.extent();
+                let constants = [
+                    p.strength.to_bits(),
+                    p.feather.to_bits(),
+                    ((time.as_secs_f64() * f64::from(p.speed) * 0.1).rem_euclid(1.) as f32)
+                        .to_bits(),
+                    p.phase_scale.to_bits(),
+                    mask[0],
+                    mask[1],
+                    phase[0],
+                    phase[1],
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                ];
+                context.UpdateSubresource(
+                    &self.cloud_constants,
+                    0,
+                    None,
+                    constants.as_ptr().cast(),
+                    0,
+                    0,
+                );
+                context.PSSetConstantBuffers(5, Some(&[Some(self.cloud_constants.clone())]));
+                for (slot, region) in [(3, &motion.mask), (4, &motion.phase)] {
+                    sources[slot] = Some(
+                        self.textures
+                            .iter()
+                            .find(|texture| texture.source.ptr_eq(&Arc::downgrade(region.page())))
+                            .expect("flow input uploaded")
+                            .view
+                            .clone(),
+                    );
+                }
+                context.PSSetShader(&self.flow_pixel, None);
+            } else if let Some((motion, time)) = effect.and_then(|effect| effect.cloud_motion()) {
+                let settings = motion.settings();
+                let (sin, cos) = settings.direction_radians().sin_cos();
+                let [grain, horizontal] = settings.granularity();
+                let mask = motion.mask();
+                let noise_origin = motion.noise().origin();
+                let noise_extent = motion.noise().extent();
+                let mask_origin = mask.map_or([0, 0], |mask| mask.origin());
+                let mask_extent = mask.map_or([1, 1], |mask| mask.extent());
+                let constants = [
+                    (-sin * settings.amount()).to_bits(),
+                    (cos * settings.amount()).to_bits(),
+                    (grain * horizontal).to_bits(),
+                    grain.to_bits(),
+                    settings.phase(time).to_bits(),
+                    u32::from(mask.is_some()),
+                    noise_origin[0],
+                    noise_origin[1],
+                    noise_extent[0],
+                    noise_extent[1],
+                    mask_origin[0],
+                    mask_origin[1],
+                    mask_extent[0],
+                    mask_extent[1],
+                    0,
+                    0,
+                ];
+                context.UpdateSubresource(
+                    &self.cloud_constants,
+                    0,
+                    None,
+                    constants.as_ptr().cast(),
+                    0,
+                    0,
+                );
+                context.PSSetConstantBuffers(3, Some(&[Some(self.cloud_constants.clone())]));
+                sources[3] = Some(
+                    self.textures
+                        .iter()
+                        .find(|texture| {
+                            texture
+                                .source
+                                .ptr_eq(&Arc::downgrade(motion.noise().page()))
+                        })
+                        .expect("cloud noise uploaded")
+                        .view
+                        .clone(),
+                );
+                sources[4] = mask.map(|mask| {
+                    self.textures
+                        .iter()
+                        .find(|texture| texture.source.ptr_eq(&Arc::downgrade(mask.page())))
+                        .expect("cloud mask uploaded")
+                        .view
+                        .clone()
+                });
+                context.PSSetShader(&self.cloud_pixel, None);
+            } else if let Some(blur) = effect
+                .and_then(|effect| effect.filter())
+                .filter(|blur| blur.active())
+            {
+                let scratch = self.blur.as_ref().expect("blur target admitted");
+                let mask = blur.mask();
+                let mask_origin = mask.map_or([0, 0], |mask| mask.origin());
+                let mask_extent = mask.map_or([1, 1], |mask| mask.extent());
+                let (amount, profile) = blur.parameters();
+                let constants = [
+                    amount[0].to_bits(),
+                    amount[1].to_bits(),
+                    u32::from(mask.is_some()),
+                    profile,
+                    mask_origin[0],
+                    mask_origin[1],
+                    mask_extent[0],
+                    mask_extent[1],
+                ];
+                context.UpdateSubresource(
+                    &self.blur_constants,
+                    0,
+                    None,
+                    constants.as_ptr().cast(),
+                    0,
+                    0,
+                );
+                context.PSSetConstantBuffers(2, Some(&[Some(self.blur_constants.clone())]));
+                context.VSSetShader(&self.vertex, None);
+                context.PSSetShader(&self.blur_horizontal, None);
+                context.OMSetRenderTargets(Some(&[Some(scratch.target.clone())]), None);
+                context.OMSetBlendState(None, None, u32::MAX);
+                context.RSSetViewports(Some(&[D3D11_VIEWPORT {
+                    Width: extent[0] as f32,
+                    Height: extent[1] as f32,
+                    MinDepth: 0.,
+                    MaxDepth: 1.,
+                    ..Default::default()
+                }]));
+                context.PSSetShaderResources(0, Some(&[sources[0].clone()]));
+                context.Draw(3, 0);
+                context.OMSetRenderTargets(None, None);
+                sources[1] = Some(scratch.source.clone());
+                sources[2] = mask.map(|mask| {
+                    self.textures
+                        .iter()
+                        .find(|texture| texture.source.ptr_eq(&Arc::downgrade(mask.page())))
+                        .expect("mask source uploaded")
+                        .view
+                        .clone()
+                });
+                context.PSSetShader(&self.blur_vertical, None);
+            } else {
+                return false;
+            }
+        }
+        true
     }
 
     fn scene_parameters(

@@ -33,6 +33,7 @@ pub(crate) struct ImagePlan {
     pub(super) hdr: Option<super::hdr::HdrBloom>,
     pub omissions: Vec<String>,
     pub resolved_bindings: Vec<String>,
+    pub(super) compositions: Vec<super::composite::Description>,
 }
 
 pub(crate) struct LayerDescription {
@@ -76,6 +77,7 @@ pub(super) fn video_plan(size: Size) -> ImagePlan {
         hdr: None,
         omissions: Vec::new(),
         resolved_bindings: Vec::new(),
+        compositions: Vec::new(),
     }
 }
 
@@ -357,6 +359,7 @@ pub(super) fn plan_with_properties(
         omissions.push("HDR bloom uses a bounded floating-point filter pyramid; exact Wallpaper Engine bloom filtering is unverified.".into());
     }
     let mut resolved_bindings = Vec::new();
+    let mut compositions = Vec::new();
     let mut bound_visibility = false;
     for mut object in raw.objects {
         if !seen.insert(object.id) {
@@ -475,10 +478,23 @@ pub(super) fn plan_with_properties(
                         material.eq_ignore_ascii_case("materials/util/composelayer.json")
                     })
             {
-                omissions.push(format!(
-                    "Object {} ({}): composition layer and its effects are omitted.",
-                    object.id, object.name
-                ));
+                if settings.visual_effects {
+                    let full = model_json.get("fullscreen") == Some(&Value::Bool(true))
+                        || model_json.get("projectlayer") == Some(&Value::Bool(true));
+                    match super::composite::describe(decoder, &object, full, extent, settings,
+                        raw.general.properties.get("hdr").is_some_and(|v| v != false), &mut omissions) {
+                        Ok(description) if compositions.len() < 32 => compositions.push(description),
+                        Ok(_) if tolerant => omissions.push(format!("Object {}: composition layer exceeds the 32-point limit and is omitted.", object.id)),
+                        Ok(_) => return Err(InspectionError::invalid(&context, "composition point count exceeds 32")),
+                        Err(error) if tolerant => omissions.push(format!("Object {}: composition layer and its effects are omitted: {error}", object.id)),
+                        Err(error) => return Err(error),
+                    }
+                } else {
+                    omissions.push(format!(
+                        "Object {}: composition effects disabled by consumer settings.",
+                        object.id
+                    ));
+                }
                 continue;
             }
             Some(model_json)
@@ -601,93 +617,17 @@ pub(super) fn plan_with_properties(
             }
             omissions.push(format!("{context}: disablepropagation is omitted."));
         }
-        let mut applied_effects = Vec::new();
-        for effect in &object.effects {
-            if !settings.visual_effects {
-                omissions.push(format!(
-                    "Object {}: effect {} disabled by consumer settings.",
-                    object.id, effect.file
-                ));
-                continue;
-            }
-            let visibility = effect.properties.get("visible");
-            if visibility.is_some_and(|v| !v.is_boolean()) {
-                return Err(InspectionError::invalid(
-                    &context,
-                    "effect visible must be Boolean",
-                ));
-            }
-            if visibility == Some(&Value::Bool(false)) {
-                continue;
-            }
-            let key = asset_key(&effect.file)?;
-            if key.eq_ignore_ascii_case("effects/blurprecise/effect.json")
-                || key.eq_ignore_ascii_case("effects/cloudmotion/effect.json")
-                || key.eq_ignore_ascii_case("effects/waterflow/effect.json")
-                || key.eq_ignore_ascii_case("effects/spin/effect.json")
-                || key.eq_ignore_ascii_case("effects/waterwaves/effect.json")
-                || key.eq_ignore_ascii_case("effects/shake/effect.json")
-                || key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
-                || key.eq_ignore_ascii_case("effects/waterripple/effect.json")
-            {
-                if raw
-                    .general
-                    .properties
-                    .get("hdr")
-                    .is_some_and(|value| value != false)
-                    && !key.eq_ignore_ascii_case("effects/shake/effect.json")
-                    && !key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
-                    && !key.eq_ignore_ascii_case("effects/waterripple/effect.json")
-                {
-                    if tolerant {
-                        omissions.push(format!(
-                            "{context}: SDR-only effect {key} is omitted in HDR."
-                        ));
-                        continue;
-                    }
-                    return Err(InspectionError::invalid(
-                        &context,
-                        "supported image effects require SDR scene settings",
-                    ));
-                }
-                if applied_effects.len() == super::layers::MAX_IMAGE_EFFECTS {
-                    if tolerant {
-                        omissions.push(format!("{context}: additional effect {key} exceeds the 16-pass image limit and is omitted."));
-                        continue;
-                    }
-                    return Err(InspectionError::invalid(
-                        &context,
-                        "image effect chain exceeds 16 passes",
-                    ));
-                }
-                let loaded = if key.eq_ignore_ascii_case("effects/blurprecise/effect.json") {
-                    super::precise::load(&decoder.package, effect).map(EffectDescription::Precise)
-                } else if key.eq_ignore_ascii_case("effects/waterflow/effect.json") {
-                    super::flow::load(decoder, effect).map(EffectDescription::Flow)
-                } else if key.eq_ignore_ascii_case("effects/spin/effect.json")
-                    || key.eq_ignore_ascii_case("effects/waterwaves/effect.json")
-                    || key.eq_ignore_ascii_case("effects/shake/effect.json")
-                    || key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
-                    || key.eq_ignore_ascii_case("effects/waterripple/effect.json")
-                {
-                    super::motion::load(decoder, effect).map(EffectDescription::Motion)
-                } else {
-                    super::cloud::load(decoder, effect).map(EffectDescription::Cloud)
-                };
-                match loaded {
-                    Ok(effect) => applied_effects.push(effect),
-                    Err(error) if tolerant => {
-                        omissions.push(format!("{context}: effect {key} is omitted: {error}"))
-                    }
-                    Err(error) => return Err(error),
-                }
-            } else {
-                omissions.push(format!(
-                    "Object {}: effect {} is omitted.",
-                    object.id, effect.file
-                ));
-            }
-        }
+        let applied_effects = effects(
+            decoder,
+            &object,
+            settings,
+            raw.general
+                .properties
+                .get("hdr")
+                .is_some_and(|v| v != false),
+            tolerant,
+            &mut omissions,
+        )?;
         if object.properties.contains_key("parallaxDepth") {
             omissions.push(format!("Object {}: parallax is omitted.", object.id));
         }
@@ -889,7 +829,103 @@ pub(super) fn plan_with_properties(
         hdr,
         omissions,
         resolved_bindings,
+        compositions,
     })
+}
+
+pub(super) fn effects(
+    decoder: &TextureDecoder,
+    object: &super::RawObject,
+    settings: super::PlaybackSettings,
+    hdr: bool,
+    tolerant: bool,
+    omissions: &mut Vec<String>,
+) -> Result<Vec<EffectDescription>, InspectionError> {
+    let context = format!("scene.json object {}", object.id);
+    let mut applied_effects = Vec::new();
+    for effect in &object.effects {
+        if !settings.visual_effects {
+            omissions.push(format!(
+                "Object {}: effect {} disabled by consumer settings.",
+                object.id, effect.file
+            ));
+            continue;
+        }
+        let visibility = effect.properties.get("visible");
+        if visibility.is_some_and(|v| !v.is_boolean()) {
+            return Err(InspectionError::invalid(
+                &context,
+                "effect visible must be Boolean",
+            ));
+        }
+        if visibility == Some(&Value::Bool(false)) {
+            continue;
+        }
+        let key = asset_key(&effect.file)?;
+        if key.eq_ignore_ascii_case("effects/blurprecise/effect.json")
+            || key.eq_ignore_ascii_case("effects/cloudmotion/effect.json")
+            || key.eq_ignore_ascii_case("effects/waterflow/effect.json")
+            || key.eq_ignore_ascii_case("effects/spin/effect.json")
+            || key.eq_ignore_ascii_case("effects/waterwaves/effect.json")
+            || key.eq_ignore_ascii_case("effects/shake/effect.json")
+            || key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
+            || key.eq_ignore_ascii_case("effects/waterripple/effect.json")
+        {
+            if hdr
+                && !key.eq_ignore_ascii_case("effects/shake/effect.json")
+                && !key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
+                && !key.eq_ignore_ascii_case("effects/waterripple/effect.json")
+            {
+                if tolerant {
+                    omissions.push(format!(
+                        "{context}: SDR-only effect {key} is omitted in HDR."
+                    ));
+                    continue;
+                }
+                return Err(InspectionError::invalid(
+                    &context,
+                    "supported image effects require SDR scene settings",
+                ));
+            }
+            if applied_effects.len() == super::layers::MAX_IMAGE_EFFECTS {
+                if tolerant {
+                    omissions.push(format!("{context}: additional effect {key} exceeds the 16-pass image limit and is omitted."));
+                    continue;
+                }
+                return Err(InspectionError::invalid(
+                    &context,
+                    "image effect chain exceeds 16 passes",
+                ));
+            }
+            let loaded = if key.eq_ignore_ascii_case("effects/blurprecise/effect.json") {
+                super::precise::load(&decoder.package, effect).map(EffectDescription::Precise)
+            } else if key.eq_ignore_ascii_case("effects/waterflow/effect.json") {
+                super::flow::load(decoder, effect).map(EffectDescription::Flow)
+            } else if key.eq_ignore_ascii_case("effects/spin/effect.json")
+                || key.eq_ignore_ascii_case("effects/waterwaves/effect.json")
+                || key.eq_ignore_ascii_case("effects/shake/effect.json")
+                || key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
+                || key.eq_ignore_ascii_case("effects/waterripple/effect.json")
+            {
+                super::motion::load(decoder, effect).map(EffectDescription::Motion)
+            } else {
+                super::cloud::load(decoder, effect).map(EffectDescription::Cloud)
+            };
+            match loaded {
+                Ok(effect) => applied_effects.push(effect),
+                Err(error) if tolerant => {
+                    omissions.push(format!("{context}: effect {key} is omitted: {error}"))
+                }
+                Err(error) => return Err(error),
+            }
+        } else {
+            omissions.push(format!(
+                "Object {}: effect {} is omitted.",
+                object.id, effect.file
+            ));
+        }
+    }
+    Ok(applied_effects)
 }
 
 pub(crate) fn prepare(

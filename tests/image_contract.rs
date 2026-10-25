@@ -996,6 +996,270 @@ fn user_overrides_reject_invalid_inputs_without_changing_existing_playback() {
     playback.shutdown().unwrap();
 }
 
+fn composition_package(objects: Value, hdr: bool, pixels: &[u8]) -> Package {
+    Package::new(&[
+        ("scene.json",&serde_json::to_vec(&json!({"version":5,"general":{"hdr":hdr,"bloom":false,"orthogonalprojection":{"width":8,"height":8}},"objects":objects})).unwrap()),
+        ("models/base.json",br#"{"material":"materials/base.json"}"#),
+        ("materials/base.json",br#"{"passes":[{"shader":"genericimage4","combos":{},"textures":["base"],"blending":"translucent","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled"}]}"#),
+        ("materials/base.tex",&texture_checks::tex(0,[8,8],pixels,false,false)),
+        ("models/fore.json",br#"{"material":"materials/fore.json"}"#),
+        ("materials/fore.json",br#"{"passes":[{"shader":"genericimage4","combos":{},"textures":["fore"],"blending":"translucent","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled"}]}"#),
+        ("materials/fore.tex",&texture_checks::tex(0,[1,1],&[0,0,255,255],false,false)),
+        ("models/full.json",br#"{"projectlayer":true,"passthrough":true,"material":"materials/util/composelayer.json"}"#),
+        ("models/local.json",br#"{"passthrough":true,"material":"materials/util/composelayer.json"}"#),
+        ("effects/spin/effect.json",br#"{"version":1,"replacementkey":"spin","passes":[{"material":"materials/spin.json"}]}"#),
+        ("materials/spin.json",br#"{"passes":[{"shader":"effects/spin"}]}"#),
+        ("effects/shake/effect.json",br#"{"version":1,"replacementkey":"shake","passes":[{"material":"materials/shake.json"}]}"#),
+        ("materials/shake.json",br#"{"passes":[{"shader":"effects/shake"}]}"#),
+        ("materials/mask.tex",&texture_checks::tex(0,[1,1],&[127,127,0,255],false,false)),
+    ])
+}
+
+#[test]
+fn composition_points_transform_only_prior_layers_and_reuse_bounded_targets() {
+    let original: Vec<_> = (0..64)
+        .flat_map(|i| [(i % 8 * 20) as u8, (i / 8 * 23) as u8, i as u8, 255])
+        .collect();
+    let spin = json!({"file":"effects/spin/effect.json","passes":[{"constantshadervalues":{"speed":std::f32::consts::TAU}}]});
+    for opacity in [1., 0.5] {
+        let objects = json!([
+            {"id":1,"image":"models/base.json","origin":"4 4 0","size":"8 8"},
+            {"id":10,"image":"models/full.json","effects":[spin]},
+            {"id":2,"image":"models/fore.json","origin":"1.5 6.5 0","size":"1 1"},
+            {"id":11,"image":"models/local.json","origin":"2 6 0","size":"4 4","alpha":opacity,"effects":[spin,spin,spin]},
+            {"id":3,"image":"models/fore.json","origin":"1.5 6.5 0","size":"1 1"}
+        ]);
+        let package = composition_package(objects, false, &original);
+        let source = SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        };
+        let mut playback = ImagePlayback::open_scene_images(&source).unwrap();
+        assert_eq!(playback.report().composition_layers[&10], ["spin"]);
+        assert_eq!(
+            playback.report().composition_layers[&11],
+            ["spin", "spin", "spin"]
+        );
+        playback.seek(Duration::from_millis(250));
+        let sample = playback_sample(&playback);
+        let (renderer, events) =
+            Renderer::new(Size::new(8, 8).unwrap(), DeviceMode::Software).unwrap();
+        let mut expected = original.clone();
+        let rotate = |rgba: &[u8], extent: usize| -> Vec<u8> {
+            (0..extent * extent)
+                .flat_map(|i| {
+                    let x = i % extent;
+                    let y = i / extent;
+                    let offset = ((extent - 1 - x) * extent + y) * 4;
+                    rgba[offset..offset + 4].iter().copied()
+                })
+                .collect()
+        };
+        expected = rotate(&expected, 8);
+        expected[(8 + 1) * 4..(8 + 2) * 4].copy_from_slice(&[0, 0, 255, 255]);
+        let before = expected.clone();
+        let mut region: Vec<_> = (0..4)
+            .flat_map(|y| before[y * 8 * 4..(y * 8 + 4) * 4].iter().copied())
+            .collect();
+        for _ in 0..3 {
+            region = rotate(&region, 4);
+        }
+        for y in 0..4 {
+            for x in 0..4 {
+                for c in 0..3 {
+                    let at = (y * 8 + x) * 4 + c;
+                    expected[at] = (f64::from(region[(y * 4 + x) * 4 + c]) * opacity
+                        + f64::from(before[at]) * (1. - opacity))
+                        .round() as u8;
+                }
+            }
+        }
+        expected[(8 + 1) * 4..(8 + 2) * 4].copy_from_slice(&[0, 0, 255, 255]);
+        let mut retained = None;
+        for scale in [1, 2, 1] {
+            renderer
+                .resize(Size::new(8 * scale, 8 * scale).unwrap())
+                .unwrap();
+            let id = renderer.render_images(sample.composition.clone()).unwrap();
+            let frame = wait(&renderer, &events, id);
+            let rgba = frame.readback().unwrap().rgba;
+            for y in 0..8 * scale as usize {
+                for x in 0..8 * scale as usize {
+                    for c in 0..4 {
+                        let actual = rgba[(y * 8 * scale as usize + x) * 4 + c];
+                        let mut wanted =
+                            expected[((y / scale as usize) * 8 + x / scale as usize) * 4 + c];
+                        if scale > 1 && x < 4 * scale as usize && y < 4 * scale as usize && c < 3 {
+                            let sx = (x as f64 + 0.5) / f64::from(scale) - 0.5;
+                            let sy = (y as f64 + 0.5) / f64::from(scale) - 0.5;
+                            let at = |dx: i32, dy: i32| {
+                                f64::from(
+                                    region
+                                        [((dy.clamp(0, 3) * 4 + dx.clamp(0, 3)) * 4) as usize + c],
+                                )
+                            };
+                            let (ix, iy) = (sx.floor() as i32, sy.floor() as i32);
+                            let (fx, fy) = (sx - sx.floor(), sy - sy.floor());
+                            let value = (at(ix, iy) * (1. - fx) + at(ix + 1, iy) * fx) * (1. - fy)
+                                + (at(ix, iy + 1) * (1. - fx) + at(ix + 1, iy + 1) * fx) * fy;
+                            let original =
+                                before[((y / scale as usize) * 8 + x / scale as usize) * 4 + c];
+                            wanted = (value * opacity + f64::from(original) * (1. - opacity))
+                                .round() as u8;
+                            if x / scale as usize == 1 && y / scale as usize == 1 {
+                                wanted = if c == 2 { 255 } else { 0 };
+                            }
+                        }
+                        assert!(
+                            actual.abs_diff(wanted) <= 2,
+                            "scale {scale} at ({x},{y}) c{c}: {actual} != {wanted}"
+                        );
+                    }
+                }
+            }
+            assert_eq!(
+                stats(&renderer, frame.sequence()).effect_texture_bytes,
+                u64::from(8 * scale * 8 * scale * 4 * 4)
+            );
+            if retained.is_none() {
+                retained = Some(frame);
+            } else {
+                assert_eq!(
+                    retained.as_ref().unwrap().readback().unwrap().rgba.len(),
+                    8 * 8 * 4
+                );
+            }
+        }
+        let id = renderer
+            .render_texture_region(sample.composition.layers()[0].region().clone())
+            .unwrap();
+        let frame = wait(&renderer, &events, id);
+        assert_eq!(stats(&renderer, frame.sequence()).effect_texture_bytes, 0);
+        renderer.shutdown().unwrap();
+        playback.shutdown().unwrap();
+    }
+}
+
+#[test]
+fn hdr_composition_preserves_overbright_capture_until_final_resolve_and_vfx_policy() {
+    let pixels: Vec<_> = (0..64).flat_map(|_| [200, 100, 50, 255]).collect();
+    let shake = json!({"file":"effects/shake/effect.json","passes":[{"textures":[null,"mask"],"constantshadervalues":{"strength":0}}]});
+    let package = composition_package(
+        json!([
+            {"id":1,"image":"models/base.json","origin":"4 4 0","size":"8 8","brightness":2},
+            {"id":10,"image":"models/full.json","brightness":0.5,"effects":[shake,shake]}
+        ]),
+        true,
+        &pixels,
+    );
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    let (renderer, events) = Renderer::new(Size::new(8, 8).unwrap(), DeviceMode::Software).unwrap();
+    for vfx in [true, false] {
+        let playback = ImagePlayback::open_scene_images_with_settings(
+            &source,
+            PlaybackSettings {
+                visual_effects: vfx,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(playback.report().composition_layers.len(), usize::from(vfx));
+        let id = renderer
+            .render_images(playback_sample(&playback).composition)
+            .unwrap();
+        let rgba = wait(&renderer, &events, id).readback().unwrap().rgba;
+        for p in rgba.chunks_exact(4) {
+            assert_eq!(
+                p,
+                if vfx {
+                    &[200, 100, 50, 255]
+                } else {
+                    &[255, 200, 100, 255]
+                }
+            );
+        }
+        playback.shutdown().unwrap();
+    }
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn composition_profiles_reject_unsupported_geometry_and_bound_point_count() {
+    let pixels = vec![128; 8 * 8 * 4];
+    let base = json!({"id":1,"image":"models/base.json","origin":"4 4 0","size":"8 8"});
+    for (key, value) in [
+        ("perspective", json!(true)),
+        ("color", json!("1 0 0")),
+        ("config", json!({"passthrough":false})),
+        ("parent", json!(1)),
+        ("angles", json!("1 0 0")),
+        ("scale", json!("2 2 1")),
+        ("alpha", json!(-0.1)),
+        ("castshadow", json!(true)),
+    ] {
+        let mut point = json!({"id":10,"image":"models/full.json"});
+        point[key] = value;
+        let package = composition_package(json!([base, point]), false, &pixels);
+        let source = SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        };
+        assert!(ImagePlayback::open_scene_images(&source).is_err(), "{key}");
+        let tolerant = ImagePlayback::open_scene_images_with_settings(
+            &source,
+            PlaybackSettings {
+                allow_unsupported_features: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(tolerant.report().object_ids, [1]);
+        assert!(tolerant.report().composition_layers.is_empty());
+        assert!(
+            tolerant
+                .report()
+                .omissions
+                .iter()
+                .any(|m| m.contains("composition layer and its effects are omitted"))
+        );
+        tolerant.shutdown().unwrap();
+    }
+    let mut objects = vec![base];
+    objects.extend((0..33).map(|i| json!({"id":i+10,"image":"models/full.json"})));
+    let package = composition_package(json!(objects), false, &pixels);
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    assert!(
+        ImagePlayback::open_scene_images(&source)
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("exceeds 32")
+    );
+    let tolerant = ImagePlayback::open_scene_images_with_settings(
+        &source,
+        PlaybackSettings {
+            allow_unsupported_features: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(tolerant.report().composition_layers.len(), 32);
+    assert!(
+        tolerant
+            .report()
+            .omissions
+            .iter()
+            .any(|m| m.contains("32-point limit"))
+    );
+    tolerant.shutdown().unwrap();
+}
+
 fn background_package(general: Value, texture: &[u8]) -> Package {
     let mut general = general;
     general["orthogonalprojection"] = json!({"width":6,"height":1});
@@ -3537,7 +3801,11 @@ fn automatic_images_discover_authored_ids_and_report_other_content() {
     })
     .unwrap();
     assert_eq!(playback.report().object_ids, [901, 55]);
-    for omission in ["particles/test.json", "Object 7", "Object 8"] {
+    assert_eq!(
+        playback.report().composition_layers.get(&7),
+        Some(&Vec::new())
+    );
+    for omission in ["particles/test.json", "Object 8"] {
         assert!(
             playback
                 .report()

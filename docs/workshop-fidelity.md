@@ -92,12 +92,20 @@ Nested clock options also resolve. The
 retains 65/65 loading and all previous objects/effect inputs. Remaining binding
 fallbacks total 29 across seven folders; they remain explicitly reported.
 
-Composition layers, optional-object preparation failures and particle flags now
-lead at 12 folders each. Next, inventory the 17 composition points and implement
-the most common supported passes at their authored draw positions. These process
-the accumulated scene, separately from per-image chains. Arbitrary SceneScript
-execution remains a separate design. The baseline table below retains historical
-counts; use the latest catalog for current priorities.
+The [composition-layer batch](composition-layers.md) recognizes all 17 points
+across 12 folders and restores 14 supported passes at six points across five
+folders. Captures process earlier draws while preserving later foreground
+content; adjustable layers retain authored capture resolution. WARP/hardware
+browser references and actual-scene controls pass. The
+[latest audit](../artifacts/workshop-fidelity-composition-final-20261025/report.md)
+retains 65/65 loading and all previous objects/effect inputs. Eleven points have
+no supported effect profiles; unsupported families are now named individually.
+
+Pulse now affects 12 folders, tied with optional-object preparation failures and
+particle flags. Next, inventory its authored profiles and add a checked browser
+reference before implementing the common variant. Arbitrary SceneScript remains
+a separate design. The baseline table below retains historical counts; use the
+latest catalog for current priorities.
 
 Prioritize concrete gaps by distinct wallpapers affected. For equal counts,
 restore an absent object before refining an existing effect. Compare a checked

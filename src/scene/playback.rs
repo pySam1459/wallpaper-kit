@@ -47,6 +47,10 @@ pub struct ImagePlaybackReport {
     /// Applied image passes in authored order, keyed by scene object ID.
     /// Unsupported passes appear in omissions instead. At most 16 passes per image.
     pub effect_chains: BTreeMap<u64, Vec<String>>,
+    /// Supported composition points and their applied profiles in authored order.
+    /// Empty lists contain no supported effect profiles; layer appearance can
+    /// still apply. Omitted effects remain reported.
+    pub composition_layers: BTreeMap<u64, Vec<String>>,
     /// Standalone corner light-shaft objects prepared in authored draw order.
     pub shape_objects: Vec<u64>,
     /// Prepared static or recognized calendar/clock text objects, in authored order.
@@ -124,6 +128,7 @@ pub struct ImagePlayback {
     layer_sources: Vec<usize>,
     sources: Vec<Source>,
     effects: Vec<Vec<super::layers::LayerEffect>>,
+    composition_effects: Vec<Vec<super::layers::LayerEffect>>,
     particles: Vec<particles::Particles>,
     particle_pages: Vec<Arc<TexturePage>>,
     rays: Vec<super::rays::RayLayer>,
@@ -159,6 +164,7 @@ impl ImagePlayback {
             layer_sources: vec![0],
             sources: vec![Source::Video(pager)],
             effects: vec![Vec::new()],
+            composition_effects: Vec::new(),
             particles: Vec::new(),
             particle_pages: Vec::new(),
             rays: Vec::new(),
@@ -321,6 +327,27 @@ impl ImagePlayback {
             effects.push(prepared);
         }
 
+        let mut composition_effects = Vec::new();
+        for point in &mut plan.compositions {
+            let mut prepared = Vec::new();
+            let mut retained = Vec::new();
+            for effect in point.effects.drain(..) {
+                match effect.prepare(&decoder, &mut static_pages, &mut static_bytes) {
+                    Ok(inputs) => {
+                        prepared.push(inputs);
+                        retained.push(effect);
+                    }
+                    Err(error) if tolerant => plan.omissions.push(format!(
+                        "Object {}: composition effect effects/{}/effect.json is omitted: {error}",
+                        point.id,
+                        effect.name()
+                    )),
+                    Err(error) => return Err(error),
+                }
+            }
+            point.effects = retained;
+            composition_effects.push(prepared);
+        }
         let particles = optional_objects(
             &plan.particles,
             tolerant,
@@ -440,6 +467,20 @@ impl ImagePlayback {
                     )
                 })
                 .collect(),
+            composition_layers: plan
+                .compositions
+                .iter()
+                .map(|point| {
+                    (
+                        point.id,
+                        point
+                            .effects
+                            .iter()
+                            .map(|effect| effect.name().to_owned())
+                            .collect(),
+                    )
+                })
+                .collect(),
             text_objects: texts.iter().map(|t| t.id).collect(),
             omissions: plan.omissions.clone(),
             user_properties: properties.clone(),
@@ -451,6 +492,7 @@ impl ImagePlayback {
             layer_sources,
             sources,
             effects,
+            composition_effects,
             particles,
             particle_pages,
             rays,
@@ -589,11 +631,26 @@ impl ImagePlayback {
             .collect();
         let mut layers = Vec::new();
         let mut text_values = BTreeMap::new();
+        let mut composition_points = Vec::new();
         let now = self
             .calendar_time
             .map_or_else(chrono::Local::now, chrono::DateTime::<chrono::Local>::from);
         let (mut work, mut draws) = (0, 0);
         for id in &self.plan.draw_order {
+            if let Some((point, effects)) = self
+                .plan
+                .compositions
+                .iter()
+                .zip(&self.composition_effects)
+                .find(|(point, _)| point.id == *id)
+            {
+                composition_points.push(point.point(
+                    layers.len(),
+                    self.plan.coordinate_scale,
+                    effects,
+                    time,
+                ));
+            }
             if let Some(layer) = by_id.remove(id) {
                 let mut layer = layer;
                 layer.scale_coordinates(self.plan.coordinate_scale);
@@ -619,9 +676,13 @@ impl ImagePlayback {
                 }
             }
         }
-        let mut composition =
-            ImageComposition::scene(self.plan.canvas, layers, &self.particle_pages)
-                .map_err(|error| InspectionError::invalid("image playback", error.to_string()))?;
+        let mut composition = ImageComposition::scene(
+            self.plan.canvas,
+            layers,
+            &self.particle_pages,
+            composition_points,
+        )
+        .map_err(|error| InspectionError::invalid("image playback", error.to_string()))?;
         composition.hdr = self.plan.hdr;
         composition.background = self.plan.background;
         let composition = Arc::new(composition);

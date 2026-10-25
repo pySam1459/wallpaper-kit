@@ -42,6 +42,12 @@ text/color links and checked clocks/calendars. Nested clock options update too.
 Browser references pass on WARP and hardware; 77 of the collection's 106 original
 default-only binding notices are resolved. General SceneScript remains omitted.
 
+[Composition layers](docs/composition-layers.md) apply supported effects to
+earlier scene layers while preserving later foreground content. Full-screen
+captures use native output resolution; adjustable captures retain authored
+resolution. This restores 14 passes across five wallpapers, with browser
+references on WARP and hardware and 65/65 loading retained.
+
 ## Build and run
 
 Requires Windows, Rust 1.91 or newer with the MSVC toolchain and C++ build tools, and PowerShell 7 for verification scripts. Hardware runs require a Direct3D 11 feature-level 11.0 adapter. Software WARP runs are available explicitly for CI.
