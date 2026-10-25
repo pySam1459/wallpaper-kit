@@ -38,7 +38,9 @@ fn motion_package(
     opacity: Option<u8>,
     hdr: bool,
 ) -> Package {
-    let textures = if matches!(kind, "foliagesway" | "waterripple") {
+    let textures = if kind == "pulse" {
+        json!([null, phase.map(|_| "phase"), "mask"])
+    } else if matches!(kind, "foliagesway" | "waterripple") {
         json!([null, "mask", phase.map(|_| "phase")])
     } else if kind == "shake" {
         json!([
@@ -142,6 +144,206 @@ fn motion_package(
             &texture_checks::tex(9, [1, 1], &[opacity.unwrap_or(255)], false, false),
         ),
     ])
+}
+
+#[test]
+fn pulse_masks_additive_tint_and_alpha_follow_an_independent_signal() {
+    let (renderer, events) = Renderer::new(Size::new(8, 8).unwrap(), DeviceMode::Software).unwrap();
+    for (combos, noise, power) in [
+        (json!({}), 0., 1.),
+        (json!({"PULSEALPHA":1}), 0.5, 2.),
+        (json!({"PULSECOLOR":0,"PULSEALPHA":1}), 0., 0.5),
+        (json!({"BLENDMODE":13}), 0., 1.),
+    ] {
+        let package = motion_package(
+            "pulse",
+            json!({"speed":std::f32::consts::PI,"phase":0,"amount":0.5,
+            "noiseamount":noise,"noisespeed":0,"power":power,"bounds":"0.2 0.8",
+            "tintlow":"0.5 1 1","tinthigh":"1 0.5 1"}),
+            combos.clone(),
+            Some(128),
+            None,
+            false,
+        );
+        let source = SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        };
+        let mut playback = ImagePlayback::open_scene_images(&source).unwrap();
+        assert_eq!(playback.report().image_motions.get(&1).unwrap(), "pulse");
+        let mut frames = Vec::new();
+        for millis in [0, 500, 1000, 0] {
+            playback.seek(Duration::from_millis(millis));
+            let id = renderer
+                .render_images(playback_sample(&playback).composition)
+                .unwrap();
+            let pixels = wait(&renderer, &events, id).readback().unwrap().rgba;
+            let signal = if power == 0. {
+                1.
+            } else {
+                let t = if millis == 500 {
+                    0.5_f64
+                } else if millis == 1000 {
+                    1.
+                } else {
+                    0.
+                };
+                (t * 0.5 + 128. / 255. * noise).powf(power)
+            };
+            for y in 0..8 {
+                for x in 0..8 {
+                    let rgb = [f64::from(x * 31), f64::from(y * 31), 0.];
+                    for c in 0..3 {
+                        let mut expected = rgb[c];
+                        if x >= 4 {
+                            if combos["PULSECOLOR"] != 0 {
+                                let a = rgb[c] * [0.5, 1., 1.][c] / 255.;
+                                let b = rgb[c] * [1., 0.5, 1.][c] / 255.;
+                                let blended = if combos["BLENDMODE"] == 13 {
+                                    if b < 0.5 {
+                                        2. * a * b
+                                    } else {
+                                        1. - 2. * (1. - a) * (1. - b)
+                                    }
+                                } else {
+                                    (a + b).min(1.)
+                                };
+                                expected = ((a + (blended - a) * signal) * 255.).clamp(0., 255.);
+                            }
+                            if combos["PULSEALPHA"] == 1 {
+                                let alpha = signal.clamp(0., 1.);
+                                expected = expected * alpha + [16., 24., 32.][c] * (1. - alpha);
+                            }
+                        }
+                        assert!(
+                            (f64::from(pixels[(y as usize * 8 + x as usize) * 4 + c]) - expected)
+                                .abs()
+                                <= 1.5,
+                            "pulse {combos} at {millis} ({x},{y}) channel {c}: expected {expected}, actual {}",
+                            pixels[(y as usize * 8 + x as usize) * 4 + c]
+                        );
+                    }
+                }
+            }
+            frames.push(pixels);
+        }
+        assert_eq!(frames[0], frames[3]);
+        if power != 0. {
+            assert_ne!(frames[0], frames[2]);
+        }
+        playback.shutdown().unwrap();
+    }
+    renderer.shutdown().unwrap();
+}
+
+#[test]
+fn pulse_colors_grayscale_sources_before_applying_alpha() {
+    let image = json!({"id":1,"image":"models/image.json","origin":"8 6 0","size":"16 12","effects":[{
+        "file":"effects/pulse/effect.json","passes":[{"combos":{"PULSEALPHA":1},
+        "constantshadervalues":{"phase":std::f32::consts::FRAC_PI_2,"tinthigh":"0.5 0 1"}}]}]});
+    let texture = texture_checks::tex(9, [1, 1], &[64], false, false);
+    let package = snapshot_package(json!([image]), model(), material(false), &texture);
+    for (name, data) in [
+        (
+            "effects/pulse/effect.json",
+            json!({"version":1,"replacementkey":"pulse","passes":[{"material":"materials/pulse.json"}]}),
+        ),
+        (
+            "materials/pulse.json",
+            json!({"passes":[{"shader":"effects/pulse"}]}),
+        ),
+    ] {
+        let path = package.root.join("engine").join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, serde_json::to_vec(&data).unwrap()).unwrap();
+    }
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    let playback = ImagePlayback::open_scene_images(&source).unwrap();
+    let (renderer, events) =
+        Renderer::new(Size::new(16, 12).unwrap(), DeviceMode::Software).unwrap();
+    let id = renderer
+        .render_images(playback_sample(&playback).composition)
+        .unwrap();
+    let pixels = wait(&renderer, &events, id).readback().unwrap().rgba;
+    for pixel in pixels.chunks_exact(4) {
+        for (value, expected) in pixel.iter().zip([48, 44, 64, 255]) {
+            assert!(i32::from(*value).abs_diff(expected) <= 1, "{pixel:?}");
+        }
+    }
+    renderer.shutdown().unwrap();
+    playback.shutdown().unwrap();
+}
+
+#[test]
+fn pulse_rejects_unknown_and_invalid_profiles_and_honors_consumer_policy() {
+    for (constants, combos) in [
+        (json!({}), json!({"AUDIOPROCESSING":3})),
+        (json!({}), json!({"BLENDMODE":31})),
+        (json!({}), json!({"UNKNOWN":0})),
+        (json!({}), json!({"PULSEALPHA":2})),
+        (json!({"speed":"NaN"}), json!({})),
+        (json!({"bounds":"1 0"}), json!({})),
+        (json!({"bounds":"0.5 0.5"}), json!({})),
+        (json!({"noiseamount":-1}), json!({})),
+        (json!({"power":5}), json!({})),
+        (json!({"power":0}), json!({})),
+        (json!({"tinthigh":"2 1 1"}), json!({})),
+        (json!({"audioamount":1}), json!({})),
+    ] {
+        let package = masked_motion_package("pulse", constants, combos);
+        let source = SceneSource {
+            package: package.root.join("scene.pkg"),
+            engine_assets: package.root.join("engine"),
+        };
+        assert!(ImagePlayback::open_scene_images(&source).is_err());
+        let playback = ImagePlayback::open_scene_images_with_settings(
+            &source,
+            PlaybackSettings {
+                allow_unsupported_features: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(playback.report().object_ids, [1]);
+        assert!(playback.report().image_motions.is_empty());
+        assert!(
+            playback
+                .report()
+                .omissions
+                .iter()
+                .any(|v| v.contains("pulse") && v.contains("omitted"))
+        );
+        playback.shutdown().unwrap();
+    }
+    let package = masked_motion_package("pulse", json!({"noiseamount":1}), json!({}));
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    for settings in [
+        PlaybackSettings {
+            visual_effects: false,
+            ..Default::default()
+        },
+        PlaybackSettings {
+            reduce_flashing: true,
+            ..Default::default()
+        },
+    ] {
+        let playback = ImagePlayback::open_scene_images_with_settings(&source, settings).unwrap();
+        assert!(playback.report().image_motions.is_empty());
+        assert!(
+            playback
+                .report()
+                .omissions
+                .iter()
+                .any(|v| v.contains("pulse") && v.contains("disabled"))
+        );
+        playback.shutdown().unwrap();
+    }
 }
 
 #[test]

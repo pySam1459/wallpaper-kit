@@ -134,3 +134,9 @@ foreground order, authored source resolution, resize and HDR. Its independent
 capture oracle feeds the installed GLSL passes; it does not reuse native captures
 as reference inputs. Native-size tolerance is two channel values and resized
 tolerance is three, with both counts retained in reports.
+
+For brightness, tint and alpha pulsing, use the
+[Pulse procedure](pulse.md#reproduce-browser-verification).
+`verify-effect.mjs --effect pulse` runs installed Pulse and blending shader
+sources in Chrome. It covers masks, noise, both checked blend modes, transparency,
+HDR, composition capture and resize, with a two-channel-value tolerance.

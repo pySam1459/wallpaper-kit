@@ -101,9 +101,17 @@ browser references and actual-scene controls pass. The
 retains 65/65 loading and all previous objects/effect inputs. Eleven points have
 no supported effect profiles; unsupported families are now named individually.
 
-Pulse now affects 12 folders, tied with optional-object preparation failures and
-particle flags. Next, inventory its authored profiles and add a checked browser
-reference before implementing the common variant. Arbitrary SceneScript remains
+The [periodic Pulse batch](pulse.md) restores nine passes across nine folders,
+including one composition point. Additive/hard-light tint, alpha, masks and noise
+pass 18 installed-shader browser cases on WARP and hardware. The
+[latest audit](../artifacts/workshop-fidelity-pulse-final-20261025/report.md)
+retains 65/65 loading and previous objects/effect chains. Pulse omissions fall
+from 12 folders to three, all audio-driven. Reduced-flashing mode skips Pulse
+before preparing its assets.
+
+Optional-object preparation failures and particle flags now lead at 12 folders
+each. Next, split the 20 optional-object failure notices into concrete causes
+and restore the most common absent-object profile. Arbitrary SceneScript remains
 a separate design. The baseline table below retains historical counts; use the
 latest catalog for current priorities.
 

@@ -38,6 +38,18 @@ pub(crate) enum MotionProfile {
         ratio: f32,
         strength: f32,
     },
+    Pulse {
+        speed: f32,
+        phase: f32,
+        amount: f32,
+        bounds: [f32; 2],
+        noise_speed: f32,
+        noise_amount: f32,
+        power: f32,
+        low: [f32; 3],
+        high: [f32; 3],
+        flags: u32,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +76,7 @@ impl MotionProfile {
             Self::Shake { .. } => "shake",
             Self::Foliage { .. } => "foliagesway",
             Self::Ripple { .. } => "waterripple",
+            Self::Pulse { .. } => "pulse",
         }
     }
 }
@@ -78,7 +91,7 @@ pub(super) fn load(
     let kind = definition["replacementkey"].as_str().ok_or_else(invalid)?;
     if !matches!(
         kind,
-        "spin" | "waterwaves" | "shake" | "foliagesway" | "waterripple"
+        "spin" | "waterwaves" | "shake" | "foliagesway" | "waterripple" | "pulse"
     ) || !definition["version"]
         .as_u64()
         .is_some_and(|v| (1..=2).contains(&v))
@@ -105,6 +118,12 @@ pub(super) fn load(
     }) || pass.get("combos").is_some_and(|v| {
         v.as_object().is_none_or(|p| {
             p.iter().any(|(k, v)| {
+                if kind == "pulse" {
+                    return !((k == "AUDIOPROCESSING" && v == 0)
+                        || (k == "BLENDMODE" && (v == 9 || v == 13))
+                        || (["PULSECOLOR", "PULSEALPHA", "MASK"].contains(&k.as_str())
+                            && (v == 0 || v == 1)));
+                }
                 if kind == "foliagesway" {
                     return !((k == "MODE" && v == 0) || (k == "MASK" && (v == 0 || v == 1)));
                 }
@@ -124,6 +143,17 @@ pub(super) fn load(
     let allowed: &[&str] = match kind {
         "spin" => &["center", "speed"],
         "shake" => &["speed", "strength", "bounds", "friction"],
+        "pulse" => &[
+            "speed",
+            "phase",
+            "amount",
+            "bounds",
+            "noisespeed",
+            "noiseamount",
+            "power",
+            "tintlow",
+            "tinthigh",
+        ],
         "waterripple" => &[
             "animationspeed",
             "scrollspeed",
@@ -160,10 +190,53 @@ pub(super) fn load(
     };
     let speed = if kind == "foliagesway" {
         scalar("speeduv", 5., -100., 100.)?
+    } else if kind == "pulse" {
+        scalar("speed", 3., 0., 10.)?
     } else {
         scalar("speed", 1., -100., 100.)?
     };
-    let profile = if kind == "spin" {
+    let profile = if kind == "pulse" {
+        let bounds = snapshot::vector(
+            constants.and_then(|v| v.get("bounds")),
+            [0., 1.],
+            &effect.file,
+        )?;
+        let low = snapshot::vector(
+            constants.and_then(|v| v.get("tintlow")),
+            [1.; 3],
+            &effect.file,
+        )?;
+        let high = snapshot::vector(
+            constants.and_then(|v| v.get("tinthigh")),
+            [1.; 3],
+            &effect.file,
+        )?;
+        if bounds[0] >= bounds[1]
+            || bounds
+                .iter()
+                .chain(&low)
+                .chain(&high)
+                .any(|v| !(0. ..=1.).contains(v))
+        {
+            return Err(invalid());
+        }
+        let combos = &pass["combos"];
+        let flags = u32::from(combos["PULSECOLOR"] != 0)
+            | (u32::from(combos["PULSEALPHA"] == 1) << 1)
+            | (u32::from(combos["BLENDMODE"] == 13) << 2);
+        MotionProfile::Pulse {
+            speed,
+            phase: scalar("phase", 0., -65536., 65536.)?,
+            amount: scalar("amount", 1., 0., 2.)?,
+            bounds,
+            noise_speed: scalar("noisespeed", 0.5, 0., 1.)?,
+            noise_amount: scalar("noiseamount", 0., 0., 2.)?,
+            power: scalar("power", 1., 0.01, 4.)?,
+            low,
+            high,
+            flags,
+        }
+    } else if kind == "spin" {
         let center = snapshot::vector(
             constants.and_then(|v| v.get("center")),
             [0.5; 2],
@@ -241,7 +314,7 @@ pub(super) fn load(
                 .filter(|v| {
                     (1..=match kind {
                         "shake" => 4,
-                        "foliagesway" | "waterripple" => 3,
+                        "foliagesway" | "waterripple" | "pulse" => 3,
                         _ => 2,
                     })
                         .contains(&v.len())
@@ -263,11 +336,14 @@ pub(super) fn load(
             })
             .transpose()
     };
-    let mask = if matches!(kind, "foliagesway" | "waterripple") && pass["combos"]["MASK"] == 0 {
-        None
-    } else {
-        texture(1)?
-    };
+    let mask =
+        if matches!(kind, "foliagesway" | "waterripple" | "pulse") && pass["combos"]["MASK"] == 0 {
+            None
+        } else if kind == "pulse" {
+            texture(2)?
+        } else {
+            texture(1)?
+        };
     if kind == "shake" && mask.is_none() {
         return Err(InspectionError::invalid(
             &effect.file,
@@ -275,9 +351,14 @@ pub(super) fn load(
         ));
     }
     Ok(MotionDescription {
-        profile,
         mask,
-        phase_mask: if kind == "foliagesway" {
+        phase_mask: if let MotionProfile::Pulse { noise_amount, .. } = profile {
+            if noise_amount == 0. {
+                None
+            } else {
+                Some(texture(1)?.unwrap_or_else(|| "materials/util/noise.tex".into()))
+            }
+        } else if kind == "foliagesway" {
             Some(texture(2)?.unwrap_or_else(|| "materials/util/noise.tex".into()))
         } else if kind == "waterripple" {
             Some(match texture(2)? {
@@ -293,6 +374,7 @@ pub(super) fn load(
             texture(2)?
         },
         opacity_mask: texture(3)?,
+        profile,
     })
 }
 
@@ -338,7 +420,53 @@ impl MotionDescription {
 }
 
 impl ImageMotion {
-    pub fn constants(&self, time: Duration) -> [u32; 16] {
+    pub fn constants(&self, time: Duration) -> [u32; 24] {
+        if let MotionProfile::Pulse {
+            speed,
+            phase,
+            amount,
+            bounds,
+            noise_speed,
+            noise_amount,
+            power,
+            low,
+            high,
+            flags,
+        } = self.profile
+        {
+            // Pulse phase is radians in the fragment profile. Keep long-running
+            // clocks precise before converting periodic inputs to shader floats.
+            let angle = (time.as_secs_f64() * f64::from(speed) + f64::from(phase)
+                - std::f64::consts::FRAC_PI_2)
+                .rem_euclid(std::f64::consts::TAU);
+            let value =
+                (angle.sin() * 0.5 + 0.5 - f64::from(bounds[0])) / f64::from(bounds[1] - bounds[0]);
+            let value = value.clamp(0., 1.);
+            let pulse = (value * value * (3. - 2. * value)) as f32 * amount;
+            let noise_uv = [0.08333333, 0.02777777].map(|rate| {
+                (time.as_secs_f64() * rate * f64::from(noise_speed)).rem_euclid(1.) as f32
+            });
+            let mask = self.mask.as_ref().map_or([1; 2], |m| m.extent());
+            let noise = self.phase_mask.as_ref().map_or([1; 2], |m| m.extent());
+            let mut result = [0; 24];
+            result[..12].copy_from_slice(&[
+                5,
+                u32::from(self.mask.is_some()),
+                pulse.to_bits(),
+                flags,
+                power.to_bits(),
+                noise_amount.to_bits(),
+                noise_uv[0].to_bits(),
+                noise_uv[1].to_bits(),
+                mask[0],
+                mask[1],
+                noise[0],
+                noise[1],
+            ]);
+            result[16..19].copy_from_slice(&low.map(f32::to_bits));
+            result[20..23].copy_from_slice(&high.map(f32::to_bits));
+            return result;
+        }
         let (kind, speed, a, b, c, d) = match self.profile {
             MotionProfile::Spin { center, speed } => (0, speed, center[0], center[1], 0., 0.),
             MotionProfile::Waves {
@@ -375,6 +503,7 @@ impl ImageMotion {
                 scale,
                 strength * strength,
             ),
+            MotionProfile::Pulse { .. } => unreachable!("Pulse constants returned above"),
         };
         // Sway combines unrelated frequencies, so a single-cycle wrap would jump.
         let phase = time.as_secs_f64() * f64::from(speed);
@@ -403,6 +532,14 @@ impl ImageMotion {
             self.opacity_mask
                 .as_ref()
                 .map_or(1, |mask| mask.extent()[1]),
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
             0,
             0,
         ];

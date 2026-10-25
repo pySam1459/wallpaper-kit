@@ -25,6 +25,7 @@ pub(super) struct ImageRenderer {
     cloud_pixel: ID3D11PixelShader,
     flow_pixel: ID3D11PixelShader,
     motion_pixel: ID3D11PixelShader,
+    motion_constants: ID3D11Buffer,
     capture_pixel: ID3D11PixelShader,
     ray_vertex: ID3D11VertexShader,
     ray_pixel: ID3D11PixelShader,
@@ -128,6 +129,7 @@ impl ImageRenderer {
         let (mut cloud_pixel, mut cloud_constants) = (None, None);
         let mut flow_pixel = None;
         let mut motion_pixel = None;
+        let mut motion_constants = None;
         let mut capture_pixel = None;
         let capture_code = compile(s!("capture_pixel"), s!("ps_5_0"))?;
         let (mut particle_pixel, mut additive) = (None, None);
@@ -168,6 +170,16 @@ impl ImageRenderer {
             device.CreatePixelShader(&cloud_pixel_code, None, Some(&mut cloud_pixel))?;
             device.CreatePixelShader(&flow_pixel_code, None, Some(&mut flow_pixel))?;
             device.CreatePixelShader(&motion_pixel_code, None, Some(&mut motion_pixel))?;
+            device.CreateBuffer(
+                &D3D11_BUFFER_DESC {
+                    ByteWidth: 96,
+                    Usage: D3D11_USAGE_DEFAULT,
+                    BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as u32,
+                    ..Default::default()
+                },
+                None,
+                Some(&mut motion_constants),
+            )?;
             device.CreatePixelShader(&capture_code, None, Some(&mut capture_pixel))?;
             device.CreateVertexShader(&ray_vertex_code, None, Some(&mut ray_vertex))?;
             device.CreatePixelShader(&ray_pixel_code, None, Some(&mut ray_pixel))?;
@@ -249,6 +261,7 @@ impl ImageRenderer {
             cloud_pixel: cloud_pixel.expect("cloud pixel output"),
             flow_pixel: flow_pixel.expect("flow pixel output"),
             motion_pixel: motion_pixel.expect("motion pixel output"),
+            motion_constants: motion_constants.expect("motion buffer output"),
             capture_pixel: capture_pixel.expect("composition capture shader output"),
             ray_vertex: ray_vertex.expect("ray vertex output"),
             ray_pixel: ray_pixel.expect("ray pixel output"),
@@ -1048,14 +1061,14 @@ impl ImageRenderer {
             if let Some((motion, time)) = effect.and_then(|effect| effect.image_motion()) {
                 let constants = motion.constants(time);
                 context.UpdateSubresource(
-                    &self.cloud_constants,
+                    &self.motion_constants,
                     0,
                     None,
                     constants.as_ptr().cast(),
                     0,
                     0,
                 );
-                context.PSSetConstantBuffers(7, Some(&[Some(self.cloud_constants.clone())]));
+                context.PSSetConstantBuffers(7, Some(&[Some(self.motion_constants.clone())]));
                 for (slot, mask) in [
                     (4, &motion.mask),
                     (3, &motion.phase_mask),

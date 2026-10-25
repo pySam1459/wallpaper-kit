@@ -24,11 +24,14 @@ Opening hashes, validates and prepares assets, so run it on an asset thread or b
 | `image_quality` | `Nearest` | `Linear` uses bilinear interpolation for smoother image scaling, including placed blur output. Sampling clamps inside each atlas crop. Cloud effects and particles already use bilinear sampling. |
 | `animation` | `true` | Allows `play` to advance the clock. With `false`, `play` does nothing and time starts at zero. Explicit seeks can select a different still. |
 | `visual_effects` | `true` | With `false`, image effects and particles are omitted before loading their assets. Base images and sprites remain. |
-| `reduce_flashing` | `false` | With `true`, all particles are omitted, including fireworks, star flicker and gentle particle motion. Image effects and sprite imagery remain. |
+| `reduce_flashing` | `false` | With `true`, all particles and Pulse effects are omitted before loading their assets. Other image effects and sprite imagery remain. |
 
 Output resolution remains the `Size` supplied to `Renderer::new` or `resize`. Linear sampling does not add mipmaps, HDR, or source detail. Manual `ImageLayer` consumers can use `with_image_quality` too.
 
-Reduced flashing is a conservative particle policy, not an automatic brightness or flash detector. It cannot guarantee the absence of flashes in arbitrary content. There is no “epilepsy safe” claim. For a stationary background, disable animation or freeze the displayed sample.
+Reduced flashing skips particles and the known Pulse brightness/alpha effect.
+It is not an automatic brightness or flash detector and cannot guarantee the
+absence of flashes in arbitrary content. For a stationary background, disable
+animation or freeze the displayed sample. See [Pulse verification](pulse.md).
 
 ## Output resolution
 

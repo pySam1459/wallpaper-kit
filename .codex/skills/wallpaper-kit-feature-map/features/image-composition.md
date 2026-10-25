@@ -2,6 +2,21 @@
 
 ## Status
 
+[Periodic Pulse](../../../../docs/pulse.md) is verified through headless Chrome
+on 25 October 2026. Image and composition passes support additive/hard-light
+tint, alpha, painted opacity, noise, bounds, power and continuous timing. Both
+WARP and RTX 5080 pass 18 installed-shader cases within two channel values,
+including transparency, HDR, composition, resize and fault checks. Public GPU
+contracts independently check the signal, blending, masks, grayscale tint,
+rewind, invalid profiles and consumer policy. Actual `2374964197` and
+`2288914800` pass Playwright/DevTools controls and cleanup. Nine Pulse passes
+across nine folders are added while prior objects/effect chains and 65/65 loading
+are retained. Three audio-driven Pulse profiles remain omitted; zero power and
+other blend modes are outside the checked profile. Reduced-flashing mode now
+skips Pulse before asset preparation. The required software/headless gate passes
+with native windows skipped. Engine runtime agreement and display cadence remain
+unverified.
+
 [Composition layers](../../../../docs/composition-layers.md) are verified through
 headless Chrome on 25 October 2026. Scene discovery applies supported passes to
 earlier draws at the authored position. Full-screen captures use output

@@ -1,6 +1,7 @@
 // Runs the installed original GLSL in a browser. No engine source is bundled.
 export function effectReference(input) {
   const ripple = input.effect === 'waterripple';
+  const pulse = input.effect === 'pulse';
   const canvas = document.createElement('canvas');
   canvas.width = input.width; canvas.height = input.height;
   const gl = canvas.getContext('webgl', { antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
@@ -12,7 +13,13 @@ export function effectReference(input) {
 #define MASK ${input.masked ? 1 : 0}
 #define M_PI 3.14159265359
 #define CAST2(x) vec2(x)
+#define CAST3(x) vec3(x)
 #define CAST4(x) vec4(x)
+#define saturate(x) clamp(x,0.0,1.0)
+#define AUDIOPROCESSING 0
+#define BLENDMODE ${input.combos?.BLENDMODE ?? 9}
+#define PULSECOLOR ${input.combos?.PULSECOLOR ?? 1}
+#define PULSEALPHA ${input.combos?.PULSEALPHA ?? 0}
 #define texSample2D texture2D
 #define mul(a,b) ((b)*(a))
 vec2 rotateVec2(vec2 v, float a) { return mat2(cos(a),sin(a),-sin(a),cos(a))*v; }
@@ -21,7 +28,8 @@ vec2 rotateVec2(vec2 v, float a) { return mat2(cos(a),sin(a),-sin(a),cos(a))*v; 
     const shader = gl.createShader(type);
     // These two straight-line shader profiles need explicit float literals in
     // GLSL ES 1.00. Keep preprocessor integers and scientific notation intact.
-    const portable = source.replace(/^\s*#include "common(?:_perspective)?.h"\s*$/gm, '')
+    const portable = source.replace(/^\s*#include "common_blending.h"\s*$/gm, input.blending || '')
+      .replace(/^\s*#include "common(?:_perspective)?.h"\s*$/gm, '')
       .split('\n').map(line => line.trimStart().startsWith('#') ? line : line.replace(
         /(?<![\w.])\d+(?:\.\d*)?(?:[eE][+-]?\d+)?(?![\w.])/g,
         value => /[.eE]/.test(value) ? value : `${value}.0`)).join('\n');
@@ -57,8 +65,8 @@ vec2 rotateVec2(vec2 v, float a) { return mat2(cos(a),sin(a),-sin(a),cos(a))*v; 
   const sourceWidth = input.source_width ?? input.width, sourceHeight = input.source_height ?? input.height;
   texture(0, sourceWidth, sourceHeight, input.rgba, false);
   const maskWidth = input.mask_width ?? input.width, maskHeight = input.mask_height ?? input.height;
-  if (input.masked) texture(1, maskWidth, maskHeight, input.mask_rgba, false);
-  texture(2, 8, 8, ripple ? input.normal_rgba : input.noise_rgba, true);
+  if (input.masked) texture(pulse ? 2 : 1, maskWidth, maskHeight, input.mask_rgba, false);
+  texture(pulse ? 1 : 2, 8, 8, ripple ? input.normal_rgba : input.noise_rgba, true);
   const defaults = ripple ? { animationspeed: .15, scrollspeed: 0, scale: 1, ratio: 1, ripplestrength: .1, scrolldirection: 0 }
     : { speeduv: 5, strength: .4, phase: .5, power: 1, ratio: .3, scale: .05, scrolldirection: 0 };
   const parameters = { ...defaults, ...input.constants };
@@ -68,10 +76,21 @@ vec2 rotateVec2(vec2 v, float a) { return mat2(cos(a),sin(a),-sin(a),cos(a))*v; 
   for (const [uniform, key] of Object.entries(uniforms)) {
     gl.uniform1f(gl.getUniformLocation(program, uniform), parameters[key]);
   }
+  if (pulse) {
+    const p = {speed:3,phase:0,amount:1,noisespeed:.5,noiseamount:0,power:1,bounds:'0 1',tintlow:'1 1 1',tinthigh:'1 1 1',...input.constants};
+    for (const [uniform,key] of Object.entries({g_PulseSpeed:'speed',g_PulsePhase:'phase',g_PulseAmount:'amount',g_NoiseSpeed:'noisespeed',g_NoiseAmount:'noiseamount',g_Power:'power'})) {
+      gl.uniform1f(gl.getUniformLocation(program,uniform),p[key]);
+    }
+    const vector = value => typeof value==='string' ? value.split(/\s+/).map(Number) : value;
+    gl.uniform2fv(gl.getUniformLocation(program,'g_PulseThresholds'),vector(p.bounds));
+    gl.uniform3fv(gl.getUniformLocation(program,'g_TintColor1'),vector(p.tintlow));
+    gl.uniform3fv(gl.getUniformLocation(program,'g_TintColor2'),vector(p.tinthigh));
+  }
   gl.uniform1f(gl.getUniformLocation(program, 'g_Time'), input.time / 1000);
   gl.uniform4f(gl.getUniformLocation(program, 'g_Texture0Resolution'), sourceWidth, sourceHeight, sourceWidth, sourceHeight);
   if (input.masked) gl.uniform4f(gl.getUniformLocation(program, 'g_Texture1Resolution'), maskWidth, maskHeight, maskWidth, maskHeight);
   if (ripple && input.masked) gl.uniform4f(gl.getUniformLocation(program, 'g_Texture2Resolution'), 8, 8, 8, 8);
+  if (pulse && input.masked) gl.uniform4f(gl.getUniformLocation(program, 'g_Texture2Resolution'), maskWidth, maskHeight, maskWidth, maskHeight);
   gl.uniformMatrix4fv(gl.getUniformLocation(program, 'g_ModelViewProjectionMatrix'), false, new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]));
   gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
   if (!input.raw) gl.enable(gl.BLEND);

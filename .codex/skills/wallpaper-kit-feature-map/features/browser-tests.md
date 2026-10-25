@@ -2,6 +2,13 @@
 
 ## Status
 
+The [Pulse route](../../../../docs/pulse.md) passes 18 WARP/hardware reference
+cases within two channel values using installed effect and blending sources.
+It covers tint, alpha, noise, masks, HDR, composition capture and resize. Actual
+`2374964197` and `2288914800` pass Playwright/DevTools controls, bounds and owned
+cleanup. Frozen motion and corrupt pixels fail the shader oracle. Audio-driven
+profiles, complete engine runtime agreement and native cadence remain open.
+
 The [composition-layer route](../../../../docs/composition-layers.md) passes nine
 WARP/hardware cases with an independent capture/placement oracle and installed
 GLSL passes. It checks full-screen and rotated adjustable regions, authored

@@ -862,6 +862,13 @@ pub(super) fn effects(
             continue;
         }
         let key = asset_key(&effect.file)?;
+        if settings.reduce_flashing && key.eq_ignore_ascii_case("effects/pulse/effect.json") {
+            omissions.push(format!(
+                "Object {}: effect {key} disabled by reduced-flashing settings.",
+                object.id
+            ));
+            continue;
+        }
         if key.eq_ignore_ascii_case("effects/blurprecise/effect.json")
             || key.eq_ignore_ascii_case("effects/cloudmotion/effect.json")
             || key.eq_ignore_ascii_case("effects/waterflow/effect.json")
@@ -870,11 +877,13 @@ pub(super) fn effects(
             || key.eq_ignore_ascii_case("effects/shake/effect.json")
             || key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
             || key.eq_ignore_ascii_case("effects/waterripple/effect.json")
+            || key.eq_ignore_ascii_case("effects/pulse/effect.json")
         {
             if hdr
                 && !key.eq_ignore_ascii_case("effects/shake/effect.json")
                 && !key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
                 && !key.eq_ignore_ascii_case("effects/waterripple/effect.json")
+                && !key.eq_ignore_ascii_case("effects/pulse/effect.json")
             {
                 if tolerant {
                     omissions.push(format!(
@@ -906,6 +915,7 @@ pub(super) fn effects(
                 || key.eq_ignore_ascii_case("effects/shake/effect.json")
                 || key.eq_ignore_ascii_case("effects/foliagesway/effect.json")
                 || key.eq_ignore_ascii_case("effects/waterripple/effect.json")
+                || key.eq_ignore_ascii_case("effects/pulse/effect.json")
             {
                 super::motion::load(decoder, effect).map(EffectDescription::Motion)
             } else {

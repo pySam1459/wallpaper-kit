@@ -48,6 +48,10 @@ captures use native output resolution; adjustable captures retain authored
 resolution. This restores 14 passes across five wallpapers, with browser
 references on WARP and hardware and 65/65 loading retained.
 
+[Periodic Pulse](docs/pulse.md) adds tint, alpha, masks and noise to images and
+composition captures. Installed-shader browser checks pass on WARP and hardware;
+nine local wallpapers gain Pulse. Three audio-driven variants remain omitted.
+
 ## Build and run
 
 Requires Windows, Rust 1.91 or newer with the MSVC toolchain and C++ build tools, and PowerShell 7 for verification scripts. Hardware runs require a Direct3D 11 feature-level 11.0 adapter. Software WARP runs are available explicitly for CI.

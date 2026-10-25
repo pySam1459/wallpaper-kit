@@ -18,6 +18,7 @@ Scene discovery recognizes full-screen/project models and adjustable models
 using `materials/util/composelayer.json`. It reuses the checked Precise Blur,
 Cloud Motion, Water Flow, Spin, Water Waves, Shake, UV Foliage Sway and planar
 Water Ripple profiles from [ordered image effects](image-effect-chains.md).
+[Periodic Pulse](pulse.md) also applies to composition captures.
 Existing parameter, mask and SDR/HDR restrictions still apply.
 
 Adjustable layers support 2D translation, rotation, positive scale, opacity and

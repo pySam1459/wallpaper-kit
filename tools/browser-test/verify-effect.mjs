@@ -16,7 +16,7 @@ const { values } = parseArgs({ options: {
 assert(values.fixtures && values['engine-assets'], '--fixtures and --engine-assets are required');
 const fixtures = JSON.parse(await readFile(path.join(values.fixtures, 'fixtures.json'), 'utf8'));
 const effect = values.effect || fixtures.effect || 'foliagesway';
-assert(['foliagesway', 'waterripple', 'chain', 'composition'].includes(effect), 'Unsupported reference effect');
+assert(['foliagesway', 'waterripple', 'pulse', 'chain', 'composition'].includes(effect), 'Unsupported reference effect');
 const { cases, ...images } = fixtures;
 const output = path.resolve(values.output || path.join(root, 'artifacts', `${effect}-browser-${Date.now()}`));
 await mkdir(output);
@@ -26,6 +26,7 @@ for (const kind of ['chain','composition'].includes(effect) ? ['foliagesway', 'w
   const shaders = path.join(values['engine-assets'], `effects/${kind}/shaders/effects`);
   const [vertex, fragment] = await Promise.all(['vert', 'frag'].map(ext => readFile(path.join(shaders, `${kind}.${ext}`), 'utf8')));
   sources[kind] = { vertex, fragment };
+  if (kind === 'pulse') sources[kind].blending = await readFile(path.join(values['engine-assets'],'shaders/common_blending.h'),'utf8');
 }
 const difference = (actual, expected, tolerance = 2) => {
   assert.equal(actual.length, expected.length);
@@ -38,7 +39,7 @@ const difference = (actual, expected, tolerance = 2) => {
   }
   return { maximum_channel_error: maximum, channels_over_two: bad, tolerance, channels_over_tolerance: outside };
 };
-const report = { passed: false, effect, node: process.version, cases: [], shader_sha256: Object.fromEntries(Object.entries(sources).map(([kind, source]) => [kind, { vertex: digest(source.vertex), fragment: digest(source.fragment) }])),
+const report = { passed: false, effect, node: process.version, cases: [], shader_sha256: Object.fromEntries(Object.entries(sources).map(([kind, source]) => [kind, Object.fromEntries(Object.entries(source).map(([name,text]) => [name,digest(text)]))])),
   limits: 'Installed GLSL effect pass executed in WebGL, not the complete Wallpaper Engine runtime. Controlled captures do not prove displayed cadence.' };
 let browser, harness;
 try {
@@ -54,6 +55,8 @@ try {
         { [effect === 'composition' ? 10 : 1]: fixture.chain.map(pass => pass.effect) });
       assert.equal(initial.report.omissions.filter(v => v.includes('effect') && v.includes('omitted')).length,
         fixture.unsupported || fixture.missing ? 1 : 0);
+    } else if (fixture.composition) {
+      assert.deepEqual(initial.report.composition_layers, {10:[effect]});
     } else {
       assert.deepEqual(initial.report.image_motions, { 1: effect });
       assert(!initial.report.omissions.some(v => v.includes(effect)));
@@ -125,6 +128,16 @@ try {
         assert(large.pool.resident_textures<=3);
         report.output_4k={width:3840,height:2160,foreground_pixel:'verified',native_sha256:large.frame.sha256};
       }
+    }
+    if (effect === 'pulse' && fixture.name === 'rotated') {
+      await page.evaluate(() => window.wallpaperTest.resize(256,192));
+      const resized = await page.evaluate(() => window.wallpaperTest.seek(1500));
+      const actual = await page.evaluate(() => [...document.querySelector('#wallpaper').getContext('2d').getImageData(0,0,256,192).data]);
+      const expected = await page.evaluate(effectReference,{...sources.pulse,...images,...fixture,effect,time:1500,
+        width:256,height:192,source_width:fixtures.width,source_height:fixtures.height,mask_width:fixtures.width,mask_height:fixtures.height});
+      const delta = difference(actual,expected);
+      assert.equal(delta.channels_over_two,0,`Pulse resize: ${JSON.stringify(delta)}`);
+      results.push({time_ms:1500,width:256,height:192,native_sha256:resized.frame.sha256,...delta});
     }
     report.cases.push({ name: fixture.name, adapter: initial.frame.adapter, renderer_sha256: initial.renderer_sha256, results });
     const cleanup = await harness.close(); harness = null;

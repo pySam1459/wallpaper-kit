@@ -30,8 +30,8 @@ pub struct PlaybackSettings {
     pub animation: bool,
     /// Prepare image effects and particles. False skips their assets entirely.
     pub visual_effects: bool,
-    /// Omit all particle effects, including fireworks and star flicker.
-    /// Image effects and sprite imagery remain enabled. This is not automatic
+    /// Omit all particle effects, including fireworks and star flicker, and Pulse.
+    /// Other image effects and sprite imagery remain enabled. This is not automatic
     /// flash detection or a guarantee about arbitrary content.
     pub reduce_flashing: bool,
 }

@@ -2,8 +2,9 @@
 
 Scene snapshots and playback apply supported image effects in authored order.
 Each pass reads the previous pass's pixels. Supported profiles include Precise
-Blur, Cloud Motion, Water Flow, Spin, Water Waves, Shake, UV Foliage Sway and
-planar Water Ripple. Each profile retains its existing parameter restrictions.
+Blur, Cloud Motion, Water Flow, Spin, Water Waves, Shake, UV Foliage Sway,
+planar Water Ripple and [periodic Pulse](pulse.md). Each profile retains its
+existing parameter restrictions.
 [Composition layers](composition-layers.md) reuse these profiles to process the
 accumulated scene at their authored draw positions.
 

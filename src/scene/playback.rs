@@ -42,7 +42,7 @@ pub struct ImagePlaybackReport {
     pub water_flow_objects: Vec<u64>,
     /// Applied basic masked UV animation profiles, keyed by image object ID.
     /// Values identify the first motion pass: `spin`, `waterwaves`, `shake`,
-    /// `foliagesway` or `waterripple`. See `effect_chains` for all applied passes.
+    /// `foliagesway`, `waterripple` or `pulse`. See `effect_chains` for all applied passes.
     pub image_motions: BTreeMap<u64, String>,
     /// Applied image passes in authored order, keyed by scene object ID.
     /// Unsupported passes appear in omissions instead. At most 16 passes per image.

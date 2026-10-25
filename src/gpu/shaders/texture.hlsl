@@ -146,6 +146,8 @@ cbuffer Motion : register(b7) {
     uint2 motion_phase_extent;
     uint2 motion_opacity_extent;
     uint2 motion_padding;
+    float4 pulse_low;
+    float4 pulse_high;
 };
 Texture2D<float4> motion_opacity : register(t8);
 
@@ -184,7 +186,7 @@ float4 motion_pixel(LayerVertex input) : SV_Target {
             sway += sign(wave) * pow(abs(wave), asfloat(motion_opacity_extent.y));
         }
         uv += sway * stretch * motion_parameters.w * mask;
-    } else {
+    } else if (motion_kind == 4) {
         float2 drift = float2(-motion_parameters.y, motion_parameters.x) * asfloat(motion_opacity_extent.y) * motion_phase;
         float cycle = asfloat(motion_opacity_extent.x) * motion_phase;
         float2 aspect = float2((float)layer_source_extent.x / layer_source_extent.y, asfloat(motion_mask_flags));
@@ -197,11 +199,31 @@ float4 motion_pixel(LayerVertex input) : SV_Target {
         uv += combined.xy * motion_parameters.w * mask;
     }
     float4 color = cloud_sample(image, uv, layer_source_origin, layer_source_extent, false);
+    if (motion_kind == 5 && layer_grayscale != 0) { color = float4(color.rrr,1); }
+    if (motion_kind == 5) {
+        float noise = motion_parameters.y != 0
+            ? cloud_sample(cloud_noise, motion_parameters.zw, uint2(0,0), motion_phase_extent, true).r * motion_parameters.y : 0;
+        float signal = pow(motion_phase + noise, motion_parameters.x);
+        float4 changed = color;
+        if ((motion_mask_flags & 1) != 0) {
+            float3 low = color.rgb * pulse_low.rgb, high = color.rgb * pulse_high.rgb;
+            float3 combined = min(low + high, 1);
+            if ((motion_mask_flags & 4) != 0) {
+                combined = float3(high.r < 0.5 ? 2*low.r*high.r : 1-2*(1-low.r)*(1-high.r),
+                    high.g < 0.5 ? 2*low.g*high.g : 1-2*(1-low.g)*(1-high.g),
+                    high.b < 0.5 ? 2*low.b*high.b : 1-2*(1-low.b)*(1-high.b));
+            }
+            changed.rgb = lerp(low, combined, signal);
+        }
+        if ((motion_mask_flags & 2) != 0) { changed.a *= signal; }
+        color = lerp(color, changed, mask);
+        color.rgb = max(0, color.rgb);
+    }
     if (motion_kind == 2 && (motion_mask_flags & 2) != 0) {
         float opacity = cloud_sample(motion_opacity, input.uv, uint2(0,0), motion_opacity_extent, false).r;
         color = lerp(cloud_sample(image, input.uv, layer_source_origin, layer_source_extent, false), color, opacity);
     }
-    if (layer_grayscale != 0) { color = float4(color.rrr,1); }
+    if (motion_kind != 5 && layer_grayscale != 0) { color = float4(color.rrr,1); }
     return float4(color.rgb * layer_brightness, color.a * layer_opacity);
 }
 
