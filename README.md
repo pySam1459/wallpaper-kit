@@ -59,6 +59,8 @@ disabled, paused and uncapped controls. Results retain source/build identities
 and raw samples; completed render fps is separate from displayed cadence.
 The [initial RTX 5080 baseline](docs/performance-baseline-2026-10-25.md) records
 the first matrix and a longer sprite-loop observation.
+The [first measured optimization](docs/performance-climb-2026-10-25.md) reduces
+Yuta's playback memory by 19.6% through bounded sprite prefetch windows.
 
 ## Build and run
 

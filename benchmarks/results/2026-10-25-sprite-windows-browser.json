@@ -1,0 +1,251 @@
+{
+  "passed": true,
+  "phases": [
+    {
+      "playing": false,
+      "elapsed_seconds": 7.8064762000000005,
+      "keyboard_round_trip_ms": {
+        "count": 40,
+        "mean": 1.2145375000003695,
+        "p50": 1.0610999999989872,
+        "p95": 1.5708000000013271,
+        "p99": 4.199899999999616,
+        "max": 4.199899999999616
+      },
+      "event_to_handler_ms": {
+        "count": 40,
+        "mean": 0.07250000089406967,
+        "p50": 0.09999999403953552,
+        "p95": 0.20000000298023224,
+        "p99": 0.20000000298023224,
+        "max": 0.20000000298023224
+      },
+      "animation_frame_gap_ms": {
+        "count": 2644,
+        "mean": 2.9524205748865344,
+        "p50": 2.7999999999992724,
+        "p95": 5.5,
+        "p99": 5.599999999998545,
+        "max": 5.799999999999272
+      },
+      "animation_gaps_over_25ms": 0,
+      "long_tasks_available": true,
+      "long_task_ms": null,
+      "native_completed_frames": 0
+    },
+    {
+      "playing": true,
+      "elapsed_seconds": 7.816102199999998,
+      "keyboard_round_trip_ms": {
+        "count": 40,
+        "mean": 1.3169724999999743,
+        "p50": 1.1517999999996391,
+        "p95": 1.623700000000099,
+        "p99": 5.245699999999488,
+        "max": 5.245699999999488
+      },
+      "event_to_handler_ms": {
+        "count": 40,
+        "mean": 0.0625,
+        "p50": 0.09999999403953552,
+        "p95": 0.10000000894069672,
+        "p99": 0.20000000298023224,
+        "max": 0.20000000298023224
+      },
+      "animation_frame_gap_ms": {
+        "count": 2649,
+        "mean": 2.9499811249528123,
+        "p50": 2.7999999999992724,
+        "p95": 5.5,
+        "p99": 5.599999999998545,
+        "max": 5.69999999999709
+      },
+      "animation_gaps_over_25ms": 0,
+      "long_tasks_available": true,
+      "long_task_ms": null,
+      "native_completed_frames": 3
+    },
+    {
+      "playing": false,
+      "elapsed_seconds": 7.800532999999996,
+      "keyboard_round_trip_ms": {
+        "count": 40,
+        "mean": 1.1307699999997567,
+        "p50": 1.086300000002666,
+        "p95": 1.442799999997078,
+        "p99": 1.7098999999943771,
+        "max": 1.7098999999943771
+      },
+      "event_to_handler_ms": {
+        "count": 40,
+        "mean": 0.05750000029802323,
+        "p50": 0.09999999403953552,
+        "p95": 0.10000000894069672,
+        "p99": 0.20000000298023224,
+        "max": 0.20000000298023224
+      },
+      "animation_frame_gap_ms": {
+        "count": 2648,
+        "mean": 2.944826283987913,
+        "p50": 2.7999999999956344,
+        "p95": 5.5,
+        "p99": 5.599999999998545,
+        "max": 5.700000000004366
+      },
+      "animation_gaps_over_25ms": 0,
+      "long_tasks_available": true,
+      "long_task_ms": null,
+      "native_completed_frames": 0
+    },
+    {
+      "playing": true,
+      "elapsed_seconds": 7.809035900000002,
+      "keyboard_round_trip_ms": {
+        "count": 40,
+        "mean": 1.2209124999995766,
+        "p50": 1.1516000000046915,
+        "p95": 1.5657999999966705,
+        "p99": 1.9245000000009895,
+        "max": 1.9245000000009895
+      },
+      "event_to_handler_ms": {
+        "count": 40,
+        "mean": 0.07249999903142453,
+        "p50": 0.09999999403953552,
+        "p95": 0.19999998807907104,
+        "p99": 0.20000000298023224,
+        "max": 0.20000000298023224
+      },
+      "animation_frame_gap_ms": {
+        "count": 2609,
+        "mean": 2.9931391337677264,
+        "p50": 2.8000000000029104,
+        "p95": 5.5,
+        "p99": 5.599999999998545,
+        "max": 5.900000000001455
+      },
+      "animation_gaps_over_25ms": 0,
+      "long_tasks_available": true,
+      "long_task_ms": null,
+      "native_completed_frames": 3
+    }
+  ],
+  "limits": [
+    "Headless Chrome debug consumer with PNG transport, not T3 or native monitor presentation.",
+    "Paused versus playing retains the same loaded renderer. Browser keyboard round trips include Playwright/CDP overhead.",
+    "Event-to-handler delay and animation-frame gaps describe this page, not end-to-end device input latency."
+  ],
+  "adapter": {
+    "name": "NVIDIA GeForce RTX 5080",
+    "software": false
+  },
+  "renderer_sha256": "0284e348adcd1274fd3a1e51f088da01571c0403ece0ca9464490aab8a399a23",
+  "playback": {
+    "animated_assets": [
+      "materials/oiseaux optimized_00000.tex",
+      "materials/resize yuta_00000.tex"
+    ],
+    "background_color": [
+      0.699999988079071,
+      0.699999988079071,
+      0.699999988079071,
+      1
+    ],
+    "cloud_motions": {
+      "28": {
+        "mask_asset": null,
+        "noise_asset": "materials/util/perlin_256.tex",
+        "settings": {
+          "amount": 0.009999999776482582,
+          "direction_radians": 1.5707963705062866,
+          "granularity": [
+            0.6000000238418579,
+            0.10000000149011612
+          ],
+          "speed": 0.013000000268220901
+        }
+      },
+      "32": {
+        "mask_asset": "materials/masks/cloudmotion_mask_ce1abe94.tex",
+        "noise_asset": "materials/util/perlin_256.tex",
+        "settings": {
+          "amount": 0.019999999552965164,
+          "direction_radians": 1.5707963705062866,
+          "granularity": [
+            0.5,
+            0.10000000149011612
+          ],
+          "speed": 0.02500000037252903
+        }
+      }
+    },
+    "composition_layers": {
+      "364": []
+    },
+    "effect_chains": {
+      "22": [
+        "blurprecise"
+      ],
+      "28": [
+        "cloudmotion"
+      ],
+      "32": [
+        "cloudmotion"
+      ],
+      "72": [
+        "blurprecise"
+      ]
+    },
+    "hdr_bloom": false,
+    "image_motions": {},
+    "object_ids": [
+      28,
+      32,
+      22,
+      72,
+      89,
+      77,
+      86
+    ],
+    "omissions": [
+      "General scene camera, lighting and other postprocessing settings are omitted.",
+      "Object 28: parallax is omitted.",
+      "Object 32: parallax is omitted.",
+      "Object 22: parallax is omitted.",
+      "Object 364: parallax is omitted.",
+      "Object 364: effect effects/chromaticaberration/effect.json is omitted.",
+      "Object 96 (storegraphic-soft-wind-sound-314943.mp3): non-image content is omitted.",
+      "Object 100 (freesound_community-badlands-wind-slow-open-barren-landscape-near-stream-alberta-100315-18027.mp3): non-image content is omitted.",
+      "Object 71: unsupported particle layer properties/effects.",
+      "Object 103: optional content omitted: scene.json object 103: unsupported corner light-shafts profile"
+    ],
+    "package_sha256": "551f74eeca12b2f760bff5a9c79f9f28c623c1e1d31c3642719b67633ff91f14",
+    "particle_objects": [],
+    "precise_blurs": {
+      "22": [
+        0.3199999928474426,
+        0.3199999928474426
+      ],
+      "72": [
+        2,
+        2
+      ]
+    },
+    "resolved_bindings": [],
+    "settings": {
+      "allow_unsupported_features": true,
+      "animation": true,
+      "image_quality": "Linear",
+      "reduce_flashing": false,
+      "visual_effects": true
+    },
+    "shape_objects": [],
+    "text_objects": [],
+    "user_properties": {},
+    "water_flow_objects": []
+  },
+  "cleanup": {
+    "code": 0,
+    "signal": null
+  }
+}

@@ -1,0 +1,1117 @@
+{
+  "schema_version": 1,
+  "machine": {
+    "cpu": [
+      {
+        "Name": "AMD Ryzen 9 9950X3D 16-Core Processor          ",
+        "NumberOfCores": 16,
+        "NumberOfLogicalProcessors": 32
+      }
+    ],
+    "gpu": [
+      {
+        "Name": "AMD Radeon(TM) Graphics",
+        "DriverVersion": "32.0.21030.2001"
+      },
+      {
+        "Name": "NVIDIA GeForce RTX 5080",
+        "DriverVersion": "32.0.16.1664"
+      }
+    ],
+    "os": {
+      "Caption": "Microsoft Windows 11 Home",
+      "Version": "10.0.26200",
+      "BuildNumber": "26200",
+      "TotalVisibleMemorySize": 64545140
+    },
+    "power_plan": "Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Balanced)"
+  },
+  "logical_cpus": 32,
+  "before_binary_provenance": {
+    "path": "artifacts/performance-baseline-clean-20261025/report.json",
+    "sha256": "ae75e33fb7fcb722d7736c7e34bb6f3037674209c9af7c030fce8e09174ca2b3"
+  },
+  "limits": [
+    "Before report checkout hashes describe the current checkout; the old executable is identified by the original baseline report and matching binary hash.",
+    "Two alternating 35-second repetitions per version; these ranges are observations, not statistical confidence intervals.",
+    "Native completion throughput excludes browser transport and monitor presentation."
+  ],
+  "versions": {
+    "before": {
+      "executable_sha256": "c40ca77e4a34d1b3630fdb171512e48014f1d754521f419c3985f5e1f802d77e",
+      "source_hashes": {
+        "benchmarks/workloads.json": "0b18e917151aec391b42988af7efe921522cb79ca905570fa9a095ce34178d6c",
+        "Cargo.lock": "9aca5a82ae8f06742a6161930dda921e13d13d3e0141bd179a3e92416452446a",
+        "Cargo.toml": "3ba9955aab25cd39bfb3642c1df0a6826f6c68663cf8c9f7a533247a8a9602eb",
+        "examples/benchmark/main.rs": "27cda153c856d4b20330d9465d000c8845a9aa35e7968d429a5f38427fac2c18",
+        "examples/benchmark/metrics.rs": "62e87f17787d9f4bd5de33650671ee4470d2d9f0b1f3d3263c4cbb34880e3025",
+        "examples/browser-worker/main.rs": "ddafaf4067f90e87659a11465993d97ae011b830082690c19655a2a4c3e29c64",
+        "examples/headless/main.rs": "e5b3720e58c724c25a991909402073bb34b9dba5e628770d42e71154992c7531",
+        "examples/motion-checks/main.rs": "d923597ce9fcc9ebdd23b267b8e35ebecd6fb5b6af13cef884d1cec55d568d47",
+        "examples/motion-checks/timing.rs": "0cc63df06d30a88ea369b0e089ac4f7d1b168252754f3c3ace13052fce356f97",
+        "examples/native-viewer/fixture.rs": "bc15c572666746b94e2f00020a62255a15c53d0c59cbc28b9c90c0954c49a1b0",
+        "examples/native-viewer/images.rs": "7118842b214af809447157c75990cb78bdacadec0d6cc22101007789316c0d78",
+        "examples/native-viewer/main.rs": "df584efbfaf3980b79814196df68e55b304069902e79a253da75e205502daf6c",
+        "examples/native-viewer/presentation.rs": "7c2170dca7a49aeb1f0c2e9e43b4bd3f1ad8386a3ed271eb7b74dc16575d91c2",
+        "examples/scene-inspect/main.rs": "c94574d2f3a9f557986a881e36f9b528228d6266649e9201cf58e848ef37f8b7",
+        "examples/support/image_playback.rs": "898f0e56f6168f356a99b16e96cd013332ee7fdbfdeba9071ea0b29dee93ffc6",
+        "examples/support/layers.rs": "f4948cb1aa084d5d2bca06954c8f7661c4f4828e764b341cbb7413256a9a1a2d",
+        "examples/support/mod.rs": "5c4e7ab853baaaa7e9291f786e868103e19efd928e9d305b2b92f499cc2eb799",
+        "examples/support/motion.rs": "0a1008a01c39ad386c90f1f2218428488b962a42b247fb6eacfb77a083bf6e8a",
+        "examples/support/paging.rs": "45c72e8fe91b5b5ee3a4a55d9d7ef95173e684b599f47ecb1528e424f219f05b",
+        "examples/support/sprite.rs": "f1d6274dccb090ae66d144bd7c7ddd3a749ed9c19d5762f6148b9ce18fda31f8",
+        "examples/support/texture.rs": "7d2c0c9a24358c9a1e4bfc0f8b9ec0e8cbd02198fccff31bdbfda1562fcd6f66",
+        "examples/texture-checks/main.rs": "c2314130ca06ec26b73bd55ba3b3c752be32f941f0fd3d359978cc8747f2956f",
+        "examples/workshop-check/main.rs": "42bbebf3aee63291ddb18371b868a34879b1c02bb6f25db5e65831c48922ec02",
+        "scripts/benchmark.ps1": "fb376ef7226be07e2af402c9a4094b8a5dfac0c909c2af2979ef21a8f06a3d39",
+        "scripts/benchmark.py": "ddca2b7a364dbb102d8acb29e2205f29ee0d8f6ae164af7657d761f60b29efe6",
+        "scripts/benchmark_windows.py": "ef23a631401cb13493c32c3721ba2d1684628f8183311074996f1ff47d6c9179",
+        "scripts/check-boundaries.ps1": "a78539d8ceb27b33130131fa9254a137eefe02936415a6c4eb22e246b6e99d78",
+        "scripts/inspect-workshop-inputs.py": "ad8ac471c494339cae227e4d411efa10bdad8137c79ff53bc551d0ac72997dce",
+        "scripts/inventory-bindings.py": "69673e5da7cc6935e0eae7adce017d82651743a93c933a17bb56a60a17b1844c",
+        "scripts/inventory-composition.py": "bc5bd52440735d218d38080ad70b1d2888fa7ea664ff4cc070c7f355fd540663",
+        "scripts/inventory-particle-gaps.py": "b1d2317dd7cfc350276798aa5fd81013a862e2f9a176afe12f1bc78d72ee0eb8",
+        "scripts/inventory-workshop.py": "95d2ff534c34c4253c12ddebb6b57800ad7a3c1de868a1ee3e3cb19ebc80ce9e",
+        "scripts/measure-blur-reference.ps1": "517ff2a270b1e8d3d6fb3ca770d8946a975d9c018ab23b78aa147446ae757626",
+        "scripts/measure-cloud-reference.ps1": "4552603880701adc3ae43cfe8442cb90dcb868ac1b2059f274c943ac529c006a",
+        "scripts/measure-light-shafts-reference.ps1": "947952ea6a106fc0448dffc93a8c1eb56b5790822a6f0610d6f89208d5280e40",
+        "scripts/prepare-background-reference.py": "5ab69a44de9695eef05107ca93c57bfa213e2fa25db27839df3a4300a6e25ea6",
+        "scripts/prepare-binding-browser.py": "42c0d9eea8d170ab8e0efd1fade23ffddd0d20df7b765512c998be08763f5e7e",
+        "scripts/prepare-blur-reference.ps1": "1d641b02639b50b09b1b7d408fb6b2e7510b9e78ec05206e931c7a99c7e85866",
+        "scripts/prepare-cloud-reference.ps1": "1cef0ce5e18453f1a3c40d31db1669172280d4fc02c2189c1ea3a021ca7ae07b",
+        "scripts/prepare-composition-browser.py": "8f2bfbd829251a141cb86a6d3fabb205317777861d7f65e5c3366e6d6e465653",
+        "scripts/prepare-effect-chain-browser.py": "aec867f281f1e16c4e8a8f0d67a5eb6865b9c89360368a2ec72cba98153c4ca0",
+        "scripts/prepare-foliage-browser.py": "e80111a11d2e3c69027b2dd10cdd1de90ac7658cf1eae8ef48e3e0813c7ed853",
+        "scripts/prepare-light-shafts-reference.ps1": "af3c4ec2c1770b1a7bf6084ca7ad949f22dbed2224e64ff22ea77b9e8a74b36a",
+        "scripts/prepare-particle-motion-reference.py": "0b7a6684843608e579734833798cc76059e53068a633c0c376cbf75402a5cb27",
+        "scripts/prepare-particle-render-reference.ps1": "df548f2c07371f2b49c6ea7f1e0583109c751c32bdae4ebef347d65cb738a147",
+        "scripts/prepare-pulse-browser.py": "4b08d328e9f12881e4cd18715f4fed8028bfa9a6c130b30564e4938cb9fa1b76",
+        "scripts/prepare-ripple-browser.py": "6ce9839ee06d5850413360b48819591702b8465d4c6b34af8b8552937621bda2",
+        "scripts/prepare-shake-reference.py": "c73e2f75dd40ebfc5b3120a8897f57ac830084d923a1f446564db836369c02a4",
+        "scripts/setup-browser-mcp.ps1": "b8b44e8e9531fd21b023b4219a6e2979dd6af0a45947dcac62ea1ddc02ddb9f0",
+        "scripts/start-browser-test.ps1": "9d9faa725ad9636657e9fe27cb5c158c89556effe9f5ec9eda7d0647adfa1f61",
+        "scripts/test_benchmark.py": "24d2f8fc58d30b0eb43e5ddf8f1af997c2d61fb7f2276bb2cf5f0f8d3d3926b3",
+        "scripts/test_workshop_fidelity.py": "0c56fcb1cd3f6dc422428ff13ece4f464a8b80b62b47ff6649e29c1f26e6151a",
+        "scripts/verify-browser.ps1": "ee649d85c3b23f3a9beceeda1b091700b8fb1139e9dc1cc01ecd561793f841ce",
+        "scripts/verify-gojo-particles.ps1": "488726e2473e768bdf84f581be8b588178cff5a6fe00e3a92c2a1272d1a8131b",
+        "scripts/verify-image-motion.ps1": "c324f667c89703aad5b2cb97fc932dea880c5c6d004e7cd1fef6b45d5105dbb0",
+        "scripts/verify-image-playback.ps1": "d412ca3a938b85a212e5549fd14d5d6d8f5db6dd9d28f009ba469788fc40a8da",
+        "scripts/verify-native.ps1": "44a0220f84e2f112d71ff9b419f078b04f471a5ce0b1879692ea2f13f17f3009",
+        "scripts/verify-particle-material.py": "6423b17f4cc8f6772e444d1a2aaec449c4b807ceec7dcc8c905a00cdb164fd4d",
+        "scripts/verify-particle-profiles.ps1": "fdf94dbfebc872c3a32b501cf2ab25c379179921d698ac596295468bb9b1d902",
+        "scripts/verify-particle-reference.py": "062078f43fc0d4bcd70865e0c9ed49d9a0311670e48c03e94d5dcf20916d057e",
+        "scripts/verify-particle-velocity.py": "4dd2009ac53a9fa359ad2b0777af928657d8707161970bb5ac45afecdc01f0dd",
+        "scripts/verify-scene-inspection.ps1": "ffbf2189e8d29156f826692dab357e9310b0e14c2fc51f6ec80e13ab2864f0dd",
+        "scripts/verify-shake-reference.py": "0f1bf943aa59b22979db7cd0e13fc4fbb2315465aa3d125b010f9ebe24aaef0c",
+        "scripts/verify-workshop-playback.ps1": "73595ca0ff37d3f6434a7cdcc8259ea19fba1ab32dcca02dbb64b7200f28eda6",
+        "scripts/verify.ps1": "7dfb9bb6e3db8ab8b00cf95a43626a1cd7471c6cb4d892eacde247cac4e205fe",
+        "scripts/workshop-fidelity.py": "6c2251a82f2f250a5dc86e929744acb016ad8de16035581bed87f70dd41863c0",
+        "scripts/workshop-support.ps1": "52754d20a0ff9afe6480b48efc133f86d63934ee97b1037e701b6af8025fcc5a",
+        "src/assets/mod.rs": "002ac40506def953d9e3f7e67fb2a3806ee34a819e6982f0ea2800771c63bb9d",
+        "src/assets/package.rs": "f8f9fa14f4da407eea73aeb45838822d02f0bd48af0eb025b8b88c9fd32642e3",
+        "src/assets/texture/pager.rs": "d971439248947981c67dea417f2c4c74fedfde56deb98e49ff2655d33b0d4719",
+        "src/assets/texture/sprite.rs": "84a5cbfb1b82f78759773c9ab604a82d983ff02aa8410dc9841db4fcbabe9995",
+        "src/assets/texture/worker.rs": "d7d8d5299cc103cf0f3a456755e4a0391a2be2f99c22c01f7f2003215cfc16bc",
+        "src/assets/texture.rs": "c46ed0a011598598d0f78d8a4132a9bd5e615fc68377d305244c4babd053aa7b",
+        "src/assets/video.rs": "4cc77b89f76f6e175028c3141eb60ddace53e602dd05bebe346c10dde11b14ed",
+        "src/gpu/image.rs": "5e81cc7ebaa3fa2f82a055db6eed096414bcd15a0b111e396b19f885d54c08b4",
+        "src/gpu/shaders/texture.hlsl": "69b6d00db9fd1ac30330e9a3a2b9d8415dd46aa1113a5af640b72482d8a90076",
+        "src/gpu.rs": "9a518ddcb9d0bebba499b180acd6d45317ffde582a446393c64b15f66e22e1fc",
+        "src/lib.rs": "9bdaeba12a1797e837daabbedddff04f6cc02760f26f98f57a26b8373fd8d90c",
+        "src/motion.rs": "c8a9d21da71b5c999758294daa9be4b67e2ec529a55c3dc7e69eeea0f9b96b51",
+        "src/scene/bindings.rs": "04bd0fa22f43837e8ee6bf9ec8b31531b574f6fe7ec0ff94605907f977c90fc5",
+        "src/scene/cloud.rs": "34a41c0362d7ac2e8cf85317696b157c93b64936a1ade822a44a1c56c81c01bd",
+        "src/scene/composite.rs": "0bcda45f965b3e231455a5670182ebd99bd5cb5b158f38a40984fd322d838839",
+        "src/scene/flow.rs": "60ae10bfbe19104a6875edaf3f5b6c85f81ebdcc58e99284ba162a87800b10b1",
+        "src/scene/hdr.rs": "6d223bea1ddd03e12dfd14ebe909a555c6342cd698f3bbd31fe64fb74700a325",
+        "src/scene/inspect.rs": "13e0c6efd60fc6925ec1542a4fe508e8850f0116f2148fe3cf320f759d14090f",
+        "src/scene/layers.rs": "012f9ee71a9022447be3ebc0dd060c7ff809f65edce27e421b5b22ecda5bd174",
+        "src/scene/motion.rs": "44b3a830c8e55fa74fba53f8896d21c0ce4b91b394c98384e746a004068b507f",
+        "src/scene/particles/turbulence.rs": "ce55285079975e1796f6699c8414f79e68682a209196687a719a5025675b5694",
+        "src/scene/particles.rs": "cfe9f6fb74d74c81749922f72902c3be1bc5cdd2bade22d3a532ff602440adc1",
+        "src/scene/playback.rs": "d7d5e15e32c6bf9bb1c064cbc3b64a351a6a8f9f56a9b9c2dc1c8a3060b7cc0a",
+        "src/scene/precise.rs": "2e65cbd7d1bdc3fc69a76cfb94f87d885a59d76db64205fb22eb956b17d3893f",
+        "src/scene/rays.rs": "32ac015dfd464c8daf332d5dfb739cf395e41e079db781b90c2691d5391296e8",
+        "src/scene/settings.rs": "7d0dc6cccaf0862c83030c72d90af4e78dd5e9cdb3efd78230c1ecc3f02c0157",
+        "src/scene/snapshot.rs": "dac6b61035c4b7e575dd2a6057ce1d4b9beccc87ee06572f0f8f8b94b560ab61",
+        "src/scene/text.rs": "746e9561e72a0bbb98e6fcf1c9e23979a45fb9f84ce8db33b5a1bff409779b44",
+        "src/scene.rs": "beb9dac6c2336806b82afb1c65b3ede8c255c614d40153b87f26d3b0bce36f2c"
+      },
+      "configuration": {
+        "seconds": 35,
+        "warmup": 3,
+        "idle": 3,
+        "target_fps": 60,
+        "repeats": 1,
+        "software": false,
+        "resolutions": [
+          [
+            3840,
+            2160
+          ]
+        ]
+      },
+      "cases": [
+        {
+          "path": "artifacts/performance-climb-before2-20261025/report.json",
+          "sha256": "9622c176be8e6a422a4f8c4ed17a8b5427d4ecc90b2663965c3f7d023e05350b",
+          "executable_sha256": "c40ca77e4a34d1b3630fdb171512e48014f1d754521f419c3985f5e1f802d77e",
+          "peak_job_private_mib": 1184.96875,
+          "phases": {
+            "paced": {
+              "private_mib": 911.7555245535714,
+              "working_set_mib": 735.9703404017857,
+              "cpu_machine_percent": 0.40749098557019026,
+              "gpu_engine_percent": 4.576509168625653,
+              "gpu_dedicated_mib": 261.1831752232143,
+              "fps": 59.999751601028365,
+              "ready_gap_p95_ms": 18.148999999997613,
+              "skipped_slots": 0,
+              "deadline_misses": 2,
+              "uploads": 1168,
+              "output_allocations": 0
+            },
+            "uncapped": {
+              "private_mib": 918.0060546875,
+              "working_set_mib": 740.8297712053571,
+              "cpu_machine_percent": 0.8486923015924424,
+              "gpu_engine_percent": 26.821940804187555,
+              "gpu_dedicated_mib": 261.19140625,
+              "fps": 610.0951356995406,
+              "ready_gap_p95_ms": 1.8063999999994849,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "uploads": 1168,
+              "output_allocations": 0
+            }
+          },
+          "initial_png_sha256": "10dcb540825c5a8ebd7c172ed7f61320931ec4ca7a83c20ebc7d8439b437d8b5"
+        },
+        {
+          "path": "artifacts/performance-climb-before3-20261025/report.json",
+          "sha256": "87e5b279000c8ce757cbda66769048827261fd12530deb6080782eea88926872",
+          "executable_sha256": "c40ca77e4a34d1b3630fdb171512e48014f1d754521f419c3985f5e1f802d77e",
+          "peak_job_private_mib": 1184.71484375,
+          "phases": {
+            "paced": {
+              "private_mib": 913.135546875,
+              "working_set_mib": 732.908203125,
+              "cpu_machine_percent": 0.4538574991826177,
+              "gpu_engine_percent": 5.652701756095638,
+              "gpu_dedicated_mib": 261.1870256696429,
+              "fps": 59.999430348265584,
+              "ready_gap_p95_ms": 18.344999999999345,
+              "skipped_slots": 0,
+              "deadline_misses": 1,
+              "uploads": 1168,
+              "output_allocations": 0
+            },
+            "uncapped": {
+              "private_mib": 914.0158203125,
+              "working_set_mib": 737.1194196428571,
+              "cpu_machine_percent": 0.7924977896068556,
+              "gpu_engine_percent": 26.89698716624854,
+              "gpu_dedicated_mib": 261.19140625,
+              "fps": 613.977716117349,
+              "ready_gap_p95_ms": 1.8005000000011933,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "uploads": 1168,
+              "output_allocations": 0
+            }
+          },
+          "initial_png_sha256": "10dcb540825c5a8ebd7c172ed7f61320931ec4ca7a83c20ebc7d8439b437d8b5"
+        }
+      ],
+      "peak_job_private_mib": {
+        "median": 1184.841796875,
+        "min": 1184.71484375,
+        "max": 1184.96875
+      },
+      "phases": {
+        "paced": {
+          "private_mib": {
+            "median": 912.4455357142857,
+            "min": 911.7555245535714,
+            "max": 913.135546875
+          },
+          "working_set_mib": {
+            "median": 734.4392717633929,
+            "min": 732.908203125,
+            "max": 735.9703404017857
+          },
+          "cpu_machine_percent": {
+            "median": 0.43067424237640395,
+            "min": 0.40749098557019026,
+            "max": 0.4538574991826177
+          },
+          "gpu_engine_percent": {
+            "median": 5.114605462360645,
+            "min": 4.576509168625653,
+            "max": 5.652701756095638
+          },
+          "gpu_dedicated_mib": {
+            "median": 261.1851004464286,
+            "min": 261.1831752232143,
+            "max": 261.1870256696429
+          },
+          "fps": {
+            "median": 59.99959097464698,
+            "min": 59.999430348265584,
+            "max": 59.999751601028365
+          },
+          "ready_gap_p95_ms": {
+            "median": 18.24699999999848,
+            "min": 18.148999999997613,
+            "max": 18.344999999999345
+          },
+          "skipped_slots": {
+            "median": 0.0,
+            "min": 0,
+            "max": 0
+          },
+          "deadline_misses": {
+            "median": 1.5,
+            "min": 1,
+            "max": 2
+          },
+          "uploads": {
+            "median": 1168.0,
+            "min": 1168,
+            "max": 1168
+          },
+          "output_allocations": {
+            "median": 0.0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "uncapped": {
+          "private_mib": {
+            "median": 916.0109375,
+            "min": 914.0158203125,
+            "max": 918.0060546875
+          },
+          "working_set_mib": {
+            "median": 738.9745954241071,
+            "min": 737.1194196428571,
+            "max": 740.8297712053571
+          },
+          "cpu_machine_percent": {
+            "median": 0.8205950455996489,
+            "min": 0.7924977896068556,
+            "max": 0.8486923015924424
+          },
+          "gpu_engine_percent": {
+            "median": 26.85946398521805,
+            "min": 26.821940804187555,
+            "max": 26.89698716624854
+          },
+          "gpu_dedicated_mib": {
+            "median": 261.19140625,
+            "min": 261.19140625,
+            "max": 261.19140625
+          },
+          "fps": {
+            "median": 612.0364259084448,
+            "min": 610.0951356995406,
+            "max": 613.977716117349
+          },
+          "ready_gap_p95_ms": {
+            "median": 1.803450000000339,
+            "min": 1.8005000000011933,
+            "max": 1.8063999999994849
+          },
+          "skipped_slots": {
+            "median": 0.0,
+            "min": 0,
+            "max": 0
+          },
+          "deadline_misses": {
+            "median": 0.0,
+            "min": 0,
+            "max": 0
+          },
+          "uploads": {
+            "median": 1168.0,
+            "min": 1168,
+            "max": 1168
+          },
+          "output_allocations": {
+            "median": 0.0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      }
+    },
+    "after": {
+      "executable_sha256": "16c22871df7072eb96152905f71f629381250975a929b9424e25abbb0495d7b0",
+      "source_hashes": {
+        "benchmarks/workloads.json": "0b18e917151aec391b42988af7efe921522cb79ca905570fa9a095ce34178d6c",
+        "Cargo.lock": "9aca5a82ae8f06742a6161930dda921e13d13d3e0141bd179a3e92416452446a",
+        "Cargo.toml": "14d112b0dbca994e8dbc5570af543ac0f7c4cd501c24df85a7e691f09f894173",
+        "examples/benchmark/main.rs": "27cda153c856d4b20330d9465d000c8845a9aa35e7968d429a5f38427fac2c18",
+        "examples/benchmark/metrics.rs": "62e87f17787d9f4bd5de33650671ee4470d2d9f0b1f3d3263c4cbb34880e3025",
+        "examples/browser-worker/main.rs": "ddafaf4067f90e87659a11465993d97ae011b830082690c19655a2a4c3e29c64",
+        "examples/headless/main.rs": "e5b3720e58c724c25a991909402073bb34b9dba5e628770d42e71154992c7531",
+        "examples/motion-checks/main.rs": "d923597ce9fcc9ebdd23b267b8e35ebecd6fb5b6af13cef884d1cec55d568d47",
+        "examples/motion-checks/timing.rs": "0cc63df06d30a88ea369b0e089ac4f7d1b168252754f3c3ace13052fce356f97",
+        "examples/native-viewer/fixture.rs": "bc15c572666746b94e2f00020a62255a15c53d0c59cbc28b9c90c0954c49a1b0",
+        "examples/native-viewer/images.rs": "7118842b214af809447157c75990cb78bdacadec0d6cc22101007789316c0d78",
+        "examples/native-viewer/main.rs": "df584efbfaf3980b79814196df68e55b304069902e79a253da75e205502daf6c",
+        "examples/native-viewer/presentation.rs": "7c2170dca7a49aeb1f0c2e9e43b4bd3f1ad8386a3ed271eb7b74dc16575d91c2",
+        "examples/scene-inspect/main.rs": "c94574d2f3a9f557986a881e36f9b528228d6266649e9201cf58e848ef37f8b7",
+        "examples/sprite-profile/main.rs": "c1145315739382a1bade4a0adb085d270006fb1e0bd1c24641398024b0f7589a",
+        "examples/support/image_playback.rs": "898f0e56f6168f356a99b16e96cd013332ee7fdbfdeba9071ea0b29dee93ffc6",
+        "examples/support/layers.rs": "f4948cb1aa084d5d2bca06954c8f7661c4f4828e764b341cbb7413256a9a1a2d",
+        "examples/support/mod.rs": "5c4e7ab853baaaa7e9291f786e868103e19efd928e9d305b2b92f499cc2eb799",
+        "examples/support/motion.rs": "0a1008a01c39ad386c90f1f2218428488b962a42b247fb6eacfb77a083bf6e8a",
+        "examples/support/paging.rs": "45c72e8fe91b5b5ee3a4a55d9d7ef95173e684b599f47ecb1528e424f219f05b",
+        "examples/support/sprite.rs": "f1d6274dccb090ae66d144bd7c7ddd3a749ed9c19d5762f6148b9ce18fda31f8",
+        "examples/support/texture.rs": "7d2c0c9a24358c9a1e4bfc0f8b9ec0e8cbd02198fccff31bdbfda1562fcd6f66",
+        "examples/texture-checks/main.rs": "c2314130ca06ec26b73bd55ba3b3c752be32f941f0fd3d359978cc8747f2956f",
+        "examples/workshop-check/main.rs": "42bbebf3aee63291ddb18371b868a34879b1c02bb6f25db5e65831c48922ec02",
+        "scripts/benchmark.ps1": "fb376ef7226be07e2af402c9a4094b8a5dfac0c909c2af2979ef21a8f06a3d39",
+        "scripts/benchmark.py": "aa44feca518e7e1ed913ebfa556c03d774bc7f1876568536f9f4a125997b8caa",
+        "scripts/benchmark_windows.py": "0a7464ef60e4ed005a142b4aef73423e488361d968d3b629641192de7683f997",
+        "scripts/check-boundaries.ps1": "a78539d8ceb27b33130131fa9254a137eefe02936415a6c4eb22e246b6e99d78",
+        "scripts/inspect-workshop-inputs.py": "ad8ac471c494339cae227e4d411efa10bdad8137c79ff53bc551d0ac72997dce",
+        "scripts/inventory-bindings.py": "69673e5da7cc6935e0eae7adce017d82651743a93c933a17bb56a60a17b1844c",
+        "scripts/inventory-composition.py": "bc5bd52440735d218d38080ad70b1d2888fa7ea664ff4cc070c7f355fd540663",
+        "scripts/inventory-particle-gaps.py": "b1d2317dd7cfc350276798aa5fd81013a862e2f9a176afe12f1bc78d72ee0eb8",
+        "scripts/inventory-workshop.py": "95d2ff534c34c4253c12ddebb6b57800ad7a3c1de868a1ee3e3cb19ebc80ce9e",
+        "scripts/measure-blur-reference.ps1": "517ff2a270b1e8d3d6fb3ca770d8946a975d9c018ab23b78aa147446ae757626",
+        "scripts/measure-cloud-reference.ps1": "4552603880701adc3ae43cfe8442cb90dcb868ac1b2059f274c943ac529c006a",
+        "scripts/measure-light-shafts-reference.ps1": "947952ea6a106fc0448dffc93a8c1eb56b5790822a6f0610d6f89208d5280e40",
+        "scripts/prepare-background-reference.py": "5ab69a44de9695eef05107ca93c57bfa213e2fa25db27839df3a4300a6e25ea6",
+        "scripts/prepare-binding-browser.py": "42c0d9eea8d170ab8e0efd1fade23ffddd0d20df7b765512c998be08763f5e7e",
+        "scripts/prepare-blur-reference.ps1": "1d641b02639b50b09b1b7d408fb6b2e7510b9e78ec05206e931c7a99c7e85866",
+        "scripts/prepare-cloud-reference.ps1": "1cef0ce5e18453f1a3c40d31db1669172280d4fc02c2189c1ea3a021ca7ae07b",
+        "scripts/prepare-composition-browser.py": "8f2bfbd829251a141cb86a6d3fabb205317777861d7f65e5c3366e6d6e465653",
+        "scripts/prepare-effect-chain-browser.py": "aec867f281f1e16c4e8a8f0d67a5eb6865b9c89360368a2ec72cba98153c4ca0",
+        "scripts/prepare-foliage-browser.py": "e80111a11d2e3c69027b2dd10cdd1de90ac7658cf1eae8ef48e3e0813c7ed853",
+        "scripts/prepare-light-shafts-reference.ps1": "af3c4ec2c1770b1a7bf6084ca7ad949f22dbed2224e64ff22ea77b9e8a74b36a",
+        "scripts/prepare-particle-motion-reference.py": "0b7a6684843608e579734833798cc76059e53068a633c0c376cbf75402a5cb27",
+        "scripts/prepare-particle-render-reference.ps1": "df548f2c07371f2b49c6ea7f1e0583109c751c32bdae4ebef347d65cb738a147",
+        "scripts/prepare-pulse-browser.py": "4b08d328e9f12881e4cd18715f4fed8028bfa9a6c130b30564e4938cb9fa1b76",
+        "scripts/prepare-ripple-browser.py": "6ce9839ee06d5850413360b48819591702b8465d4c6b34af8b8552937621bda2",
+        "scripts/prepare-shake-reference.py": "c73e2f75dd40ebfc5b3120a8897f57ac830084d923a1f446564db836369c02a4",
+        "scripts/setup-browser-mcp.ps1": "b8b44e8e9531fd21b023b4219a6e2979dd6af0a45947dcac62ea1ddc02ddb9f0",
+        "scripts/start-browser-test.ps1": "9d9faa725ad9636657e9fe27cb5c158c89556effe9f5ec9eda7d0647adfa1f61",
+        "scripts/summarize-benchmark.py": "e078562657ca6becefcaeee787a2892896c46395f8c386c892ce82d40ecc8d03",
+        "scripts/test_benchmark.py": "6e025f5394b0617542f40247c120bc109da066c7e7874645fab0f08a4cc61e53",
+        "scripts/test_benchmark_windows.py": "90c0ceac163a8d2373c7ce020ce707f3cf8b99979ad8787637f2630dfbc9d00e",
+        "scripts/test_workshop_fidelity.py": "0c56fcb1cd3f6dc422428ff13ece4f464a8b80b62b47ff6649e29c1f26e6151a",
+        "scripts/verify-browser.ps1": "ee649d85c3b23f3a9beceeda1b091700b8fb1139e9dc1cc01ecd561793f841ce",
+        "scripts/verify-gojo-particles.ps1": "488726e2473e768bdf84f581be8b588178cff5a6fe00e3a92c2a1272d1a8131b",
+        "scripts/verify-image-motion.ps1": "c324f667c89703aad5b2cb97fc932dea880c5c6d004e7cd1fef6b45d5105dbb0",
+        "scripts/verify-image-playback.ps1": "d412ca3a938b85a212e5549fd14d5d6d8f5db6dd9d28f009ba469788fc40a8da",
+        "scripts/verify-native.ps1": "44a0220f84e2f112d71ff9b419f078b04f471a5ce0b1879692ea2f13f17f3009",
+        "scripts/verify-particle-material.py": "6423b17f4cc8f6772e444d1a2aaec449c4b807ceec7dcc8c905a00cdb164fd4d",
+        "scripts/verify-particle-profiles.ps1": "fdf94dbfebc872c3a32b501cf2ab25c379179921d698ac596295468bb9b1d902",
+        "scripts/verify-particle-reference.py": "062078f43fc0d4bcd70865e0c9ed49d9a0311670e48c03e94d5dcf20916d057e",
+        "scripts/verify-particle-velocity.py": "4dd2009ac53a9fa359ad2b0777af928657d8707161970bb5ac45afecdc01f0dd",
+        "scripts/verify-scene-inspection.ps1": "ffbf2189e8d29156f826692dab357e9310b0e14c2fc51f6ec80e13ab2864f0dd",
+        "scripts/verify-shake-reference.py": "0f1bf943aa59b22979db7cd0e13fc4fbb2315465aa3d125b010f9ebe24aaef0c",
+        "scripts/verify-workshop-playback.ps1": "73595ca0ff37d3f6434a7cdcc8259ea19fba1ab32dcca02dbb64b7200f28eda6",
+        "scripts/verify.ps1": "7dfb9bb6e3db8ab8b00cf95a43626a1cd7471c6cb4d892eacde247cac4e205fe",
+        "scripts/workshop-fidelity.py": "6c2251a82f2f250a5dc86e929744acb016ad8de16035581bed87f70dd41863c0",
+        "scripts/workshop-support.ps1": "52754d20a0ff9afe6480b48efc133f86d63934ee97b1037e701b6af8025fcc5a",
+        "src/assets/mod.rs": "002ac40506def953d9e3f7e67fb2a3806ee34a819e6982f0ea2800771c63bb9d",
+        "src/assets/package.rs": "f8f9fa14f4da407eea73aeb45838822d02f0bd48af0eb025b8b88c9fd32642e3",
+        "src/assets/texture/pager.rs": "30f1cd254920d3956c3bb0ef478e106b95bdb138c8b164f81067ed539c4206e2",
+        "src/assets/texture/sprite.rs": "65c9b752ff478c95f3cc5f12fa51ca122b1753161478c79a54b3eb1091bcc3a1",
+        "src/assets/texture/worker.rs": "d7d8d5299cc103cf0f3a456755e4a0391a2be2f99c22c01f7f2003215cfc16bc",
+        "src/assets/texture.rs": "c46ed0a011598598d0f78d8a4132a9bd5e615fc68377d305244c4babd053aa7b",
+        "src/assets/video.rs": "4cc77b89f76f6e175028c3141eb60ddace53e602dd05bebe346c10dde11b14ed",
+        "src/gpu/image.rs": "5e81cc7ebaa3fa2f82a055db6eed096414bcd15a0b111e396b19f885d54c08b4",
+        "src/gpu/shaders/texture.hlsl": "69b6d00db9fd1ac30330e9a3a2b9d8415dd46aa1113a5af640b72482d8a90076",
+        "src/gpu.rs": "9a518ddcb9d0bebba499b180acd6d45317ffde582a446393c64b15f66e22e1fc",
+        "src/lib.rs": "9bdaeba12a1797e837daabbedddff04f6cc02760f26f98f57a26b8373fd8d90c",
+        "src/motion.rs": "c8a9d21da71b5c999758294daa9be4b67e2ec529a55c3dc7e69eeea0f9b96b51",
+        "src/scene/bindings.rs": "04bd0fa22f43837e8ee6bf9ec8b31531b574f6fe7ec0ff94605907f977c90fc5",
+        "src/scene/cloud.rs": "34a41c0362d7ac2e8cf85317696b157c93b64936a1ade822a44a1c56c81c01bd",
+        "src/scene/composite.rs": "0bcda45f965b3e231455a5670182ebd99bd5cb5b158f38a40984fd322d838839",
+        "src/scene/flow.rs": "60ae10bfbe19104a6875edaf3f5b6c85f81ebdcc58e99284ba162a87800b10b1",
+        "src/scene/hdr.rs": "6d223bea1ddd03e12dfd14ebe909a555c6342cd698f3bbd31fe64fb74700a325",
+        "src/scene/inspect.rs": "13e0c6efd60fc6925ec1542a4fe508e8850f0116f2148fe3cf320f759d14090f",
+        "src/scene/layers.rs": "012f9ee71a9022447be3ebc0dd060c7ff809f65edce27e421b5b22ecda5bd174",
+        "src/scene/motion.rs": "44b3a830c8e55fa74fba53f8896d21c0ce4b91b394c98384e746a004068b507f",
+        "src/scene/particles/turbulence.rs": "ce55285079975e1796f6699c8414f79e68682a209196687a719a5025675b5694",
+        "src/scene/particles.rs": "cfe9f6fb74d74c81749922f72902c3be1bc5cdd2bade22d3a532ff602440adc1",
+        "src/scene/playback.rs": "d7d5e15e32c6bf9bb1c064cbc3b64a351a6a8f9f56a9b9c2dc1c8a3060b7cc0a",
+        "src/scene/precise.rs": "2e65cbd7d1bdc3fc69a76cfb94f87d885a59d76db64205fb22eb956b17d3893f",
+        "src/scene/rays.rs": "32ac015dfd464c8daf332d5dfb739cf395e41e079db781b90c2691d5391296e8",
+        "src/scene/settings.rs": "7d0dc6cccaf0862c83030c72d90af4e78dd5e9cdb3efd78230c1ecc3f02c0157",
+        "src/scene/snapshot.rs": "dac6b61035c4b7e575dd2a6057ce1d4b9beccc87ee06572f0f8f8b94b560ab61",
+        "src/scene/text.rs": "746e9561e72a0bbb98e6fcf1c9e23979a45fb9f84ce8db33b5a1bff409779b44",
+        "src/scene.rs": "beb9dac6c2336806b82afb1c65b3ede8c255c614d40153b87f26d3b0bce36f2c"
+      },
+      "configuration": {
+        "seconds": 35,
+        "warmup": 3,
+        "idle": 3,
+        "target_fps": 60,
+        "repeats": 1,
+        "software": false,
+        "resolutions": [
+          [
+            3840,
+            2160
+          ]
+        ]
+      },
+      "cases": [
+        {
+          "path": "artifacts/performance-climb-after1-20261025/report.json",
+          "sha256": "e8c3c9285d8c4db82a9674f6970d021d07abf050c08198ccbe72103a3ef57e8c",
+          "executable_sha256": "16c22871df7072eb96152905f71f629381250975a929b9424e25abbb0495d7b0",
+          "peak_job_private_mib": 853.48046875,
+          "phases": {
+            "paced": {
+              "private_mib": 732.0291015625,
+              "working_set_mib": 554.1700334821429,
+              "cpu_machine_percent": 0.42013032500723596,
+              "gpu_engine_percent": 5.749466156789373,
+              "gpu_dedicated_mib": 261.1867745535714,
+              "fps": 59.999703601464205,
+              "ready_gap_p95_ms": 18.568500000001222,
+              "skipped_slots": 0,
+              "deadline_misses": 2,
+              "uploads": 1168,
+              "output_allocations": 0
+            },
+            "uncapped": {
+              "private_mib": 734.7905691964286,
+              "working_set_mib": 557.2757533482143,
+              "cpu_machine_percent": 0.817778719706899,
+              "gpu_engine_percent": 26.46866089279819,
+              "gpu_dedicated_mib": 261.19140625,
+              "fps": 613.0732846627773,
+              "ready_gap_p95_ms": 1.7880999999979394,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "uploads": 1168,
+              "output_allocations": 0
+            }
+          },
+          "initial_png_sha256": "10dcb540825c5a8ebd7c172ed7f61320931ec4ca7a83c20ebc7d8439b437d8b5"
+        },
+        {
+          "path": "artifacts/performance-climb-after2-20261025/report.json",
+          "sha256": "e7274f822c88c728c1d8fca5780669eb00960d3b995e9c14e538e8daf232055d",
+          "executable_sha256": "16c22871df7072eb96152905f71f629381250975a929b9424e25abbb0495d7b0",
+          "peak_job_private_mib": 854.2578125,
+          "phases": {
+            "paced": {
+              "private_mib": 734.4424386160714,
+              "working_set_mib": 554.9161551339286,
+              "cpu_machine_percent": 0.5353524392060932,
+              "gpu_engine_percent": 7.456402738989171,
+              "gpu_dedicated_mib": 261.18780691964287,
+              "fps": 59.99978160079498,
+              "ready_gap_p95_ms": 18.77310000000216,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "uploads": 1168,
+              "output_allocations": 0
+            },
+            "uncapped": {
+              "private_mib": 734.4762555803571,
+              "working_set_mib": 557.0657366071429,
+              "cpu_machine_percent": 0.9006745071562702,
+              "gpu_engine_percent": 26.628525563418098,
+              "gpu_dedicated_mib": 261.19140625,
+              "fps": 603.3521902558764,
+              "ready_gap_p95_ms": 1.8402999999998428,
+              "skipped_slots": 0,
+              "deadline_misses": 0,
+              "uploads": 1168,
+              "output_allocations": 0
+            }
+          },
+          "initial_png_sha256": "10dcb540825c5a8ebd7c172ed7f61320931ec4ca7a83c20ebc7d8439b437d8b5"
+        }
+      ],
+      "peak_job_private_mib": {
+        "median": 853.869140625,
+        "min": 853.48046875,
+        "max": 854.2578125
+      },
+      "phases": {
+        "paced": {
+          "private_mib": {
+            "median": 733.2357700892858,
+            "min": 732.0291015625,
+            "max": 734.4424386160714
+          },
+          "working_set_mib": {
+            "median": 554.5430943080357,
+            "min": 554.1700334821429,
+            "max": 554.9161551339286
+          },
+          "cpu_machine_percent": {
+            "median": 0.4777413821066646,
+            "min": 0.42013032500723596,
+            "max": 0.5353524392060932
+          },
+          "gpu_engine_percent": {
+            "median": 6.602934447889272,
+            "min": 5.749466156789373,
+            "max": 7.456402738989171
+          },
+          "gpu_dedicated_mib": {
+            "median": 261.1872907366071,
+            "min": 261.1867745535714,
+            "max": 261.18780691964287
+          },
+          "fps": {
+            "median": 59.9997426011296,
+            "min": 59.999703601464205,
+            "max": 59.99978160079498
+          },
+          "ready_gap_p95_ms": {
+            "median": 18.67080000000169,
+            "min": 18.568500000001222,
+            "max": 18.77310000000216
+          },
+          "skipped_slots": {
+            "median": 0.0,
+            "min": 0,
+            "max": 0
+          },
+          "deadline_misses": {
+            "median": 1.0,
+            "min": 0,
+            "max": 2
+          },
+          "uploads": {
+            "median": 1168.0,
+            "min": 1168,
+            "max": 1168
+          },
+          "output_allocations": {
+            "median": 0.0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "uncapped": {
+          "private_mib": {
+            "median": 734.6334123883928,
+            "min": 734.4762555803571,
+            "max": 734.7905691964286
+          },
+          "working_set_mib": {
+            "median": 557.1707449776786,
+            "min": 557.0657366071429,
+            "max": 557.2757533482143
+          },
+          "cpu_machine_percent": {
+            "median": 0.8592266134315846,
+            "min": 0.817778719706899,
+            "max": 0.9006745071562702
+          },
+          "gpu_engine_percent": {
+            "median": 26.548593228108146,
+            "min": 26.46866089279819,
+            "max": 26.628525563418098
+          },
+          "gpu_dedicated_mib": {
+            "median": 261.19140625,
+            "min": 261.19140625,
+            "max": 261.19140625
+          },
+          "fps": {
+            "median": 608.2127374593268,
+            "min": 603.3521902558764,
+            "max": 613.0732846627773
+          },
+          "ready_gap_p95_ms": {
+            "median": 1.8141999999988911,
+            "min": 1.7880999999979394,
+            "max": 1.8402999999998428
+          },
+          "skipped_slots": {
+            "median": 0.0,
+            "min": 0,
+            "max": 0
+          },
+          "deadline_misses": {
+            "median": 0.0,
+            "min": 0,
+            "max": 0
+          },
+          "uploads": {
+            "median": 1168.0,
+            "min": 1168,
+            "max": 1168
+          },
+          "output_allocations": {
+            "median": 0.0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      }
+    }
+  },
+  "playback": {
+    "animated_assets": [
+      "materials/oiseaux optimized_00000.tex",
+      "materials/resize yuta_00000.tex"
+    ],
+    "background_color": [
+      0.699999988079071,
+      0.699999988079071,
+      0.699999988079071,
+      1.0
+    ],
+    "cloud_motions": {
+      "28": {
+        "mask_asset": null,
+        "noise_asset": "materials/util/perlin_256.tex",
+        "settings": {
+          "amount": 0.009999999776482582,
+          "direction_radians": 1.5707963705062866,
+          "granularity": [
+            0.6000000238418579,
+            0.10000000149011612
+          ],
+          "speed": 0.013000000268220901
+        }
+      },
+      "32": {
+        "mask_asset": "materials/masks/cloudmotion_mask_ce1abe94.tex",
+        "noise_asset": "materials/util/perlin_256.tex",
+        "settings": {
+          "amount": 0.019999999552965164,
+          "direction_radians": 1.5707963705062866,
+          "granularity": [
+            0.5,
+            0.10000000149011612
+          ],
+          "speed": 0.02500000037252903
+        }
+      }
+    },
+    "composition_layers": {
+      "364": []
+    },
+    "effect_chains": {
+      "22": [
+        "blurprecise"
+      ],
+      "28": [
+        "cloudmotion"
+      ],
+      "32": [
+        "cloudmotion"
+      ],
+      "72": [
+        "blurprecise"
+      ]
+    },
+    "hdr_bloom": false,
+    "image_motions": {},
+    "object_ids": [
+      28,
+      32,
+      22,
+      72,
+      89,
+      77,
+      86
+    ],
+    "omissions": [
+      "General scene camera, lighting and other postprocessing settings are omitted.",
+      "Object 28: parallax is omitted.",
+      "Object 32: parallax is omitted.",
+      "Object 22: parallax is omitted.",
+      "Object 364: parallax is omitted.",
+      "Object 364: effect effects/chromaticaberration/effect.json is omitted.",
+      "Object 96 (storegraphic-soft-wind-sound-314943.mp3): non-image content is omitted.",
+      "Object 100 (freesound_community-badlands-wind-slow-open-barren-landscape-near-stream-alberta-100315-18027.mp3): non-image content is omitted.",
+      "Object 71: unsupported particle layer properties/effects.",
+      "Object 103: optional content omitted: scene.json object 103: unsupported corner light-shafts profile"
+    ],
+    "package_sha256": "551f74eeca12b2f760bff5a9c79f9f28c623c1e1d31c3642719b67633ff91f14",
+    "particle_objects": [],
+    "precise_blurs": {
+      "22": [
+        0.3199999928474426,
+        0.3199999928474426
+      ],
+      "72": [
+        2.0,
+        2.0
+      ]
+    },
+    "resolved_bindings": [],
+    "settings": {
+      "allow_unsupported_features": true,
+      "animation": true,
+      "image_quality": "Linear",
+      "reduce_flashing": false,
+      "visual_effects": true
+    },
+    "shape_objects": [],
+    "text_objects": [],
+    "user_properties": {},
+    "water_flow_objects": []
+  },
+  "exploratory_cases": [
+    {
+      "path": "artifacts/performance-climb-before-20261025/report.json",
+      "sha256": "2bd7e30dd846c1eeed2aa40b446a5ea273b0ecae900311f3923267f867a2f375",
+      "executable_sha256": "c40ca77e4a34d1b3630fdb171512e48014f1d754521f419c3985f5e1f802d77e",
+      "peak_job_private_mib": 1189.828125,
+      "phases": {
+        "paced": {
+          "private_mib": 917.3533203125,
+          "working_set_mib": 739.8514229910714,
+          "cpu_machine_percent": 0.4594747688235746,
+          "gpu_engine_percent": 4.425133800758898,
+          "gpu_dedicated_mib": 261.1875,
+          "fps": 59.99965594483005,
+          "ready_gap_p95_ms": 18.147500000000946,
+          "skipped_slots": 0,
+          "deadline_misses": 1,
+          "uploads": 1168,
+          "output_allocations": 0
+        },
+        "uncapped": {
+          "private_mib": 919.0185267857142,
+          "working_set_mib": 737.9524553571429,
+          "cpu_machine_percent": 0.9203436284167995,
+          "gpu_engine_percent": 26.271270158535703,
+          "gpu_dedicated_mib": 261.1875,
+          "fps": 600.2692000224943,
+          "ready_gap_p95_ms": 1.8287000000018452,
+          "skipped_slots": 0,
+          "deadline_misses": 0,
+          "uploads": 1168,
+          "output_allocations": 0
+        }
+      },
+      "initial_png_sha256": "10dcb540825c5a8ebd7c172ed7f61320931ec4ca7a83c20ebc7d8439b437d8b5"
+    },
+    {
+      "path": "artifacts/performance-climb-balanced64-20261025/report.json",
+      "sha256": "2140762bfbd1784e75ed0f74b94951ca1758f67af3b27d5c7aabde4cf0fbf73b",
+      "executable_sha256": "7a4b484a4cb9bbaf2b6adc542acf9fdbba5de8f0f2802a25e7d243a6600d65cb",
+      "peak_job_private_mib": 859.21484375,
+      "phases": {
+        "paced": {
+          "private_mib": 735.3923270089285,
+          "working_set_mib": 555.8959821428572,
+          "cpu_machine_percent": 0.5775033111601445,
+          "gpu_engine_percent": 8.38064517241959,
+          "gpu_dedicated_mib": 261.1875,
+          "fps": 59.999836114733355,
+          "ready_gap_p95_ms": 18.9359000000004,
+          "skipped_slots": 0,
+          "deadline_misses": 1,
+          "uploads": 1168,
+          "output_allocations": 0
+        },
+        "uncapped": {
+          "private_mib": 734.5146205357142,
+          "working_set_mib": 554.4292410714286,
+          "cpu_machine_percent": 0.932997671580457,
+          "gpu_engine_percent": 25.99763989150241,
+          "gpu_dedicated_mib": 261.1875,
+          "fps": 606.0686993398865,
+          "ready_gap_p95_ms": 1.826600000003964,
+          "skipped_slots": 0,
+          "deadline_misses": 0,
+          "uploads": 1168,
+          "output_allocations": 0
+        }
+      },
+      "initial_png_sha256": "10dcb540825c5a8ebd7c172ed7f61320931ec4ca7a83c20ebc7d8439b437d8b5"
+    }
+  ],
+  "profiles": {
+    "before": {
+      "path": "artifacts/sprite-profile-before-20261025/report.json",
+      "sha256": "2efc37635ffbba28bd0d45a349251ba4f299ff5ac66ca1f02ea39ac2712715a5",
+      "seconds": 35,
+      "package_sha256": "551f74eeca12b2f760bff5a9c79f9f28c623c1e1d31c3642719b67633ff91f14",
+      "assets": [
+        {
+          "metadata": {
+            "asset": "materials/oiseaux optimized_00000.tex",
+            "decoded_atlas_bytes": 248832000,
+            "duration_ms": 28799.99952,
+            "first_decode_extract_ms": 65.80619999999999,
+            "first_frame_bytes": 13824000,
+            "first_page_frames": 18,
+            "frame_extent": [
+              3840,
+              900
+            ],
+            "frames": 480
+          },
+          "post_warmup_unavailable_samples": 0,
+          "page_decodes_at_end": 34,
+          "frame_extracts_at_end": 606,
+          "ready_mib": {
+            "median": 474.609375,
+            "min": 158.203125,
+            "max": 474.609375
+          },
+          "reserved_work_mib": {
+            "median": 0.0,
+            "min": 0.0,
+            "max": 474.609375
+          },
+          "peak_admitted_mib": 711.9140625
+        },
+        {
+          "metadata": {
+            "asset": "materials/resize yuta_00000.tex",
+            "decoded_atlas_bytes": 55259616,
+            "duration_ms": 28799.99952,
+            "first_decode_extract_ms": 17.478,
+            "first_frame_bytes": 3462912,
+            "first_page_frames": 16,
+            "frame_extent": [
+              2001,
+              1726
+            ],
+            "frames": 480
+          },
+          "post_warmup_unavailable_samples": 0,
+          "page_decodes_at_end": 38,
+          "frame_extracts_at_end": 608,
+          "ready_mib": {
+            "median": 105.6796875,
+            "min": 52.83984375,
+            "max": 105.6796875
+          },
+          "reserved_work_mib": {
+            "median": 0.0,
+            "min": 0.0,
+            "max": 116.69967651367188
+          },
+          "peak_admitted_mib": 169.53952026367188
+        }
+      ]
+    },
+    "after": {
+      "path": "artifacts/sprite-profile-after-20261025/report.json",
+      "sha256": "e1d668f00425714e4c3aae87c2e6f5242d51d65df8cf46c3e2aac551a637c845",
+      "seconds": 35,
+      "package_sha256": "551f74eeca12b2f760bff5a9c79f9f28c623c1e1d31c3642719b67633ff91f14",
+      "assets": [
+        {
+          "metadata": {
+            "asset": "materials/oiseaux optimized_00000.tex",
+            "decoded_atlas_bytes": 248832000,
+            "duration_ms": 28799.99952,
+            "first_decode_extract_ms": 66.1455,
+            "first_frame_bytes": 13824000,
+            "first_page_frames": 18,
+            "frame_extent": [
+              3840,
+              900
+            ],
+            "frames": 480
+          },
+          "post_warmup_unavailable_samples": 4,
+          "page_decodes_at_end": 33,
+          "frame_extracts_at_end": 584,
+          "ready_mib": {
+            "median": 52.734375,
+            "min": 26.3671875,
+            "max": 52.734375
+          },
+          "reserved_work_mib": {
+            "median": 237.3046875,
+            "min": 158.203125,
+            "max": 301.3046875
+          },
+          "peak_admitted_mib": 327.671875
+        },
+        {
+          "metadata": {
+            "asset": "materials/resize yuta_00000.tex",
+            "decoded_atlas_bytes": 55259616,
+            "duration_ms": 28799.99952,
+            "first_decode_extract_ms": 17.4076,
+            "first_frame_bytes": 3462912,
+            "first_page_frames": 16,
+            "frame_extent": [
+              2001,
+              1726
+            ],
+            "frames": 480
+          },
+          "post_warmup_unavailable_samples": 0,
+          "page_decodes_at_end": 37,
+          "frame_extracts_at_end": 592,
+          "ready_mib": {
+            "median": 52.83984375,
+            "min": 23.117431640625,
+            "max": 52.83984375
+          },
+          "reserved_work_mib": {
+            "median": 52.699676513671875,
+            "min": 52.699676513671875,
+            "max": 116.69967651367188
+          },
+          "peak_admitted_mib": 146.42208862304688
+        }
+      ]
+    },
+    "balanced64": {
+      "path": "artifacts/sprite-profile-balanced64-20261025/report.json",
+      "sha256": "57416eab8ff1572995941bab8511245c8b7b73ed5f042cf56405656dc4740c47",
+      "seconds": 35,
+      "package_sha256": "551f74eeca12b2f760bff5a9c79f9f28c623c1e1d31c3642719b67633ff91f14",
+      "assets": [
+        {
+          "metadata": {
+            "asset": "materials/oiseaux optimized_00000.tex",
+            "decoded_atlas_bytes": 248832000,
+            "duration_ms": 28799.99952,
+            "first_decode_extract_ms": 65.69969999999999,
+            "first_frame_bytes": 13824000,
+            "first_page_frames": 18,
+            "frame_extent": [
+              3840,
+              900
+            ],
+            "frames": 480
+          },
+          "post_warmup_unavailable_samples": 0,
+          "page_decodes_at_end": 33,
+          "frame_extracts_at_end": 588,
+          "ready_mib": {
+            "median": 92.28515625,
+            "min": 39.55078125,
+            "max": 105.46875
+          },
+          "reserved_work_mib": {
+            "median": 237.3046875,
+            "min": 0.0,
+            "max": 301.3046875
+          },
+          "peak_admitted_mib": 354.0390625
+        },
+        {
+          "metadata": {
+            "asset": "materials/resize yuta_00000.tex",
+            "decoded_atlas_bytes": 55259616,
+            "duration_ms": 28799.99952,
+            "first_decode_extract_ms": 17.4596,
+            "first_frame_bytes": 3462912,
+            "first_page_frames": 16,
+            "frame_extent": [
+              2001,
+              1726
+            ],
+            "frames": 480
+          },
+          "post_warmup_unavailable_samples": 0,
+          "page_decodes_at_end": 38,
+          "frame_extracts_at_end": 608,
+          "ready_mib": {
+            "median": 105.6796875,
+            "min": 52.83984375,
+            "max": 105.6796875
+          },
+          "reserved_work_mib": {
+            "median": 0.0,
+            "min": 0.0,
+            "max": 116.69967651367188
+          },
+          "peak_admitted_mib": 169.53952026367188
+        }
+      ]
+    },
+    "final64": {
+      "path": "artifacts/sprite-profile-final64-20261025/report.json",
+      "sha256": "08d3627b1ea8a6d126c58691f10cd75703cb0d34b427f653be68b7d44e533a39",
+      "seconds": 35,
+      "package_sha256": "551f74eeca12b2f760bff5a9c79f9f28c623c1e1d31c3642719b67633ff91f14",
+      "assets": [
+        {
+          "metadata": {
+            "asset": "materials/oiseaux optimized_00000.tex",
+            "decoded_atlas_bytes": 248832000,
+            "duration_ms": 28799.99952,
+            "first_decode_extract_ms": 66.684,
+            "first_frame_bytes": 13824000,
+            "first_page_frames": 18,
+            "frame_extent": [
+              3840,
+              900
+            ],
+            "frames": 480
+          },
+          "post_warmup_unavailable_samples": 0,
+          "page_decodes_at_end": 33,
+          "frame_extracts_at_end": 588,
+          "ready_mib": {
+            "median": 92.28515625,
+            "min": 39.55078125,
+            "max": 105.46875
+          },
+          "reserved_work_mib": {
+            "median": 237.3046875,
+            "min": 0.0,
+            "max": 301.3046875
+          },
+          "peak_admitted_mib": 354.0390625
+        },
+        {
+          "metadata": {
+            "asset": "materials/resize yuta_00000.tex",
+            "decoded_atlas_bytes": 55259616,
+            "duration_ms": 28799.99952,
+            "first_decode_extract_ms": 17.811600000000002,
+            "first_frame_bytes": 3462912,
+            "first_page_frames": 16,
+            "frame_extent": [
+              2001,
+              1726
+            ],
+            "frames": 480
+          },
+          "post_warmup_unavailable_samples": 0,
+          "page_decodes_at_end": 38,
+          "frame_extracts_at_end": 608,
+          "ready_mib": {
+            "median": 105.6796875,
+            "min": 52.83984375,
+            "max": 105.6796875
+          },
+          "reserved_work_mib": {
+            "median": 0.0,
+            "min": 0.0,
+            "max": 116.69967651367188
+          },
+          "peak_admitted_mib": 169.53952026367188
+        }
+      ]
+    }
+  },
+  "verification": {
+    "collection": {
+      "path": "artifacts/workshop-support-sprite-windows-20261025/report.json",
+      "sha256": "1a62320b5cabcd495235b9018804c84e8f65b87982e55b80879e648e87e1f0fe",
+      "supported": 65,
+      "total": 65,
+      "unchanged_fixed_time_pixel_hashes": 65,
+      "unchanged_playback_reports": 65,
+      "comparison": "artifacts/workshop-support-pulse-final-20261025/report.json"
+    },
+    "gate": "artifacts/20261025-193849-43de7d6b/manifest.json",
+    "browser": "artifacts/browser-sprite-windows-20261025/report.json",
+    "responsiveness": "benchmarks/results/2026-10-25-sprite-windows-browser.json",
+    "native_window_checks": "skipped"
+  }
+}

@@ -1,6 +1,11 @@
 # Bounded sprite prefetch
 
-`SpritePager` prepares the current and next contiguous authored page runs on one asset thread. Each ready batch contains all extracted frames for that run. Playback can select those frames while the worker decodes the next atlas. The worker releases each atlas before starting another batch.
+`SpritePager` prepares the current and next contiguous frame windows on one
+asset thread. Each batch contains at most 64 MiB of extracted frames and stays
+within an authored page run. A short final batch borrows frames from its
+predecessor so the next page has more decode lead. Playback selects ready frames
+while the worker prepares ahead. The atlas stays decoded while another window
+needs it, then is released before moving to a different page.
 
 This stage-4 component extends [fixed-time extraction](sprite-extraction.md) and [background preparation](sprite-worker.md). The renderer still lacks a full-scene clock, shared asset coordinator, scene replacement and effects playback.
 
@@ -10,7 +15,7 @@ Create `SpritePager::new(source, asset)` outside repeated updates. It starts bac
 
 Call `try_sample_at(time)` from the host's own clock. It selects by cumulative authored durations and modulo looping, replaces time demand and returns a ready `SpriteSample` through nonblocking metadata access. `None` means unavailable or contended; keep the previous completed GPU frame and retry. A ready selection clones an Arc without copying pixels. Pass the region to the existing region or `ImageLayer` API. Repeated resident selections share the Arc.
 
-The asset worker prepares current demand first, then the next page run. A seek can interrupt extraction between frames. An active codec may finish, but relevance is checked under the metadata lock before publishing either its batch or its error. Obsolete results and errors are discarded. Errors for needed work or asset initialization stop the pager. The first sample poll returns the contextual error; later polls report a stopped worker. Recreate the pager to retry.
+The asset worker prepares current demand first, then the next window. A seek can interrupt extraction between frames. An active codec may finish, but relevance is checked under the metadata lock before publishing either its batch or its error. Obsolete results and errors are discarded. Errors for needed work or asset initialization stop the pager. The first sample poll returns the contextual error; later polls report a stopped worker. Recreate the pager to retry.
 
 Hold time to pause. Outstanding current/next preparation settles, then the worker waits on a condition variable without periodic work. `shutdown()` and Drop cancel demand and join. Active file/codec work may finish first. Join outside latency-critical updates. Retained samples survive eviction and shutdown. Explicit shutdown reports a worker panic.
 
@@ -22,15 +27,33 @@ Metadata admission checks every authored run before decoding pixels:
 | --- | --- |
 | One extracted frame | 64 MiB |
 | One decoded atlas | 256 MiB |
-| One complete batch | 256 MiB |
-| Ready batches | Two, at most 512 MiB |
+| One authored page run, validated before windowing | 256 MiB |
+| One ready window | 64 MiB |
+| Ready windows | Two, at most 128 MiB |
 | Ready payloads plus reserved preparation | 768 MiB |
 
-Preparation reserves the larger of atlas plus complete batch or atlas plus encoded inputs and codec workspace ceilings. PNG reserves three 64 MiB ceilings for stored input, optional LZ4 expansion and decoder workspace. PNG channel expansion uses one final RGBA allocation and releases decoder workspace before extraction. Raw LZ4 reserves its stored-input ceiling plus the final page. Obsolete batches drop outside metadata locks and before new decoding.
+Preparation reserves the larger of atlas plus window or atlas plus encoded
+inputs and codec workspace ceilings. An already retained atlas is also covered
+if it is larger than the next page. PNG reserves three 64 MiB ceilings for stored
+input, optional LZ4 expansion and decoder workspace. PNG channel expansion uses
+one final RGBA allocation and releases decoder workspace before extraction.
+Raw LZ4 reserves its stored-input ceiling plus the final page. Obsolete batches
+drop outside metadata locks and before new decoding.
 
-`try_stats()` reports decodes, extractions, prepared/discarded batches, ready bytes, work reservation and peak admitted bytes. `preparing` includes initialization, queued demand and active preparation. `unavailable_polls` excludes metadata contention and is not a displayed-frame miss count.
+`try_stats()` reports decodes, extractions, prepared/discarded windows, ready
+bytes, work reservation and peak admitted bytes. When idle,
+`reserved_work_bytes` counts the retained decoded atlas; a nonzero value does
+not imply background CPU work. `preparing` includes initialization, queued
+demand and active preparation. `unavailable_polls` excludes metadata contention
+and is not a displayed-frame miss count.
 
-This cap covers one pager's admitted pixel/input/workspace buffers. Metadata, allocator/codec overhead beyond explicit quotas, separate pagers, caller-retained samples and GPU resources are outside it. It is not the combined scene memory budget. Birds require 248,832,000 bytes per complete batch. Character batches can require 55,406,592 bytes because enclosing BC3 blocks overlap across extracted frames. The combined scene needs a shared asset coordinator before two birds, character, effects and host resource usage can meet the scene budget.
+This cap covers one pager's admitted pixel/input/workspace buffers. Metadata,
+allocator/codec overhead beyond explicit quotas, separate pagers, caller-retained
+samples and GPU resources are outside it. It is not the combined scene memory
+budget. The earlier whole-run pager copied 248,832,000 bytes per bird batch;
+bounded windows reduce those ready copies while retaining exact frame pixels.
+Character runs can require 55,406,592 bytes because enclosing BC3 blocks overlap.
+The historical receipts below describe the earlier whole-run implementation.
 
 ## Verification
 
@@ -50,6 +73,16 @@ The target route also runs each inspected sprite for two authored loops at a req
 `native-paged` prepares a generated batch before window creation, joins its pager, then verifies retained-frame native capture, resize, idle, diagnostic motion and owned-process exit. Interactive sprite loading and native live sprite playback remain open. Evidence is ignored and must be regenerated in other checkouts.
 
 ## Recorded results
+
+The [25 October windowed-pager comparison](performance-climb-2026-10-25.md)
+records current residency, source readiness and native process-memory results.
+The [WARP/headless gate](../artifacts/20261025-193849-43de7d6b/manifest.json)
+adds a generated large-atlas GPU contract for window boundaries, looping,
+seeking, retained samples and one-decode reuse. The separate release profile
+reports zero post-warmup unavailable samples over the full Yuta loop. Headless
+Chrome verifies actual Yuta seek/play/pause, resize and cleanup. Monitor timing
+and production host responsiveness remain unverified. The receipts below are
+historical whole-run results.
 
 The [hardware/native gate](../artifacts/20261010-154436-fa213d88/manifest.json) and [WARP/headless gate](../artifacts/20261010-154911-c76293fe/manifest.json) passed on 10 October 2026, Windows 11 x64, Rust 1.91. All 52 tests, formatting, Clippy, Rustdoc, dependency boundaries and consumer checks passed. Hardware used a Ryzen 9 9950X3D and NVIDIA GeForce RTX 5080. Native pager capture, resize, idle and owned exit passed; WARP skipped native presentation and proprietary target assets. Target and native captures were inspected. Doctor accepted the matching diagnostic receipt and continued to reject full scene readiness.
 

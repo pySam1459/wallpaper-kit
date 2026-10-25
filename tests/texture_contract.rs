@@ -959,6 +959,63 @@ fn pager_prefetches_next_page_and_evicts_without_invalidating_retained_samples()
 }
 
 #[test]
+fn pager_windows_bound_large_ready_batches_without_redecoding_the_atlas() {
+    let colors = [
+        [12, 23, 34, 255],
+        [45, 56, 67, 255],
+        [78, 89, 90, 255],
+        [101, 112, 123, 255],
+    ];
+    let top = [colors[0].repeat(2048), colors[1].repeat(2048)].concat();
+    let bottom = [colors[2].repeat(2048), colors[3].repeat(2048)].concat();
+    let pixels = [top.repeat(2048), bottom.repeat(2048)].concat();
+    let texture = fixture::sprite(
+        fixture::tex(0, [4096, 4096], &pixels, false, false),
+        &[
+            (0, 0.125, [0., 0., 2048., 0., 0., 2048.]),
+            (0, 0.125, [2048., 0., 2048., 0., 0., 2048.]),
+            (0, 0.125, [0., 2048., 2048., 0., 0., 2048.]),
+            (0, 0.125, [2048., 2048., 2048., 0., 0., 2048.]),
+            (0, 0.125, [0., 0., 2048., 0., 0., 2048.]),
+            (0, 0.125, [2048., 0., 2048., 0., 0., 2048.]),
+            (0, 0.125, [0., 2048., 2048., 0., 0., 2048.]),
+            (0, 0.125, [2048., 2048., 2048., 0., 0., 2048.]),
+            (0, 0.125, [0., 0., 2048., 0., 0., 2048.]),
+        ],
+    );
+    let package = Package::new(&texture);
+    let (pager, _events) = SpritePager::new(package.source(), "image.tex".into()).unwrap();
+    let first = paged_sample(&pager, Duration::ZERO);
+    let initial = settled_pager(&pager, 2, 1);
+    assert_eq!(initial.cached_frame_bytes, 112 * 1024 * 1024);
+    assert_eq!(initial.reserved_work_bytes, 64 * 1024 * 1024);
+    let (renderer, events) = Renderer::new(Size::new(8, 8).unwrap(), DeviceMode::Software).unwrap();
+    for millis in [0, 125, 500, 750, 875, 1000, 1125, 2000, 2250] {
+        let expected = ((millis % 1125) / 125) as usize;
+        let sample = paged_sample(&pager, Duration::from_millis(millis));
+        assert_eq!(sample.frame_index(), expected);
+        let id = renderer
+            .render_texture_region(sample.region().clone())
+            .unwrap();
+        let rgba = wait_frame(&renderer, &events, id).readback().unwrap().rgba;
+        assert!(
+            rgba.chunks_exact(4)
+                .all(|pixel| pixel == colors[expected % 4])
+        );
+        let stats = settled_pager(&pager, 2, 1);
+        assert_eq!(
+            stats.page_decodes, 1,
+            "moving through same-page windows must reuse its atlas"
+        );
+        assert!(stats.cached_frame_bytes <= 128 * 1024 * 1024);
+        assert!(stats.peak_admitted_bytes <= 192 * 1024 * 1024);
+    }
+    pager.shutdown().unwrap();
+    renderer.shutdown().unwrap();
+    assert_eq!(&first.region().page().data()[..4], &colors[0]);
+}
+
+#[test]
 fn pager_rejects_overlapping_batch_budget_before_corrupt_png_decode() {
     let texture = fixture::sprite(
         fixture::tex(0, [4096, 4096], b"invalid PNG", false, true),

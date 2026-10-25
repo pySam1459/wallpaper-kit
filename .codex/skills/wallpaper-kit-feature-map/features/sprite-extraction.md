@@ -2,6 +2,22 @@
 
 ## Status
 
+Bounded prefetch windows are verified on 25 October 2026 through the
+[required WARP/headless gate](../../../../artifacts/20261025-193849-43de7d6b/manifest.json)
+and [release residency/readiness comparison](../../../../docs/performance-climb-2026-10-25.md).
+Each ready window holds at most 64 MiB, with at most two retained. A decoded
+atlas remains resident while another window needs it. Generated public tests
+check GPU pixels through window boundaries, seek/wrap, one-decode reuse,
+payload bounds and retained samples after shutdown. The final 35-second Yuta
+profile covers its full loop with zero post-warmup source-unavailable samples
+for both sprites. A smaller 32 MiB candidate had four misses and was rejected.
+`reserved_work_bytes` includes an idle retained atlas; it does not imply CPU
+activity. Read the [prefetch guide](../../../../docs/sprite-prefetch.md) for
+ownership, admission and measurement limits.
+Hardware browser seek/play/pause/resize and cleanup also pass. The 65-scene
+collection sweep preserves every fixed-time pixel hash and complete playback
+report; see the comparison for raw receipts. Native-window checks are skipped.
+
 Verified on 10 October 2026, Windows x64 and Rust 1.91, through the [hardware/native gate](../../../../artifacts/20261010-154436-fa213d88/manifest.json) and [WARP/headless gate](../../../../artifacts/20261010-154911-c76293fe/manifest.json). Background sprite preparation is also verified. Batch prefetch is verified, including controlled target pixels and separate two-loop headless readiness. The release run delivered 960 frames per asset without unavailable polls or skipped frames; debug birds skipped three frames. See the [recorded prefetch results](../../../../docs/sprite-prefetch.md#recorded-results). Async scene loading and native live sprite playback remain planned.
 
 ## Consumer outcome

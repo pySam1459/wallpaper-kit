@@ -2,6 +2,25 @@
 
 ## Status
 
+The [sprite residency comparison](../../../../docs/performance-climb-2026-10-25.md)
+verifies the first memory optimization on 25 October 2026. Two alternating
+35-second Yuta 4K runs per version reduce average paced private commit from
+912.4 to 733.2 MiB and peak commit from 1184.8 to 853.9 MiB. Both versions hold
+60 completed fps; uncapped medians are 612.0 and 608.2 fps. Pixel hashes, playback
+reports and upload counts match. CPU ranges overlap, paced GPU counters rise,
+and no CPU/GPU speedup is claimed. The frozen comparison retains ranges,
+exploratory failures and executable/source provenance. The required
+[WARP/headless gate](../../../../artifacts/20261025-193849-43de7d6b/manifest.json)
+passes; native-window verification is skipped.
+The [hardware browser run](../../../../artifacts/browser-sprite-windows-20261025/report.json)
+passes Playwright/Chrome DevTools checks and owned cleanup. The paused/playing
+Yuta proxy delivers all 160 typed inputs with no observed long tasks, but only
+three PNG-delivered native frames per enabled interval. The
+[collection sweep](../../../../artifacts/workshop-support-sprite-windows-20261025/report.json)
+loads 65/65 with every fixed-time pixel hash and playback report unchanged.
+The memory reduction is Yuta-specific; the collection sweep is a correctness
+check, not a new collection-wide performance matrix.
+
 Release native renderer benchmarks are verified on 25 October 2026. The
 [benchmark guide](../../../../docs/performance-benchmarks.md) defines the
 seven-workload, 1080p/4K, two-repetition matrix and metric units. Windows job

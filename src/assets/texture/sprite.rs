@@ -98,6 +98,9 @@ impl SpriteStream {
         self.current = None;
         self.page = None;
     }
+    pub(super) fn clear_frame(&mut self) {
+        self.current = None;
+    }
     pub(super) fn open(package: &Package, asset: &str) -> Result<Self, InspectionError> {
         let mut reader = package
             .reader(asset)?

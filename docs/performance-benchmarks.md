@@ -2,6 +2,8 @@
 
 The [25 October initial baseline](performance-baseline-2026-10-25.md) includes
 the completed matrix, a longer sprite-loop run and browser responsiveness data.
+The [first optimization](performance-climb-2026-10-25.md) profiles sprite
+residency and compares bounded prefetch windows against the pinned baseline.
 
 Run the release renderer through its public API and collect Windows process-tree
 and GPU counters:

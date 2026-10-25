@@ -7,6 +7,7 @@ use std::{
 };
 
 const MAX_WORKING_BYTES: u64 = 768 * 1024 * 1024;
+const TARGET_BATCH_BYTES: u64 = 64 * 1024 * 1024;
 
 /// Per-pager payload admission and preparation counters, not total process memory.
 #[derive(Clone, Copy, Debug, Default)]
@@ -19,11 +20,11 @@ pub struct SpritePagingStats {
     pub page_decodes: u64,
     /// Extracted frame copies, including canceled preparations.
     pub frame_extracts: u64,
-    /// Ready batches, at most two contiguous authored page runs.
+    /// Ready batches, at most two contiguous windows within authored page runs.
     pub cached_batches: usize,
-    /// Ready extracted frame payloads, at most 512 MiB.
+    /// Ready extracted frame payloads, at most 128 MiB.
     pub cached_frame_bytes: u64,
-    /// Conservative admitted buffers for active decode/extraction.
+    /// Retained atlas bytes when idle, or conservative decode/extraction reservation.
     pub reserved_work_bytes: u64,
     /// Largest sum of ready payloads and admitted work, at most 768 MiB.
     pub peak_admitted_bytes: u64,
@@ -57,7 +58,44 @@ impl Timeline {
             }
         }
         groups.push(start..stream.frames().len());
-        let groups = groups
+        let mut windows = Vec::new();
+        for run in groups {
+            // Preserve whole-run validation before decoding, even though ready
+            // storage now retains only short windows from that run.
+            stream.batch_admission(run.clone())?;
+            let first_window = windows.len();
+            let mut start = run.start;
+            let mut bytes = 0;
+            for index in run.clone() {
+                let size = stream.batch_admission(index..index + 1)?.0;
+                if index > start && bytes + size > TARGET_BATCH_BYTES {
+                    windows.push(start..index);
+                    start = index;
+                    bytes = 0;
+                }
+                bytes += size;
+            }
+            windows.push(start..run.end);
+            // A tiny tail shortens the lead for decoding the next page. Move
+            // frames from its predecessor without exceeding the byte bound.
+            if windows.len() > first_window + 1 {
+                let last = windows.len() - 1;
+                let mut last_bytes = stream.batch_admission(windows[last].clone())?.0;
+                while windows[last - 1].len() > 1 && last_bytes < TARGET_BATCH_BYTES / 2 {
+                    let candidate = windows[last].start - 1..windows[last].end;
+                    let size = stream
+                        .batch_admission(candidate.start..candidate.start + 1)?
+                        .0;
+                    if last_bytes + size > TARGET_BATCH_BYTES {
+                        break;
+                    }
+                    windows[last - 1].end -= 1;
+                    windows[last] = candidate;
+                    last_bytes += size;
+                }
+            }
+        }
+        let groups = windows
             .into_iter()
             .map(|frames| {
                 let (bytes, reservation) = stream.batch_admission(frames.clone())?;
@@ -111,12 +149,14 @@ struct Shared {
     changed: Condvar,
 }
 
-/// Background preparation of current and next contiguous authored page runs.
+/// Background preparation of current and next bounded windows of authored frames.
 ///
-/// Each complete batch owns extracted frames up to 256 MiB. Its atlas is
-/// released before preparing the next batch. Playback samples ready batches
-/// while the one asset worker decodes. At most two batches and one preparation
-/// are admitted under a 768 MiB buffer cap. Caller-retained samples, separate
+/// Each batch owns at most 64 MiB of extracted frames. It never crosses
+/// an authored page boundary. One atlas stays decoded between windows on that
+/// page, avoiding repeated codec work. Playback samples ready batches while
+/// the asset worker prepares ahead. At most two batches plus one atlas and
+/// preparation workspace are admitted under a 768 MiB cap. Whole page runs
+/// still require <=256 MiB of extracted payload before decoding. Caller-retained samples, separate
 /// pagers, metadata, allocator overhead and GPU memory are outside that cap.
 /// No clock, timer, scene replacement or full-scene memory coordinator exists.
 /// Drop and shutdown join: perform them outside latency-critical UI work.
@@ -126,7 +166,7 @@ pub struct SpritePager {
 }
 impl SpritePager {
     /// Starts background opening/indexing and prepares time zero plus its next
-    /// page run. Performs no file I/O on the caller. Notifications have capacity
+    /// window. Performs no file I/O on the caller. Notifications have capacity
     /// one and are coalesced; dropping/ignoring them cannot block preparation.
     /// Asset/admission errors arrive through [`Self::try_sample_at`].
     pub fn new(
@@ -294,7 +334,9 @@ fn prepare(
                             index += 1;
                         }
                     }
-                    let reservation = timeline.groups[group].reservation;
+                    let reservation = timeline.groups[group]
+                        .reservation
+                        .max(stream.stats().cached_page_bytes + timeline.groups[group].bytes);
                     state.stats.cached_batches = state.batches.len();
                     state.stats.cached_frame_bytes =
                         state.batches.iter().map(|batch| batch.bytes).sum();
@@ -308,7 +350,7 @@ fn prepare(
                     break (group, obsolete);
                 }
                 state.stats.preparing = false;
-                state.stats.reserved_work_bytes = 0;
+                state.stats.reserved_work_bytes = stream.stats().cached_page_bytes;
                 state = shared
                     .changed
                     .wait(state)
@@ -339,7 +381,15 @@ fn prepare(
                 }
             }
         }
-        stream.clear_pixels(); // Only extracted frames survive a completed batch.
+        let next = timeline.next(group);
+        if next != group
+            && stream.frames()[timeline.groups[next].frames.start].page_index()
+                == stream.frames()[range.start].page_index()
+        {
+            stream.clear_frame(); // The next window needs this decoded atlas.
+        } else {
+            stream.clear_pixels();
+        }
         let work = stream.stats();
         let batch = Batch {
             group,
@@ -354,7 +404,7 @@ fn prepare(
         state.stats.page_decodes = work.page_decodes;
         state.stats.frame_extracts = work.frame_extracts;
         state.stats.preparing = false;
-        state.stats.reserved_work_bytes = 0;
+        state.stats.reserved_work_bytes = work.cached_page_bytes;
         let outcome = completion(&mut state, &timeline, &batch, range.len(), failure);
         if outcome == Completion::Ready {
             state.batches.push(batch);

@@ -56,6 +56,10 @@ path = "examples/benchmark/main.rs"
 test = true
 
 [[example]]
+name = "sprite-profile"
+path = "examples/sprite-profile/main.rs"
+
+[[example]]
 name = "texture-checks"
 path = "examples/texture-checks/main.rs"
 
