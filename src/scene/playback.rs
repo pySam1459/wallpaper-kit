@@ -555,6 +555,8 @@ impl ImagePlayback {
     /// Freezes its exact time and retains its descriptors/pages without decoding,
     /// waiting for the renderer, or generating another sample. Resume with `play`
     /// or choose another still with `seek`. Retention is bounded to one sample.
+    /// Asynchronously releases extra sprite buffers and video decoder state.
+    /// Resume can temporarily return `None` while sources prepare again.
     ///
     /// The host must stop scheduling renders and retain its completed [`crate::Frame`]
     /// (or copied host texture), ignoring in-flight results while frozen. This
@@ -564,6 +566,13 @@ impl ImagePlayback {
         self.base = sample.time;
         self.started = None;
         self.frozen = Some(sample.clone());
+        for source in &self.sources {
+            match source {
+                Source::Animated(pager) => pager.suspend(),
+                Source::Video(pager) => pager.suspend(),
+                Source::Static(_) => (),
+            }
+        }
     }
 
     /// Sample every source at one captured clock time without I/O, decoding or

@@ -184,6 +184,8 @@ def main():
     parser.add_argument('--idle',type=int,default=2)
     parser.add_argument('--fps',type=int,default=60)
     parser.add_argument('--software',action='store_true')
+    parser.add_argument('--trim-paused',action='store_true',help='Freeze the presented sample and asynchronously release idle caches')
+    parser.add_argument('--no-vfx',action='store_true',help='Feature-cost ablation: disable supported VFX/particles using consumer settings')
     parser.add_argument('--profile-gpu',action='store_true',help='Opt-in timestamp queries and worker timings; separate from production performance runs')
     parser.add_argument('--retry-failed',action='store_true',help='Append retries for failed cases in an existing output; preserve original reports')
     args=parser.parse_args()
@@ -240,7 +242,7 @@ def main():
         working_tree=command(['git','status','--porcelain']).splitlines(),sources=source_hashes(),
         executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),rustc=command(['rustc','--version']),
         machine=machine,logical_cpus=os.cpu_count(),configuration=dict(seconds=args.seconds,warmup=args.warmup,idle=args.idle,
-            profile_gpu=args.profile_gpu,target_fps=args.fps,repeats=args.repeat,software=args.software,resolutions=resolutions),runs=[])
+            trim_paused=args.trim_paused,visual_effects=not args.no_vfx,profile_gpu=args.profile_gpu,target_fps=args.fps,repeats=args.repeat,software=args.software,resolutions=resolutions),runs=[])
     for repeat in range(1,args.repeat+1):
         for width,height in resolutions:
             for workload in workloads:
@@ -255,6 +257,8 @@ def main():
                     folder=str(folder.relative_to(output)),status='failed')
                 config=dict(source=source,width=width,height=height,warmup_seconds=args.warmup,measure_seconds=args.seconds,
                     idle_seconds=args.idle,target_fps=args.fps,software=args.software,profile_gpu=args.profile_gpu)
+                if args.trim_paused:config['trim_paused']=True
+                if args.no_vfx:config['visual_effects']=False
                 try:
                     row['metrics']=run_case(executable,folder,config,.25)
                     row['status']='passed'

@@ -174,6 +174,11 @@ impl Viewer {
         }
         self.last_frame = Some(frame_info(&frame, &sample, &pixels.rgba));
         self.last_sample = Some(sample);
+        if !self.playback.playing() {
+            self.playback
+                .freeze(self.last_sample.as_ref().expect("captured sample"));
+            self.renderer.trim_memory()?;
+        }
         Ok(png)
     }
 
@@ -188,6 +193,7 @@ impl Viewer {
                 } else {
                     self.playback.pause();
                 }
+                self.renderer.trim_memory()?;
             }
             Command::Seek { time_ms } => {
                 if *time_ms > 86_400_000 {

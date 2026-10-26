@@ -148,6 +148,20 @@ fn video_seeks_loops_retains_frames_and_decodes_embedded_payloads() {
         .to_vec();
     playback.seek(Duration::from_millis(500));
     assert_eq!(sample(&playback).frame_indices, [15]);
+    let later = sample(&playback);
+    let discarded = std::sync::Arc::downgrade(later.composition.layers()[0].region().page());
+    drop(later);
+    playback.freeze(&first);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while discarded.upgrade().is_some() {
+        assert!(
+            Instant::now() < deadline,
+            "freeze retained an unneeded video frame"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(sample(&playback).frame_indices, [0]);
+    playback.seek(Duration::from_millis(500));
     assert_ne!(
         sample(&playback).composition.layers()[0]
             .region()

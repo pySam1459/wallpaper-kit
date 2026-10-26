@@ -1,0 +1,869 @@
+{
+  "schema_version": 1,
+  "limits": [
+    "VFX-off is a diagnostic with different rendered content, not a shipped quality reduction.",
+    "Whole-workload GPU timestamp intervals include scheduling and CPU feeding gaps; these are not isolated per-feature shader timings."
+  ],
+  "modes": {
+    "full": {
+      "path": "artifacts/feature-cost-full-20261025/report.json",
+      "sha256": "d05e3fff6792a64fec6db74baeb43dc86abfef836312e205c1dbda3701759cbd",
+      "executable_sha256": "0ed632db7ea1f3a3bc9a15d9b03afa06accfa6c7d8432c520890b1eedd2ca0b4",
+      "configuration": {
+        "seconds": 8,
+        "warmup": 2,
+        "idle": 2,
+        "trim_paused": false,
+        "visual_effects": true,
+        "profile_gpu": true,
+        "target_fps": 60,
+        "repeats": 1,
+        "software": false,
+        "resolutions": [
+          [
+            3840,
+            2160
+          ]
+        ]
+      },
+      "workloads": [
+        {
+          "name": "panda",
+          "package_sha256": "8c9f74e10e14db6e9aae158b9a096e2d98c4c1b1cfd450712e10fc405720fdaa",
+          "settings": {
+            "allow_unsupported_features": true,
+            "animation": true,
+            "image_quality": "Linear",
+            "reduce_flashing": false,
+            "visual_effects": true
+          },
+          "image_objects": [
+            13,
+            17,
+            111,
+            80,
+            68,
+            791,
+            961,
+            38
+          ],
+          "particle_objects": [
+            1281,
+            1378,
+            3107
+          ],
+          "effect_chains": {
+            "111": [
+              "spin"
+            ],
+            "13": [
+              "waterwaves"
+            ],
+            "17": [
+              "spin"
+            ],
+            "38": [
+              "waterwaves"
+            ],
+            "68": [
+              "spin"
+            ],
+            "791": [
+              "spin"
+            ],
+            "80": [
+              "spin"
+            ],
+            "961": [
+              "spin"
+            ]
+          },
+          "composition_layers": {
+            "121": [
+              "waterwaves",
+              "waterwaves"
+            ],
+            "187": [
+              "waterwaves"
+            ],
+            "207": [
+              "pulse"
+            ]
+          },
+          "omissions": [
+            "General scene camera, lighting and other postprocessing settings are omitted.",
+            "Object 307 (Above The Sky - Norman Duck.mp3): non-image content is omitted.",
+            "Object 13: parallax is omitted.",
+            "Object 17: parallax is omitted.",
+            "Object 111: parallax is omitted.",
+            "Object 80: parallax is omitted.",
+            "Object 68: parallax is omitted.",
+            "Object 791: parallax is omitted.",
+            "Object 961: effect effects/tint/effect.json is omitted.",
+            "Object 961: effect effects/opacity/effect.json is omitted.",
+            "Object 961: parallax is omitted.",
+            "Object 38: parallax is omitted.",
+            "Object 121: parallax is omitted.",
+            "Object 187: parallax is omitted.",
+            "Object 207: parallax is omitted.",
+            "Object 574 is invisible.",
+            "Object 392 is invisible.",
+            "Particle particles/presets/ember_small.json: turbulent velocity uses independent noise; exact engine noise is not reproduced.",
+            "Particle particles/presets/ember_small.json: turbulence uses independent harmonic noise; exact engine noise is not reproduced.",
+            "Object 348: optional content omitted: materials/particle/debris/debris1.tex: unsupported sprite container TEXS0002",
+            "Particle particles/presets/ember_small.json: turbulent velocity uses independent noise; exact engine noise is not reproduced.",
+            "Particle particles/presets/ember_small.json: turbulence uses independent harmonic noise; exact engine noise is not reproduced.",
+            "Object 593: optional content omitted: materials/particle/debris/debris1.tex: unsupported sprite container TEXS0002",
+            "Particle particles/presets/ember_small.json: turbulent velocity uses independent noise; exact engine noise is not reproduced.",
+            "Particle particles/presets/ember_small.json: turbulence uses independent harmonic noise; exact engine noise is not reproduced.",
+            "Object 605: optional content omitted: materials/particle/debris/debris1.tex: unsupported sprite container TEXS0002",
+            "Particle particles/presets/ember_small.json: turbulent velocity uses independent noise; exact engine noise is not reproduced.",
+            "Particle particles/presets/ember_small.json: turbulence uses independent harmonic noise; exact engine noise is not reproduced.",
+            "Object 3193: optional content omitted: materials/particle/debris/debris1.tex: unsupported sprite container TEXS0002",
+            "Particle particles/presets/ember_small.json: turbulent velocity uses independent noise; exact engine noise is not reproduced.",
+            "Particle particles/presets/ember_small.json: turbulence uses independent harmonic noise; exact engine noise is not reproduced.",
+            "Object 621: optional content omitted: materials/particle/debris/debris1.tex: unsupported sprite container TEXS0002",
+            "Particle particles/presets/snowstorm.json: system flags or animation is omitted.",
+            "Particle particles/presets/snowstorm.json: system flags or animation is omitted.",
+            "Particle particles/presets/snowstorm.json: system flags or animation is omitted.",
+            "Particle particles/presets/snowstorm.json: system flags or animation is omitted.",
+            "Object 110: optional content omitted: materials/particle/light/flare_1.tex: unsupported TEX flags 524290",
+            "Particle particles/presets/fireflies.json: animated or offset control point is omitted.",
+            "Particle particles/presets/snowstorm.json: system flags or animation is omitted.",
+            "Particle particles/presets/smoke1.json: turbulent velocity uses independent noise; exact engine noise is not reproduced.",
+            "Object 1281: particle parallax is omitted.",
+            "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced.",
+            "Particle particles/presets/smoke1.json: turbulent velocity uses independent noise; exact engine noise is not reproduced.",
+            "Object 1378: particle parallax is omitted.",
+            "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced.",
+            "Particle particles/presets/smoke1.json: turbulent velocity uses independent noise; exact engine noise is not reproduced.",
+            "Object 3107: particle parallax is omitted.",
+            "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced.",
+            "Particle particles/presets/smoke2.json: initializer properties is omitted.",
+            "Particle particles/presets/smoke2.json: initializer properties is omitted.",
+            "Particle particles/presets/smoke2.json: initializer properties is omitted."
+          ],
+          "phases": {
+            "paced": {
+              "fps": 59.99983425045788,
+              "cpu_machine_percent": 0.0,
+              "gpu_percent": 1.7273884958136483,
+              "private_mib": 342.276123046875,
+              "gpu_interval_mean_ms": 0.21987753333333332,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 40.7958984375
+            },
+            "uncapped": {
+              "fps": 617.6631874390055,
+              "cpu_machine_percent": 0.6426350758242079,
+              "gpu_percent": 12.551416712682178,
+              "private_mib": 338.515625,
+              "gpu_interval_mean_ms": 0.17527120032375557,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 40.7958984375
+            }
+          }
+        },
+        {
+          "name": "gojo-particles",
+          "package_sha256": "d8d291216701a49352a12210245c4210e7353de80ab54a84d0cb1aad56a342c6",
+          "settings": {
+            "allow_unsupported_features": true,
+            "animation": true,
+            "image_quality": "Linear",
+            "reduce_flashing": false,
+            "visual_effects": true
+          },
+          "image_objects": [
+            13
+          ],
+          "particle_objects": [
+            127,
+            132,
+            152,
+            155
+          ],
+          "effect_chains": {
+            "13": [
+              "waterwaves",
+              "waterwaves",
+              "waterripple",
+              "waterflow"
+            ]
+          },
+          "composition_layers": {},
+          "omissions": [
+            "General scene camera, lighting and other postprocessing settings are omitted.",
+            "scene.json object 13: effect effects/pulse/effect.json is omitted: effects/pulse/effect.json: unsupported masked image-motion profile",
+            "Object 13: parallax is omitted.",
+            "Particle particles/presets/snowperspective.json: operator component oscillateposition is omitted.",
+            "Object 127: particle parallax is omitted.",
+            "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced.",
+            "Particle particles/presets/snowperspective.json: operator component oscillateposition is omitted.",
+            "Object 132: particle parallax is omitted.",
+            "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced.",
+            "Particle particles/presets/snowperspective.json: operator component oscillateposition is omitted.",
+            "Object 152: particle parallax is omitted.",
+            "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced.",
+            "Particle particles/presets/snowperspective.json: operator component oscillateposition is omitted.",
+            "Object 155: particle parallax is omitted.",
+            "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced."
+          ],
+          "phases": {
+            "paced": {
+              "fps": 59.99658469441627,
+              "cpu_machine_percent": 0.19531656762483424,
+              "gpu_percent": 3.19745833667253,
+              "private_mib": 299.296142578125,
+              "gpu_interval_mean_ms": 0.4695496666666667,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 63.28125
+            },
+            "uncapped": {
+              "fps": 606.1132868607314,
+              "cpu_machine_percent": 1.3419411788110382,
+              "gpu_percent": 28.464156403865037,
+              "private_mib": 297.4140625,
+              "gpu_interval_mean_ms": 0.45176833161476593,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 63.28125
+            }
+          }
+        },
+        {
+          "name": "gojo-composition",
+          "package_sha256": "8458d78e4e8e4f765b59811468d212c27dd51ad96aa409b4dbac323244568af2",
+          "settings": {
+            "allow_unsupported_features": true,
+            "animation": true,
+            "image_quality": "Linear",
+            "reduce_flashing": false,
+            "visual_effects": true
+          },
+          "image_objects": [
+            243,
+            119,
+            382
+          ],
+          "particle_objects": [],
+          "effect_chains": {
+            "119": [
+              "foliagesway",
+              "foliagesway"
+            ],
+            "382": [
+              "foliagesway",
+              "foliagesway"
+            ]
+          },
+          "composition_layers": {
+            "156": [
+              "waterripple",
+              "blurprecise",
+              "blurprecise",
+              "blurprecise",
+              "blurprecise",
+              "blurprecise"
+            ],
+            "800": []
+          },
+          "omissions": [
+            "General scene camera, lighting and other postprocessing settings are omitted.",
+            "scene.json object 243: unsupported image property clampuvs is omitted.",
+            "scene.json object 243: effect effects/spin/effect.json is omitted: effects/spin/effect.json: unsupported masked image-motion profile",
+            "Object 243: effect effects/fluidsimulation/effect.json is omitted.",
+            "Object 243: effect effects/cursorripple/effect.json is omitted.",
+            "Object 243: effect effects/fisheye/effect.json is omitted.",
+            "scene.json object 243: material materials/ninjuras-screenshot-2023-10-24-215149.json uses base-image translucent rendering; custom shader/state is omitted.",
+            "scene.json object 243: unsupported material combinations are omitted.",
+            "Object 156: parallax is omitted.",
+            "Object 156: effect effects/tint/effect.json is omitted.",
+            "Object 173 (): non-image content is omitted.",
+            "Object 269 is invisible.",
+            "Object 403 (): non-image content is omitted.",
+            "scene.json object 119: unsupported image property clampuvs is omitted.",
+            "scene.json object 119: unsupported image property dependencies is omitted.",
+            "Object 119: effect effects/opacity/effect.json is omitted.",
+            "Object 119: effect effects/blend/effect.json is omitted.",
+            "Object 119: effect effects/iris/effect.json is omitted.",
+            "scene.json object 119: effect effects/waterwaves/effect.json is omitted: effects/waterwaves/effect.json: unsupported masked image-motion profile",
+            "scene.json object 119: alpha 2 is clamped to the SDR range.",
+            "scene.json object 119: material materials/Gojo.json uses base-image translucent rendering; custom shader/state is omitted.",
+            "scene.json object 119: unsupported material combinations are omitted.",
+            "scene.json object 382: unsupported image property clampuvs is omitted.",
+            "scene.json object 382: unsupported image property dependencies is omitted.",
+            "Object 382: effect effects/opacity/effect.json is omitted.",
+            "Object 382: effect effects/opacity/effect.json is omitted.",
+            "Object 382: effect effects/blend/effect.json is omitted.",
+            "Object 382: effect effects/iris/effect.json is omitted.",
+            "scene.json object 382: effect effects/waterwaves/effect.json is omitted: effects/waterwaves/effect.json: unsupported masked image-motion profile",
+            "Object 382: effect effects/twirl/effect.json is omitted.",
+            "scene.json object 382: effect effects/waterwaves/effect.json is omitted: effects/waterwaves/effect.json: unsupported masked image-motion profile",
+            "scene.json object 382: material materials/aaaa.json uses base-image translucent rendering; custom shader/state is omitted.",
+            "scene.json object 382: unsupported material combinations are omitted.",
+            "scene.json object 608: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 608 is invisible.",
+            "scene.json object 420: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 420 is invisible.",
+            "scene.json object 606: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 606 is invisible.",
+            "scene.json object 585: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 585 is invisible.",
+            "scene.json object 656: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 656 is invisible.",
+            "scene.json object 634: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 634 is invisible.",
+            "scene.json object 658: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 658 is invisible.",
+            "scene.json object 633: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 633 is invisible.",
+            "scene.json object 660: origin binding uses its authored default; interactive/script updates are omitted.",
+            "Object 660 is invisible.",
+            "scene.json object 632: origin binding uses its authored default; interactive/script updates are omitted.",
+            "Object 632 is invisible.",
+            "Object 800: parallax is omitted.",
+            "Object 800: effect effects/workshop/2116673772/crt_scan_line/effect.json is omitted.",
+            "Object 572 (Jujutsu Kaisen\u00ef\u00bc\u0161 Gojo Satoru Hollow Purple Theme \u00ef\u00bd\u0153 EPIC VERSION (Besto Quality Remix).mp3): non-image content is omitted.",
+            "Object 386 is invisible.",
+            "Object 558: unsupported particle layer properties/effects.",
+            "Object 133: unsupported particle layer properties/effects.",
+            "Object 528: unsupported particle layer properties/effects."
+          ],
+          "phases": {
+            "paced": {
+              "fps": 59.999142762247786,
+              "cpu_machine_percent": 0.09450866536257924,
+              "gpu_percent": 10.499339149546925,
+              "private_mib": 384.789306640625,
+              "gpu_interval_mean_ms": 1.6911186,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 158.994140625
+            },
+            "uncapped": {
+              "fps": 323.60121531067466,
+              "cpu_machine_percent": 0.20161046308881564,
+              "gpu_percent": 55.2183154094378,
+              "private_mib": 379.13671875,
+              "gpu_interval_mean_ms": 1.7036203630745461,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 158.994140625
+            }
+          }
+        },
+        {
+          "name": "yuta",
+          "package_sha256": "551f74eeca12b2f760bff5a9c79f9f28c623c1e1d31c3642719b67633ff91f14",
+          "settings": {
+            "allow_unsupported_features": true,
+            "animation": true,
+            "image_quality": "Linear",
+            "reduce_flashing": false,
+            "visual_effects": true
+          },
+          "image_objects": [
+            28,
+            32,
+            22,
+            72,
+            89,
+            77,
+            86
+          ],
+          "particle_objects": [],
+          "effect_chains": {
+            "22": [
+              "blurprecise"
+            ],
+            "28": [
+              "cloudmotion"
+            ],
+            "32": [
+              "cloudmotion"
+            ],
+            "72": [
+              "blurprecise"
+            ]
+          },
+          "composition_layers": {
+            "364": []
+          },
+          "omissions": [
+            "General scene camera, lighting and other postprocessing settings are omitted.",
+            "Object 28: parallax is omitted.",
+            "Object 32: parallax is omitted.",
+            "Object 22: parallax is omitted.",
+            "Object 364: parallax is omitted.",
+            "Object 364: effect effects/chromaticaberration/effect.json is omitted.",
+            "Object 96 (storegraphic-soft-wind-sound-314943.mp3): non-image content is omitted.",
+            "Object 100 (freesound_community-badlands-wind-slow-open-barren-landscape-near-stream-alberta-100315-18027.mp3): non-image content is omitted.",
+            "Object 71: unsupported particle layer properties/effects.",
+            "Object 103: optional content omitted: scene.json object 103: unsupported corner light-shafts profile"
+          ],
+          "phases": {
+            "paced": {
+              "fps": 59.99844604024756,
+              "cpu_machine_percent": 0.5922428245722969,
+              "gpu_percent": 3.2956559624488837,
+              "private_mib": 738.3560791015625,
+              "gpu_interval_mean_ms": 0.47843586666666665,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 26.3671875
+            },
+            "uncapped": {
+              "fps": 610.1605733409698,
+              "cpu_machine_percent": 0.9450740441595202,
+              "gpu_percent": 26.500786709284636,
+              "private_mib": 737.5584716796875,
+              "gpu_interval_mean_ms": 0.4212879377304384,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 26.3671875
+            }
+          }
+        },
+        {
+          "name": "tram-video",
+          "package_sha256": "c7e915b40776c5d66bdc6f8ef123a2f13381cb89fa9f5bbd86ea7d8ab4363885",
+          "settings": {
+            "allow_unsupported_features": true,
+            "animation": true,
+            "image_quality": "Linear",
+            "reduce_flashing": false,
+            "visual_effects": true
+          },
+          "image_objects": [
+            14
+          ],
+          "particle_objects": [
+            20
+          ],
+          "effect_chains": {},
+          "composition_layers": {},
+          "omissions": [
+            "General scene camera, lighting and other postprocessing settings are omitted.",
+            "Object 14: parallax is omitted.",
+            "scene.json object 14: extra model fields, including mesh/puppet deformation, are omitted; drawing the base material.",
+            "Particle particles/presets/leaves2.json: turbulent velocity uses independent noise; exact engine noise is not reproduced.",
+            "Particle particles/presets/leaves2b.json: turbulent velocity uses independent noise; exact engine noise is not reproduced.",
+            "Object 20: particle parallax is omitted.",
+            "Particles use deterministic library seeds and analytic gravity/drag; exact engine randomness and integration are not reproduced."
+          ],
+          "phases": {
+            "paced": {
+              "fps": 59.99922226008145,
+              "cpu_machine_percent": 2.2739406910030313,
+              "gpu_percent": 2.9409219147224546,
+              "private_mib": 353.4073486328125,
+              "gpu_interval_mean_ms": 0.0935878,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 0.0
+            },
+            "uncapped": {
+              "fps": 463.42345403098045,
+              "cpu_machine_percent": 2.4635176439703343,
+              "gpu_percent": 3.4403990939719185,
+              "private_mib": 354.0084228515625,
+              "gpu_interval_mean_ms": 0.05834632146709817,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 0.0
+            }
+          }
+        }
+      ]
+    },
+    "no-vfx": {
+      "path": "artifacts/feature-cost-no-vfx-20261025/report.json",
+      "sha256": "a9ffef601f1b7c701e1afbbdaa10c27207823d90687521f6431dcb0e2b36eb57",
+      "executable_sha256": "0ed632db7ea1f3a3bc9a15d9b03afa06accfa6c7d8432c520890b1eedd2ca0b4",
+      "configuration": {
+        "seconds": 8,
+        "warmup": 2,
+        "idle": 2,
+        "trim_paused": false,
+        "visual_effects": false,
+        "profile_gpu": true,
+        "target_fps": 60,
+        "repeats": 1,
+        "software": false,
+        "resolutions": [
+          [
+            3840,
+            2160
+          ]
+        ]
+      },
+      "workloads": [
+        {
+          "name": "panda",
+          "package_sha256": "8c9f74e10e14db6e9aae158b9a096e2d98c4c1b1cfd450712e10fc405720fdaa",
+          "settings": {
+            "allow_unsupported_features": true,
+            "animation": true,
+            "image_quality": "Linear",
+            "reduce_flashing": false,
+            "visual_effects": false
+          },
+          "image_objects": [
+            13,
+            17,
+            111,
+            80,
+            68,
+            791,
+            961,
+            38
+          ],
+          "particle_objects": [],
+          "effect_chains": {},
+          "composition_layers": {},
+          "omissions": [
+            "General scene camera, lighting and other postprocessing settings are omitted.",
+            "Object 307 (Above The Sky - Norman Duck.mp3): non-image content is omitted.",
+            "Object 13: effect effects/waterwaves/effect.json disabled by consumer settings.",
+            "Object 13: parallax is omitted.",
+            "Object 17: effect effects/spin/effect.json disabled by consumer settings.",
+            "Object 17: parallax is omitted.",
+            "Object 111: effect effects/spin/effect.json disabled by consumer settings.",
+            "Object 111: parallax is omitted.",
+            "Object 80: effect effects/spin/effect.json disabled by consumer settings.",
+            "Object 80: parallax is omitted.",
+            "Object 68: effect effects/spin/effect.json disabled by consumer settings.",
+            "Object 68: parallax is omitted.",
+            "Object 791: effect effects/spin/effect.json disabled by consumer settings.",
+            "Object 791: parallax is omitted.",
+            "Object 961: effect effects/spin/effect.json disabled by consumer settings.",
+            "Object 961: effect effects/tint/effect.json disabled by consumer settings.",
+            "Object 961: effect effects/opacity/effect.json disabled by consumer settings.",
+            "Object 961: parallax is omitted.",
+            "Object 348: particles omitted by consumer visual-effects settings.",
+            "Object 593: particles omitted by consumer visual-effects settings.",
+            "Object 605: particles omitted by consumer visual-effects settings.",
+            "Object 3193: particles omitted by consumer visual-effects settings.",
+            "Object 621: particles omitted by consumer visual-effects settings.",
+            "Object 87: particles omitted by consumer visual-effects settings.",
+            "Object 378: particles omitted by consumer visual-effects settings.",
+            "Object 391: particles omitted by consumer visual-effects settings.",
+            "Object 3251: particles omitted by consumer visual-effects settings.",
+            "Object 38: effect effects/waterwaves/effect.json disabled by consumer settings.",
+            "Object 38: parallax is omitted.",
+            "Object 110: particles omitted by consumer visual-effects settings.",
+            "Object 3859: particles omitted by consumer visual-effects settings.",
+            "Object 171: particles omitted by consumer visual-effects settings.",
+            "Object 121: composition effects disabled by consumer settings.",
+            "Object 187: composition effects disabled by consumer settings.",
+            "Object 207: composition effects disabled by consumer settings.",
+            "Object 574 is invisible.",
+            "Object 392 is invisible.",
+            "Object 1281: particles omitted by consumer visual-effects settings.",
+            "Object 1378: particles omitted by consumer visual-effects settings.",
+            "Object 3107: particles omitted by consumer visual-effects settings.",
+            "Object 1418: particles omitted by consumer visual-effects settings.",
+            "Object 1592: particles omitted by consumer visual-effects settings.",
+            "Object 3119: particles omitted by consumer visual-effects settings."
+          ],
+          "phases": {
+            "paced": {
+              "fps": 59.999189260955106,
+              "cpu_machine_percent": 0.08190421998224579,
+              "gpu_percent": 1.1774260274470725,
+              "private_mib": 248.95068359375,
+              "gpu_interval_mean_ms": 0.12723273333333335,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 0.0
+            },
+            "uncapped": {
+              "fps": 625.7124650735013,
+              "cpu_machine_percent": 0.365421873543089,
+              "gpu_percent": 6.6959686342784215,
+              "private_mib": 247.9765625,
+              "gpu_interval_mean_ms": 0.09186046184578506,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 0.0
+            }
+          }
+        },
+        {
+          "name": "gojo-particles",
+          "package_sha256": "d8d291216701a49352a12210245c4210e7353de80ab54a84d0cb1aad56a342c6",
+          "settings": {
+            "allow_unsupported_features": true,
+            "animation": true,
+            "image_quality": "Linear",
+            "reduce_flashing": false,
+            "visual_effects": false
+          },
+          "image_objects": [
+            13
+          ],
+          "particle_objects": [],
+          "effect_chains": {},
+          "composition_layers": {},
+          "omissions": [
+            "General scene camera, lighting and other postprocessing settings are omitted.",
+            "Object 13: effect effects/waterwaves/effect.json disabled by consumer settings.",
+            "Object 13: effect effects/waterwaves/effect.json disabled by consumer settings.",
+            "Object 13: effect effects/waterripple/effect.json disabled by consumer settings.",
+            "Object 13: effect effects/waterflow/effect.json disabled by consumer settings.",
+            "Object 13: effect effects/pulse/effect.json disabled by consumer settings.",
+            "Object 13: parallax is omitted.",
+            "Object 127: particles omitted by consumer visual-effects settings.",
+            "Object 132: particles omitted by consumer visual-effects settings.",
+            "Object 152: particles omitted by consumer visual-effects settings.",
+            "Object 155: particles omitted by consumer visual-effects settings."
+          ],
+          "phases": {
+            "paced": {
+              "fps": 59.999782500788434,
+              "cpu_machine_percent": 0.05040473794865243,
+              "gpu_percent": 0.830112984010434,
+              "private_mib": 167.4219970703125,
+              "gpu_interval_mean_ms": 0.0685938,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 0.0
+            },
+            "uncapped": {
+              "fps": 630.7833550633012,
+              "cpu_machine_percent": 0.32761156211940595,
+              "gpu_percent": 4.535644429663794,
+              "private_mib": 163.49609375,
+              "gpu_interval_mean_ms": 0.04698336120467605,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 0.0
+            }
+          }
+        },
+        {
+          "name": "gojo-composition",
+          "package_sha256": "8458d78e4e8e4f765b59811468d212c27dd51ad96aa409b4dbac323244568af2",
+          "settings": {
+            "allow_unsupported_features": true,
+            "animation": true,
+            "image_quality": "Linear",
+            "reduce_flashing": false,
+            "visual_effects": false
+          },
+          "image_objects": [
+            243,
+            119,
+            382
+          ],
+          "particle_objects": [],
+          "effect_chains": {},
+          "composition_layers": {},
+          "omissions": [
+            "General scene camera, lighting and other postprocessing settings are omitted.",
+            "scene.json object 243: unsupported image property clampuvs is omitted.",
+            "Object 243: effect effects/spin/effect.json disabled by consumer settings.",
+            "Object 243: effect effects/shake/effect.json disabled by consumer settings.",
+            "Object 243: effect effects/fluidsimulation/effect.json disabled by consumer settings.",
+            "Object 243: effect effects/cursorripple/effect.json disabled by consumer settings.",
+            "Object 243: effect effects/fisheye/effect.json disabled by consumer settings.",
+            "scene.json object 243: material materials/ninjuras-screenshot-2023-10-24-215149.json uses base-image translucent rendering; custom shader/state is omitted.",
+            "scene.json object 243: unsupported material combinations are omitted.",
+            "Object 558: particles omitted by consumer visual-effects settings.",
+            "Object 133: particles omitted by consumer visual-effects settings.",
+            "Object 528: particles omitted by consumer visual-effects settings.",
+            "Object 156: composition effects disabled by consumer settings.",
+            "Object 173 (): non-image content is omitted.",
+            "Object 269 is invisible.",
+            "Object 403 (): non-image content is omitted.",
+            "scene.json object 119: unsupported image property clampuvs is omitted.",
+            "scene.json object 119: unsupported image property dependencies is omitted.",
+            "Object 119: effect effects/opacity/effect.json disabled by consumer settings.",
+            "Object 119: effect effects/blend/effect.json disabled by consumer settings.",
+            "Object 119: effect effects/iris/effect.json disabled by consumer settings.",
+            "Object 119: effect effects/waterwaves/effect.json disabled by consumer settings.",
+            "Object 119: effect effects/foliagesway/effect.json disabled by consumer settings.",
+            "Object 119: effect effects/foliagesway/effect.json disabled by consumer settings.",
+            "scene.json object 119: alpha 2 is clamped to the SDR range.",
+            "scene.json object 119: material materials/Gojo.json uses base-image translucent rendering; custom shader/state is omitted.",
+            "scene.json object 119: unsupported material combinations are omitted.",
+            "scene.json object 382: unsupported image property clampuvs is omitted.",
+            "scene.json object 382: unsupported image property dependencies is omitted.",
+            "Object 382: effect effects/opacity/effect.json disabled by consumer settings.",
+            "Object 382: effect effects/opacity/effect.json disabled by consumer settings.",
+            "Object 382: effect effects/blend/effect.json disabled by consumer settings.",
+            "Object 382: effect effects/iris/effect.json disabled by consumer settings.",
+            "Object 382: effect effects/foliagesway/effect.json disabled by consumer settings.",
+            "Object 382: effect effects/foliagesway/effect.json disabled by consumer settings.",
+            "Object 382: effect effects/waterwaves/effect.json disabled by consumer settings.",
+            "Object 382: effect effects/twirl/effect.json disabled by consumer settings.",
+            "Object 382: effect effects/waterwaves/effect.json disabled by consumer settings.",
+            "scene.json object 382: material materials/aaaa.json uses base-image translucent rendering; custom shader/state is omitted.",
+            "scene.json object 382: unsupported material combinations are omitted.",
+            "scene.json object 608: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 608 is invisible.",
+            "scene.json object 420: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 420 is invisible.",
+            "scene.json object 606: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 606 is invisible.",
+            "scene.json object 585: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 585 is invisible.",
+            "scene.json object 656: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 656 is invisible.",
+            "scene.json object 634: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 634 is invisible.",
+            "scene.json object 658: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 658 is invisible.",
+            "scene.json object 633: text binding uses its authored default; interactive/script updates are omitted.",
+            "Object 633 is invisible.",
+            "scene.json object 660: origin binding uses its authored default; interactive/script updates are omitted.",
+            "Object 660 is invisible.",
+            "scene.json object 632: origin binding uses its authored default; interactive/script updates are omitted.",
+            "Object 632 is invisible.",
+            "Object 800: composition effects disabled by consumer settings.",
+            "Object 572 (Jujutsu Kaisen\u00ef\u00bc\u0161 Gojo Satoru Hollow Purple Theme \u00ef\u00bd\u0153 EPIC VERSION (Besto Quality Remix).mp3): non-image content is omitted.",
+            "Object 386 is invisible."
+          ],
+          "phases": {
+            "paced": {
+              "fps": 59.99977950081033,
+              "cpu_machine_percent": 0.025201598595207136,
+              "gpu_percent": 1.1814631315060407,
+              "private_mib": 211.388427734375,
+              "gpu_interval_mean_ms": 0.13000666666666666,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 0.0
+            },
+            "uncapped": {
+              "fps": 630.8066284465592,
+              "cpu_machine_percent": 0.2772236226533759,
+              "gpu_percent": 7.7052876899931615,
+              "private_mib": 210.41015625,
+              "gpu_interval_mean_ms": 0.1065277971071924,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 0.0
+            }
+          }
+        },
+        {
+          "name": "yuta",
+          "package_sha256": "551f74eeca12b2f760bff5a9c79f9f28c623c1e1d31c3642719b67633ff91f14",
+          "settings": {
+            "allow_unsupported_features": true,
+            "animation": true,
+            "image_quality": "Linear",
+            "reduce_flashing": false,
+            "visual_effects": false
+          },
+          "image_objects": [
+            28,
+            32,
+            22,
+            72,
+            89,
+            77,
+            86
+          ],
+          "particle_objects": [],
+          "effect_chains": {},
+          "composition_layers": {},
+          "omissions": [
+            "General scene camera, lighting and other postprocessing settings are omitted.",
+            "Object 28: effect effects/cloudmotion/effect.json disabled by consumer settings.",
+            "Object 28: parallax is omitted.",
+            "Object 32: effect effects/cloudmotion/effect.json disabled by consumer settings.",
+            "Object 32: parallax is omitted.",
+            "Object 22: effect effects/blurprecise/effect.json disabled by consumer settings.",
+            "Object 22: parallax is omitted.",
+            "Object 72: effect effects/blurprecise/effect.json disabled by consumer settings.",
+            "Object 71: particles omitted by consumer visual-effects settings.",
+            "Object 103 (Rayons lumineux - coin): non-image content is omitted.",
+            "Object 364: composition effects disabled by consumer settings.",
+            "Object 96 (storegraphic-soft-wind-sound-314943.mp3): non-image content is omitted.",
+            "Object 100 (freesound_community-badlands-wind-slow-open-barren-landscape-near-stream-alberta-100315-18027.mp3): non-image content is omitted."
+          ],
+          "phases": {
+            "paced": {
+              "fps": 59.99543584721793,
+              "cpu_machine_percent": 0.43471966106947885,
+              "gpu_percent": 1.8190704222327743,
+              "private_mib": 703.66015625,
+              "gpu_interval_mean_ms": 0.22069560000000002,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 0.0
+            },
+            "uncapped": {
+              "fps": 612.8417839753087,
+              "cpu_machine_percent": 0.8568683827584687,
+              "gpu_percent": 11.983331282846402,
+              "private_mib": 697.0665283203125,
+              "gpu_interval_mean_ms": 0.17750524658372424,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 0.0
+            }
+          }
+        },
+        {
+          "name": "tram-video",
+          "package_sha256": "c7e915b40776c5d66bdc6f8ef123a2f13381cb89fa9f5bbd86ea7d8ab4363885",
+          "settings": {
+            "allow_unsupported_features": true,
+            "animation": true,
+            "image_quality": "Linear",
+            "reduce_flashing": false,
+            "visual_effects": false
+          },
+          "image_objects": [
+            14
+          ],
+          "particle_objects": [],
+          "effect_chains": {},
+          "composition_layers": {},
+          "omissions": [
+            "General scene camera, lighting and other postprocessing settings are omitted.",
+            "Object 14: parallax is omitted.",
+            "scene.json object 14: extra model fields, including mesh/puppet deformation, are omitted; drawing the base material.",
+            "Object 20: particles omitted by consumer visual-effects settings."
+          ],
+          "phases": {
+            "paced": {
+              "fps": 59.99698665134543,
+              "cpu_machine_percent": 2.1168343128485367,
+              "gpu_percent": 2.783735516356512,
+              "private_mib": 353.0198974609375,
+              "gpu_interval_mean_ms": 0.0887,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 0.0
+            },
+            "uncapped": {
+              "fps": 479.4203146351333,
+              "cpu_machine_percent": 2.513784565353192,
+              "gpu_percent": 3.571342352144285,
+              "private_mib": 355.93115234375,
+              "gpu_interval_mean_ms": 0.050766023970818135,
+              "invalid_gpu_samples": 0,
+              "effect_payload_mib": 0.0
+            }
+          }
+        }
+      ]
+    }
+  },
+  "machine": {
+    "cpu": [
+      {
+        "Name": "AMD Ryzen 9 9950X3D 16-Core Processor          ",
+        "NumberOfCores": 16,
+        "NumberOfLogicalProcessors": 32
+      }
+    ],
+    "gpu": [
+      {
+        "Name": "AMD Radeon(TM) Graphics",
+        "DriverVersion": "32.0.21030.2001"
+      },
+      {
+        "Name": "NVIDIA GeForce RTX 5080",
+        "DriverVersion": "32.0.16.1664"
+      }
+    ],
+    "os": {
+      "Caption": "Microsoft Windows 11 Home",
+      "Version": "10.0.26200",
+      "BuildNumber": "26200",
+      "TotalVisibleMemorySize": 64545140
+    },
+    "power_plan": "Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Balanced)"
+  },
+  "logical_cpus": 32
+}

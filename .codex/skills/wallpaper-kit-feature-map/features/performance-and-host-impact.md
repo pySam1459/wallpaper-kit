@@ -2,6 +2,20 @@
 
 ## Status
 
+The [optimization log](../../../../docs/performance-progress.md) records each
+step and the completed 26 October original-settings comparison: 28/28 cases,
+unchanged initial pixels and playback reports, and zero owned processes after
+cleanup. CPU/GPU observations include regressions and ranges. The
+[idle comparison](../../../../docs/idle-performance-2026-10-25.md) verifies two
+warm/trimmed repetitions of three 4K workloads: private memory falls 61–77%,
+and dedicated GPU memory settles near 77 MiB. CPU/GPU idle activity remains
+near the floor. Supported-feature ablations rank composition blur chains and
+video decoding without changing quality defaults. The final
+[software gate](../../../../artifacts/20261026-000945-f4bc23d0/manifest.json)
+passes; native windows remain skipped. The browser input proxy delivers all
+160 events with no observed long tasks, but only three PNG-delivered native
+frames per enabled interval. This is separate from production host acceptance.
+
 The [CPU/GPU comparison](../../../../docs/cpu-gpu-climb-2026-10-25.md)
 is verified on 25 October 2026. Two alternating ordinary 20-second runs per
 version measure Gojo particles at 4K: paced CPU falls 61.6%, busiest-engine

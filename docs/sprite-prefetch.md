@@ -19,6 +19,12 @@ The asset worker prepares current demand first, then the next window. A seek can
 
 Hold time to pause. Outstanding current/next preparation settles, then the worker waits on a condition variable without periodic work. `shutdown()` and Drop cancel demand and join. Active file/codec work may finish first. Join outside latency-critical updates. Retained samples survive eviction and shutdown. Explicit shutdown reports a worker panic.
 
+`ImagePlayback::freeze` additionally suspends its internal pagers, asynchronously
+discarding extra ready windows and the decoded atlas on the asset worker. The
+retained displayed sample remains valid. Sampling after play/seek resumes
+preparation, so keep the old GPU frame visible until a new sample is ready.
+This differs from warm pause's retained cache. See [idle measurements](idle-performance-2026-10-25.md).
+
 ## Admission and ownership
 
 Metadata admission checks every authored run before decoding pixels:

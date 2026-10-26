@@ -48,6 +48,14 @@ Playback starts paused at zero. `play`, `pause` and `seek(Duration)` control its
 
 [Consumer initialization settings](playback-settings.md) select image sampling, animation, VFX and reduced flashing. `freeze(&last_presented_sample)` retains the displayed composition at its exact time; the host retains its GPU frame and discards later in-flight completions.
 
+Freeze also asks source workers to release extra sprite windows/decoded atlases
+and idle video decoders. The selected sample stays valid for still resize.
+Resume can return `None` while resources prepare again; keep displaying the
+retained frame. Warm `pause` retains caches. For longer still/hidden states,
+stop requesting draws and call `Renderer::trim_memory` to release GPU caches
+and unleased spare outputs asynchronously. Read [still-mode resources](idle-performance-2026-10-25.md)
+for ownership, measured costs and verification limits.
+
 The host schedules `try_sample` through its event loop. One call captures a common time, polls every animated source without waiting, and constructs ordered layer descriptors. It returns `None` until all sources for that time are ready. Keep the previous completed GPU frame while retrying. Errors identify invalid assets or compositions. Submit a ready sample's composition to `Renderer::render_images`, then consume `Renderer::try_frame` as usual. Retained samples and frames remain valid after shutdown.
 
 Retries keep one pending selection time while decoding finishes. A successful

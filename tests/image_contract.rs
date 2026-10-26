@@ -1914,6 +1914,54 @@ fn freeze_retains_the_presented_sample_despite_newer_work_and_resumes_from_it() 
 }
 
 #[test]
+fn freeze_releases_other_sprite_frames_and_trim_rebuilds_still_pixels() {
+    let package = Package::new(&[]);
+    fs::write(package.root.join("scene.pkg"), playback_checks::package()).unwrap();
+    let source = SceneSource {
+        package: package.root.join("scene.pkg"),
+        engine_assets: package.root.join("engine"),
+    };
+    let mut playback = ImagePlayback::open_scene_images(&source).unwrap();
+    let first = playback_sample(&playback);
+    playback.seek(Duration::from_millis(125));
+    let next = playback_sample(&playback);
+    let discarded = Arc::downgrade(next.composition.layers()[1].region().page());
+    drop(next);
+    playback.freeze(&first);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while discarded.upgrade().is_some() {
+        assert!(
+            Instant::now() < deadline,
+            "frozen pager retained an unneeded frame"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let (renderer, events) =
+        Renderer::new(Size::new(320, 180).unwrap(), DeviceMode::Software).unwrap();
+    let id = renderer.render_images(first.composition.clone()).unwrap();
+    let frame = wait(&renderer, &events, id);
+    let pixels = frame.readback().unwrap();
+    renderer.trim_memory().unwrap();
+    loop {
+        let s = stats(&renderer, frame.sequence());
+        if s.source_texture_bytes == 0 && s.effect_texture_bytes == 0 {
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(frame.readback().unwrap().rgba, pixels.rgba);
+    let id = renderer.resize(Size::new(317, 193).unwrap()).unwrap();
+    playback_checks::check(&wait(&renderer, &events, id).readback().unwrap(), 0).unwrap();
+    playback.seek(Duration::from_millis(125));
+    let restored = playback_sample(&playback);
+    let id = renderer.render_images(restored.composition).unwrap();
+    playback_checks::check(&wait(&renderer, &events, id).readback().unwrap(), 125).unwrap();
+    renderer.shutdown().unwrap();
+    playback.shutdown().unwrap();
+}
+
+#[test]
 fn linear_quality_scales_without_reading_neighboring_atlas_texels() {
     let tex = texture_checks::tex(
         0,

@@ -112,6 +112,48 @@ fn opt_in_profiling_preserves_pixels_and_stays_idle_without_requests() {
 }
 
 #[test]
+fn trim_preserves_leased_frames_and_resize_content_without_rendering() {
+    let (renderer, _) = Renderer::new(Size::new(64, 33).unwrap(), DeviceMode::Software).unwrap();
+    let first = wait_for(&renderer, 1);
+    let id = renderer
+        .render_fixture_at(Duration::from_millis(500))
+        .unwrap();
+    renderer.trim_memory().unwrap(); // Trimming must wait for this pending render.
+    let latest = wait_for(&renderer, id);
+    let pixels = latest.readback().unwrap().rgba;
+    renderer.trim_memory().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while renderer
+        .try_output_stats()
+        .unwrap()
+        .is_none_or(|s| s.resident_textures != 2)
+    {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(first.readback().unwrap().size, Size::new(64, 33).unwrap());
+    drop(first);
+    renderer.trim_memory().unwrap();
+    while renderer
+        .try_output_stats()
+        .unwrap()
+        .is_none_or(|s| s.resident_textures != 1)
+    {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(renderer.try_frame().unwrap().unwrap().id(), id);
+    assert_eq!(latest.readback().unwrap().rgba, pixels);
+    let resized = renderer.resize(Size::new(96, 48).unwrap()).unwrap();
+    assert_eq!(
+        wait_for(&renderer, resized).fixture_time(),
+        Some(Duration::from_millis(500))
+    );
+    renderer.shutdown().unwrap();
+    assert_eq!(latest.readback().unwrap().rgba, pixels);
+}
+
+#[test]
 fn retained_frames_bound_output_and_resume_on_release() {
     let (renderer, _events) =
         Renderer::new(Size::new(64, 33).unwrap(), DeviceMode::Software).unwrap();

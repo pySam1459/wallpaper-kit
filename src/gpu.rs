@@ -176,6 +176,40 @@ impl Gpu {
             .any(|slot| matches!(slot.state, SlotState::Submitted { .. }))
     }
 
+    pub(crate) fn trim_memory(&mut self) -> Result<(), Error> {
+        debug_assert!(!self.has_pending());
+        // SAFETY: exclusive worker context, after its submitted GPU event completed.
+        unsafe {
+            self.context.ClearState();
+        }
+        if let Some(image) = &mut self.image {
+            image.release_texture();
+        }
+        let mut index = 0;
+        while index < self.slots.len() {
+            let slot = &self.slots[index];
+            let leased =
+                matches!(&slot.state, SlotState::Leased(frame) if frame.strong_count() != 0);
+            if !leased && acquire(&slot.output.mutex)? {
+                // SAFETY: acquired this unleased output's key 0 without waiting.
+                unsafe {
+                    slot.output.mutex.ReleaseSync(0)?;
+                }
+                self.slots.swap_remove(index);
+            } else {
+                index += 1;
+            }
+        }
+        let device: IDXGIDevice3 = self.device.cast()?;
+        // SAFETY: unbound resources have been released; the device remains owned.
+        // Flush/Trim retires deferred driver allocations without a GPU wait here.
+        unsafe {
+            self.context.Flush();
+            device.Trim();
+        }
+        Ok(())
+    }
+
     pub(crate) fn stats(&self) -> OutputStats {
         OutputStats {
             profile: self.profile.as_ref().map(|profile| profile.stats),

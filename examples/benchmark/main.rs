@@ -45,6 +45,14 @@ struct Config {
     software: bool,
     #[serde(default)]
     profile_gpu: bool,
+    #[serde(default)]
+    trim_paused: bool,
+    #[serde(default = "enabled")]
+    visual_effects: bool,
+}
+
+fn enabled() -> bool {
+    true
 }
 
 fn unix_ms() -> f64 {
@@ -135,6 +143,7 @@ struct Consumer {
     renderer: Renderer,
     events: Receiver<()>,
     playback: Option<ImagePlayback>,
+    last_sample: Option<wallpaper_kit::ImagePlaybackSample>,
     size: Size,
 }
 
@@ -147,9 +156,30 @@ struct Draw {
 }
 
 impl Consumer {
-    fn draw(&self) -> Result<Draw> {
+    fn idle(&self, name: &str, seconds: u32) -> Result<Value> {
+        let before = self.renderer.try_output_stats()?.map(support::pool_info);
+        let mut report = idle(name, seconds)?;
+        report["pool_before"] = json!(before);
+        report["pool_after"] = json!(self.renderer.try_output_stats()?.map(support::pool_info));
+        Ok(report)
+    }
+    fn pause(&mut self, trim: bool) -> Result<()> {
+        if let Some(p) = &mut self.playback {
+            if trim && let Some(sample) = &self.last_sample {
+                p.freeze(sample);
+            } else {
+                p.pause();
+            }
+        }
+        if trim {
+            self.renderer.trim_memory()?;
+        }
+        Ok(())
+    }
+
+    fn draw(&mut self) -> Result<Draw> {
         let started = Instant::now();
-        let (id, source_age, indices) = if let Some(playback) = &self.playback {
+        let (id, source_age, indices, sample) = if let Some(playback) = &self.playback {
             let sample = loop {
                 if let Some(sample) = playback.try_sample()? {
                     break sample;
@@ -160,13 +190,14 @@ impl Consumer {
                 std::thread::sleep(Duration::from_millis(1));
             };
             let age = playback.time().saturating_sub(sample.time).as_secs_f64() * 1000.;
-            let id = self.renderer.render_images(sample.composition)?;
-            (id, age, Some(sample.frame_indices))
+            let id = self.renderer.render_images(sample.composition.clone())?;
+            (id, age, Some(sample.frame_indices.clone()), Some(sample))
         } else {
-            (self.renderer.resize(self.size)?, 0., None)
+            (self.renderer.resize(self.size)?, 0., None, None)
         };
         let sampled = Instant::now();
         let frame = wait(&self.renderer, &self.events, id)?;
+        self.last_sample = sample;
         Ok(Draw {
             frame,
             sample_wait_ms: (sampled - started).as_secs_f64() * 1000.,
@@ -176,17 +207,20 @@ impl Consumer {
         })
     }
 
-    fn warmup(&mut self, seconds: u32) -> Result<()> {
+    fn warmup(&mut self, seconds: u32) -> Result<f64> {
         if let Some(playback) = &mut self.playback {
             playback.pause();
             playback.seek(Duration::ZERO);
             playback.play();
         }
-        let until = Instant::now() + Duration::from_secs(u64::from(seconds));
+        let started = Instant::now();
+        let until = started + Duration::from_secs(u64::from(seconds));
+        drop(self.draw()?);
+        let first_frame_ms = started.elapsed().as_secs_f64() * 1000.;
         while Instant::now() < until {
             drop(self.draw()?);
         }
-        Ok(())
+        Ok(first_frame_ms)
     }
 
     fn measure(
@@ -196,7 +230,7 @@ impl Consumer {
         config: &Config,
         paced: bool,
     ) -> Result<Value> {
-        self.warmup(config.warmup_seconds)?;
+        let warmup_first_frame_ms = self.warmup(config.warmup_seconds)?;
         let before = self
             .renderer
             .try_output_stats()?
@@ -295,6 +329,7 @@ impl Consumer {
             "source_age_ms":metrics::distribution(&samples.iter().map(|s|s.source_age_ms).collect::<Vec<_>>()),
             "source_index_observations":source_selections,"changed_source_index_selections":changed_selections,
             "telemetry_buffer_capacity_bytes":samples.capacity()*std::mem::size_of::<Sample>(),
+            "warmup_first_frame_ms":warmup_first_frame_ms,
             "pool_before":support::pool_info(before),"pool_after":support::pool_info(after)}),
         )
     }
@@ -343,6 +378,7 @@ fn run() -> Result<()> {
     let settings = PlaybackSettings {
         allow_unsupported_features: true,
         image_quality: ImageQuality::Linear,
+        visual_effects: config.visual_effects,
         ..Default::default()
     };
     let loading = Instant::now();
@@ -376,6 +412,7 @@ fn run() -> Result<()> {
         renderer,
         events,
         playback,
+        last_sample: None,
         size,
     };
     if let Some(p) = &mut consumer.playback {
@@ -392,21 +429,17 @@ fn run() -> Result<()> {
     drop(pixels);
     drop(first);
     consumer.warmup(config.warmup_seconds)?;
-    if let Some(p) = &mut consumer.playback {
-        p.pause();
-    }
-    phases.push(idle("paused", config.idle_seconds)?);
+    consumer.pause(config.trim_paused)?;
+    phases.push(consumer.idle("paused", config.idle_seconds)?);
     phases.push(consumer.measure(&output, "paced", &config, true)?);
     phases.push(consumer.measure(&output, "uncapped", &config, false)?);
-    if let Some(p) = &mut consumer.playback {
-        p.pause();
-    }
+    consumer.pause(config.trim_paused)?;
     let frozen = consumer
         .renderer
         .try_frame()?
         .ok_or("missing retained frame")?
         .id();
-    phases.push(idle("paused_after", config.idle_seconds)?);
+    phases.push(consumer.idle("paused_after", config.idle_seconds)?);
     if consumer
         .renderer
         .try_frame()?
@@ -422,6 +455,7 @@ fn run() -> Result<()> {
         .map(|p| serde_json::to_value(p.report()))
         .transpose()?;
     let shutdown = Instant::now();
+    consumer.last_sample = None;
     consumer.renderer.shutdown()?;
     if let Some(p) = consumer.playback {
         p.shutdown()?;

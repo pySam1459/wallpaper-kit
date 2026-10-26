@@ -143,6 +143,7 @@ struct State {
     failed: bool,
     stats: SpritePagingStats,
     stopped: bool,
+    suspended: bool,
 }
 struct Shared {
     state: Mutex<State>,
@@ -185,6 +186,7 @@ impl SpritePager {
                     ..SpritePagingStats::default()
                 },
                 stopped: false,
+                suspended: false,
             }),
             changed: Condvar::new(),
         });
@@ -236,6 +238,10 @@ impl SpritePager {
             return Err(failed("worker stopped"));
         }
         let old = state.time;
+        if state.suspended {
+            state.suspended = false;
+            self.shared.changed.notify_one();
+        }
         state.time = time;
         if let Some(timeline) = state.timeline.clone() {
             let (group, frame) = timeline.selection(time);
@@ -260,6 +266,12 @@ impl SpritePager {
             Ok(state) => Ok(Some(state.stats)),
             Err(TryLockError::WouldBlock) => Ok(None),
             Err(TryLockError::Poisoned(error)) => Err(failed(error.to_string())),
+        }
+    }
+    pub(crate) fn suspend(&self) {
+        if let Ok(mut state) = self.shared.state.lock() {
+            state.suspended = true;
+            self.shared.changed.notify_one();
         }
     }
     /// Cancel future work and join active preparation. Codecs may finish first.
@@ -292,7 +304,7 @@ fn failed(detail: impl Into<String>) -> InspectionError {
 }
 fn needed(state: &State, timeline: &Timeline, group: usize) -> bool {
     let current = timeline.selection(state.time).0;
-    !state.stopped && (group == current || group == timeline.next(current))
+    !state.stopped && !state.suspended && (group == current || group == timeline.next(current))
 }
 fn prepare(
     shared: &Shared,
@@ -319,11 +331,21 @@ fn prepare(
                 if state.stopped {
                     return Ok(());
                 }
+                if state.suspended
+                    && (!state.batches.is_empty() || stream.stats().cached_page_bytes != 0)
+                {
+                    let obsolete = std::mem::take(&mut state.batches);
+                    state.stats.cached_batches = 0;
+                    state.stats.cached_frame_bytes = 0;
+                    state.stats.reserved_work_bytes = 0;
+                    state.stats.preparing = false;
+                    break (None, obsolete);
+                }
                 let current = timeline.selection(state.time).0;
                 let next = timeline.next(current);
-                let target = [current, next]
-                    .into_iter()
-                    .find(|group| !state.batches.iter().any(|batch| batch.group == *group));
+                let target = [current, next].into_iter().find(|group| {
+                    !state.suspended && !state.batches.iter().any(|batch| batch.group == *group)
+                });
                 if let Some(group) = target {
                     let mut obsolete = Vec::new();
                     let mut index = 0;
@@ -347,7 +369,7 @@ fn prepare(
                     state.stats.reserved_work_bytes = reservation;
                     state.stats.peak_admitted_bytes = state.stats.peak_admitted_bytes.max(admitted);
                     state.stats.preparing = true;
-                    break (group, obsolete);
+                    break (Some(group), obsolete);
                 }
                 state.stats.preparing = false;
                 state.stats.reserved_work_bytes = stream.stats().cached_page_bytes;
@@ -358,6 +380,10 @@ fn prepare(
             }
         };
         drop(obsolete); // Evicted buffers die before decode, outside metadata.
+        let Some(group) = group else {
+            stream.clear_pixels();
+            continue;
+        };
         let range = timeline.groups[group].frames.clone();
         let bytes = timeline.groups[group].bytes;
         let mut frames = Vec::with_capacity(range.len());
@@ -414,9 +440,10 @@ fn prepare(
         }
         if outcome != Completion::Failed {
             let current = timeline.selection(state.time).0;
-            state.stats.preparing = [current, timeline.next(current)]
-                .into_iter()
-                .any(|group| !state.batches.iter().any(|batch| batch.group == group));
+            state.stats.preparing = !state.suspended
+                && [current, timeline.next(current)]
+                    .into_iter()
+                    .any(|group| !state.batches.iter().any(|batch| batch.group == group));
         }
         drop(state);
         // Release canceled partial payloads outside metadata. A ready batch was moved.
@@ -489,6 +516,7 @@ mod tests {
             failed: false,
             stats: SpritePagingStats::default(),
             stopped: false,
+            suspended: false,
         };
         assert!(
             completion(

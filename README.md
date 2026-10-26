@@ -63,6 +63,11 @@ The [first measured optimization](docs/performance-climb-2026-10-25.md) reduces
 Yuta's playback memory by 19.6% through bounded sprite prefetch windows.
 The [CPU/GPU follow-up](docs/cpu-gpu-climb-2026-10-25.md) reduces Gojo particle
 CPU usage by 61.6% at 60 fps and raises uncapped throughput by 37.5% in 4K tests.
+The [optimization log](docs/performance-progress.md) records each step, rejected
+experiments and the [full comparison to the initial baseline](benchmarks/results/2026-10-26-vs-initial.md).
+[Still-mode trimming](docs/idle-performance-2026-10-25.md) releases extra source,
+decoder and GPU resources while retaining the displayed frame, reducing measured
+paused private memory by 61–77% across three 4K workloads.
 
 ## Build and run
 

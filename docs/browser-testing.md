@@ -140,3 +140,23 @@ For brightness, tint and alpha pulsing, use the
 `verify-effect.mjs --effect pulse` runs installed Pulse and blending shader
 sources in Chrome. It covers masks, noise, both checked blend modes, transparency,
 HDR, composition capture and resize, with a two-channel-value tolerance.
+
+## Focus and still-mode lifecycle
+
+The example keeps requested playback separate from host activity. Blur/hidden
+callbacks stop polling and issue pause; focus resumes only requested playback.
+`window.wallpaperTest.setActive(false)` exposes the same policy to a consumer
+test. Manual pause survives focus changes. Pause freezes the last completed
+sample and requests idle GPU trimming; still resize redraws and trims again.
+
+```powershell
+node tools/browser-test/verify-idle.mjs --scene 'C:/Program Files (x86)/Steam/steamapps/workshop/content/431960/3780699842/scene.pkg' --engine-assets 'C:/Program Files (x86)/Steam/steamapps/common/wallpaper_engine/assets' --output artifacts/browser-idle-new
+```
+
+The [idle results](idle-performance-2026-10-25.md#verification-and-consumer-adoption)
+record hardware sprite/video runs, retained pixels, no idle publications,
+released source/effect GPU payload, resume, manual pause, resized stills and
+owned cleanup. Focus callbacks are synthesized in headless Chrome. Actual
+desktop focus delivery remains unverified; activating another headless tab did
+not deliver the expected callback in the preserved initial attempt. Run the
+general fixture/scene route above for Playwright and Chrome DevTools coverage.

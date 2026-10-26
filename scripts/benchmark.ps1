@@ -10,6 +10,8 @@ param(
     [int]$Fps = 60,
     [switch]$Software,
     [switch]$ProfileGpu,
+    [switch]$TrimPaused,
+    [switch]$NoVfx,
     [switch]$SkipBuild
 )
 $ErrorActionPreference = 'Stop'
@@ -21,6 +23,8 @@ try {
     }
     $benchmarkArguments = @('-B', 'scripts/benchmark.py', '--output', $Output, '--workloads', $Workloads,
         '--resolutions', $Resolutions, '--repeat', $Repeat, '--seconds', $Seconds, '--warmup', $Warmup, '--idle', $Idle, '--fps', $Fps)
+    if ($TrimPaused) { $benchmarkArguments += '--trim-paused' }
+    if ($NoVfx) { $benchmarkArguments += '--no-vfx' }
     if ($ProfileGpu) { $benchmarkArguments += '--profile-gpu' }
     if ($Software) { $benchmarkArguments += '--software' }
     python @benchmarkArguments

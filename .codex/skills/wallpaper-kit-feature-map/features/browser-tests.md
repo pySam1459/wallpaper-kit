@@ -2,6 +2,20 @@
 
 ## Status
 
+The [still-mode route](../../../../docs/idle-performance-2026-10-25.md) verifies
+Yuta sprites and Tram video through hardware D3D11 and headless Chrome. Run
+`node tools/browser-test/verify-idle.mjs --scene '<scene.pkg>' --engine-assets
+'<engine assets>' --output artifacts/browser-idle-new`. It checks synthesized
+blur/focus callbacks, exact retained canvas pixels, no idle publications,
+zero source/effect GPU payload, one retained output, resume, manual pause
+surviving focus changes, still resize and owned cleanup. Actual desktop focus
+delivery is unverified: headless tab activation did not deliver the expected
+callback in the preserved initial attempt. The generated fixture also passes
+Playwright/Chrome DevTools controls and errors. The final input proxy delivers
+160/160 inputs without observed long tasks; only three native frames arrive
+per playing interval through debug PNG transport. Monitor cadence and
+production host latency remain open.
+
 The [performance proxy](../../../../docs/performance-baseline-2026-10-25.md#browser-consumer-probe)
 records input and animation-frame timing in two paused and two playing headless
 Chrome intervals. All 160 characters arrive and owned cleanup passes. The debug

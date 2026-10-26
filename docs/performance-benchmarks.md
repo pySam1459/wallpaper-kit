@@ -6,6 +6,10 @@ The [first optimization](performance-climb-2026-10-25.md) profiles sprite
 residency and compares bounded prefetch windows against the pinned baseline.
 The [CPU/GPU follow-up](cpu-gpu-climb-2026-10-25.md) profiles worker submission
 and GPU intervals, then repeats ordinary runs with instrumentation disabled.
+The [optimization log](performance-progress.md) retains per-step notes and the
+final original-settings comparison. Keep the initial baseline immutable and use
+`scripts/compare-benchmarks.py BEFORE AFTER OUTPUT --note 'Change and tradeoff'`
+to compare compact snapshots, including their ranges, identities and settings.
 
 Run the release renderer through its public API and collect Windows process-tree
 and GPU counters:
@@ -205,6 +209,20 @@ and [disjoint reliability check](https://learn.microsoft.com/en-us/windows/win32
 Queries add overhead. Compare identical profiling modes and repeat ordinary
 runs without `-ProfileGpu` for production CPU/GPU utilization and throughput.
 Worker wall time is separate from Windows job CPU accounting.
+
+## Idle and feature-cost probes
+
+`-TrimPaused` (Python `--trim-paused`) freezes the last completed sample, asks
+source workers to release extra buffers/decoders, and requests asynchronous GPU
+trimming in paused phases. Default pause remains warm so existing baselines
+retain their original policy. Idle phase records include before/after pool
+counters. `warmup_first_frame_ms` is the first seek-to-zero draw after pause,
+including resource preparation; it is not production focus-resume latency.
+
+`-NoVfx` (Python `--no-vfx`) uses the existing visual-effects-disabled settings
+to investigate feature cost. It renders different content: record that setting
+change and do not claim a fidelity-preserving speedup. Neither option changes
+library defaults. See the [measured idle and feature-cost results](idle-performance-2026-10-25.md).
 
 ## Browser consumer responsiveness
 

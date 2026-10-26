@@ -19,6 +19,7 @@ struct State {
     ready: Option<(u64, Arc<TextureRegion>)>,
     error: Option<String>,
     stopped: bool,
+    suspended: bool,
 }
 struct Shared {
     state: Mutex<State>,
@@ -199,6 +200,7 @@ impl VideoPager {
                 ready: None,
                 error: None,
                 stopped: false,
+                suspended: false,
             }),
             changed: Condvar::new(),
             child: Mutex::new(None),
@@ -243,6 +245,7 @@ impl VideoPager {
         if let Some(error) = &state.error {
             return Err(InspectionError::invalid("video", error));
         }
+        state.suspended = false;
         if let Some((ready, region)) = &state.ready
             && *ready == frame
         {
@@ -251,6 +254,13 @@ impl VideoPager {
         state.requested = Some(frame);
         self.shared.changed.notify_one();
         Ok(None)
+    }
+
+    pub(crate) fn suspend(&self) {
+        if let Ok(mut state) = self.shared.state.lock() {
+            state.suspended = true;
+            self.shared.changed.notify_one();
+        }
     }
 }
 
@@ -335,11 +345,27 @@ fn decode(
     loop {
         let requested = {
             let mut state = shared.state.lock().expect("video state");
-            while state.requested.is_none() && !state.stopped {
+            loop {
+                if state.stopped {
+                    return Ok(());
+                }
+                if state.suspended {
+                    let ready = state.ready.take();
+                    state.requested = None;
+                    drop(state);
+                    drop(ready);
+                    stdout = None;
+                    stop_child(shared);
+                    state = shared.state.lock().expect("video state");
+                    while state.suspended && !state.stopped {
+                        state = shared.changed.wait(state).expect("video state");
+                    }
+                    continue;
+                }
+                if state.requested.is_some() {
+                    break;
+                }
                 state = shared.changed.wait(state).expect("video state");
-            }
-            if state.stopped {
-                return Ok(());
             }
             state.requested.take().expect("request available")
         };
@@ -371,6 +397,9 @@ fn decode(
             if state.stopped {
                 return Ok(());
             }
+            if state.suspended {
+                break;
+            }
             if state.requested.is_some_and(|latest| latest != requested) {
                 break;
             }
@@ -381,7 +410,10 @@ fn decode(
                 .map_err(|error| InspectionError::invalid("video", error.to_string()))?,
         );
         let mut state = shared.state.lock().expect("video state");
-        if next == requested + 1 && state.requested.is_none_or(|latest| latest == requested) {
+        if !state.suspended
+            && next == requested + 1
+            && state.requested.is_none_or(|latest| latest == requested)
+        {
             state.ready = Some((requested, region));
             state.requested = None;
         }

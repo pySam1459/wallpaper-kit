@@ -49,6 +49,7 @@ Keep the `ImagePlaybackSample` associated with the GPU frame the host actually p
 
 ```rust
 playback.freeze(&last_presented_sample);
+renderer.trim_memory()?; // Optional asynchronous GPU cleanup for longer still states.
 ```
 
 Stop scheduling samples and render requests, retain the completed `Arc<Frame>` or copied host texture, and ignore newer in-flight results. The host can blur that retained texture without advancing the wallpaper. `freeze` retains one sample and pauses at its exact time; `try_sample` returns the same composition immediately while frozen, without decoding or waiting. Outstanding asset/GPU work can settle, but the host must not display its results.
@@ -56,6 +57,15 @@ Stop scheduling samples and render requests, retain the completed `Arc<Frame>` o
 `pause` only stops the clock at the current time and allows pending work to finish. `freeze` chooses the sample already displayed, which may be older. The library cannot infer which frame the host presented. Resume with `play`, or select another paused time with `seek`. Disabling animation at initialization also prevents `play` from resuming a frozen sample.
 
 Resize can redraw the frozen composition at a new output size without changing its clock. Normal sampling, rendering, frame ownership and joined shutdown follow [image playback](image-playback.md).
+
+Freeze now asks workers to release extra sprite buffers and close idle video
+decoders. `trim_memory` preserves the latest frame and consumer-held leases,
+releasing source/effect GPU caches and unused outputs after pending GPU work
+finishes. A new render supersedes pending trim. Keep the retained frame visible
+while resumed sources prepare. Short pauses can retain caches with `pause`.
+The [idle comparison](idle-performance-2026-10-25.md) records this tradeoff and
+the browser example's blur/visibility policy. Production hosts choose when to
+invoke it; the library does not detect their focus or chat state.
 
 ## Example viewer
 

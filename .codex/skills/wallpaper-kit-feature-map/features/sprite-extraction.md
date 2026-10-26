@@ -2,6 +2,16 @@
 
 ## Status
 
+Verified 26 October: freezing playback asynchronously releases extra pager
+windows and the decoded atlas while the selected sample remains valid for
+still resize. Play/seek resumes preparation. Public contracts observe an
+unselected frame's final reference disappearing, preserve frozen pixels,
+trim/rebuild GPU resources and redraw at a new size. The
+[software gate](../../../../artifacts/20261026-000945-f4bc23d0/manifest.json)
+and hardware Yuta browser idle/resume check pass. Warm pause still retains
+caches. See [still-mode resources](../../../../docs/idle-performance-2026-10-25.md)
+for actual process-memory measurements, not just payload counters.
+
 Bounded prefetch windows are verified on 25 October 2026 through the
 [required WARP/headless gate](../../../../artifacts/20261025-193849-43de7d6b/manifest.json)
 and [release residency/readiness comparison](../../../../docs/performance-climb-2026-10-25.md).

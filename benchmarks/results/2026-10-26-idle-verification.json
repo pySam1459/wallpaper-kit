@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "note": "Step 3 idle lifecycle and cumulative correctness receipts. No Workshop artwork included.",
+  "required_gate": {
+    "path": "artifacts/20261026-000945-f4bc23d0/manifest.json",
+    "sha256": "51c9f3d4acfe0d253a6924f321d0b52398f7d4d3c5b81e2a72b7bfcc3bebd614",
+    "status": "passed",
+    "software": true,
+    "native_status": "skipped",
+    "video_decoder_status": "passed"
+  },
+  "collection": {
+    "before": {
+      "path": "artifacts/workshop-support-utilization-20261025/report.json",
+      "sha256": "9bcde1235c20d9acd1264dfa7bde590c8620f0e201ca707841c805cd50326e44"
+    },
+    "after": {
+      "path": "artifacts/workshop-support-idle-final-20261026/report.json",
+      "sha256": "a3b90996a7e5d13d178494830f9fde462268cd9d3441a595185fd21dea42f6cf"
+    },
+    "supported": 65,
+    "total": 65,
+    "unchanged_fixed_time_pixel_sets": 65,
+    "unchanged_complete_playback_reports": 65,
+    "unsupported_ids": []
+  },
+  "final_matrix": {
+    "path": "artifacts/performance-final-matrix-v2-20261025/correctness.json",
+    "sha256": "7396ae37f19dc7f659d41290dbf2bcee68857abc2daef1bcc8237d2ef76ec936",
+    "unchanged_initial_pngs": 28,
+    "unchanged_playback_reports": 28
+  },
+  "browser_routes": [
+    {
+      "path": "artifacts/browser-idle-yuta-v2-20261025/idle.json",
+      "sha256": "22055d0cbe5936b0f5f89fc3efe3a45b595022d5652de070d1730f1ab3bea18b",
+      "passed": true,
+      "checks": [
+        "consumer blur callback freezes pixels, stops publication and releases idle GPU resources",
+        "focus resumes requested playback; explicit pause survives focus; still resize redraws and trims again"
+      ],
+      "limits": [
+        "Headless Chrome PNG consumer; no production host, native monitor cadence or zero-copy claim.",
+        "Focus callbacks are synthesized; actual desktop focus delivery is unverified."
+      ],
+      "cleanup": {
+        "code": 0,
+        "signal": null
+      },
+      "still": {
+        "effect_texture_bytes": 0,
+        "published_frames": 5,
+        "resident_bytes": 921600,
+        "resident_textures": 1,
+        "source_texture_bytes": 0,
+        "texture_uploads": 20
+      }
+    },
+    {
+      "path": "artifacts/browser-idle-tram-20261025/idle.json",
+      "sha256": "f1d6cf7697d913cd5b62981598a0463ea53d320d17681a92a21d2111eb3d6217",
+      "passed": true,
+      "checks": [
+        "consumer blur callback freezes pixels, stops publication and releases idle GPU resources",
+        "focus resumes requested playback; explicit pause survives focus; still resize redraws and trims again"
+      ],
+      "limits": [
+        "Headless Chrome PNG consumer; no production host, native monitor cadence or zero-copy claim.",
+        "Focus callbacks are synthesized; actual desktop focus delivery is unverified."
+      ],
+      "cleanup": {
+        "code": 0,
+        "signal": null
+      },
+      "still": {
+        "effect_texture_bytes": 0,
+        "published_frames": 5,
+        "resident_bytes": 921600,
+        "resident_textures": 1,
+        "source_texture_bytes": 0,
+        "texture_uploads": 8
+      }
+    },
+    {
+      "path": "artifacts/browser-idle-fixture-20261025/report.json",
+      "sha256": "60de499a5e280a79cb4ab36b9acffe0c4947b0e275aeabdacf60564f870f0928",
+      "passed": true,
+      "checks": [
+        "independent GPU fixture pixels at two sprite phases",
+        "native RGBA equals browser canvas; exact seek and rewind",
+        "live advancement, freeze-last-frame pause, idle and bounded GPU pool",
+        "DOM resize controls and recovery after an invalid native command",
+        "session authentication, origin restriction and bounded frame admission",
+        "Chrome DevTools property replacement preserves paused pixels",
+        "Chrome DevTools MCP attaches to the same isolated Chrome; evaluate, accessibility snapshot and screenshot",
+        "renderer startup errors appear in the browser",
+        "standalone MCP entry point starts its own renderer/Chrome and cleans up on disconnect"
+      ],
+      "limits": [
+        "PNG readback/browser transport does not establish native display cadence, zero-copy sharing or Wallpaper Engine fidelity."
+      ],
+      "cleanup": {
+        "code": 0,
+        "signal": null
+      },
+      "still": null
+    }
+  ],
+  "browser_responsiveness": {
+    "path": "artifacts/browser-idle-responsiveness-20261026/responsiveness.json",
+    "sha256": "e224cb8801c7f1074c58339ab84f5cb306aed546d99791f198ac04f9bd8f65ce",
+    "passed": true,
+    "phases": [
+      {
+        "playing": false,
+        "elapsed_seconds": 7.8102570999999985,
+        "keyboard_round_trip_ms": {
+          "count": 40,
+          "mean": 1.2271699999998418,
+          "p50": 1.1759999999994761,
+          "p95": 1.6683999999986554,
+          "p99": 3.5644000000029337,
+          "max": 3.5644000000029337
+        },
+        "event_to_handler_ms": {
+          "count": 40,
+          "mean": 0.06249999962747097,
+          "p50": 0.09999999403953552,
+          "p95": 0.10000000894069672,
+          "p99": 0.10000000894069672,
+          "max": 0.10000000894069672
+        },
+        "animation_frame_gap_ms": {
+          "count": 2713,
+          "mean": 2.8784002948765197,
+          "p50": 2.7999999999992724,
+          "p95": 2.900000000001455,
+          "p99": 5.599999999998545,
+          "max": 5.69999999999709
+        },
+        "animation_gaps_over_25ms": 0,
+        "long_tasks_available": true,
+        "long_task_ms": null,
+        "native_completed_frames": 0
+      },
+      {
+        "playing": true,
+        "elapsed_seconds": 7.807351199999998,
+        "keyboard_round_trip_ms": {
+          "count": 40,
+          "mean": 1.3653249999999388,
+          "p50": 1.2185000000026776,
+          "p95": 1.860899999999674,
+          "p99": 4.560700000001816,
+          "max": 4.560700000001816
+        },
+        "event_to_handler_ms": {
+          "count": 40,
+          "mean": 0.06000000014901161,
+          "p50": 0,
+          "p95": 0.20000000298023224,
+          "p99": 0.20000000298023224,
+          "max": 0.20000000298023224
+        },
+        "animation_frame_gap_ms": {
+          "count": 2779,
+          "mean": 2.8089960417416324,
+          "p50": 2.7999999999992724,
+          "p95": 2.900000000001455,
+          "p99": 5.299999999999272,
+          "max": 5.600000000002183
+        },
+        "animation_gaps_over_25ms": 0,
+        "long_tasks_available": true,
+        "long_task_ms": null,
+        "native_completed_frames": 3
+      },
+      {
+        "playing": false,
+        "elapsed_seconds": 7.812926800000001,
+        "keyboard_round_trip_ms": {
+          "count": 40,
+          "mean": 1.092567500000405,
+          "p50": 1.0412999999971362,
+          "p95": 1.4965999999985797,
+          "p99": 1.6200000000026193,
+          "max": 1.6200000000026193
+        },
+        "event_to_handler_ms": {
+          "count": 40,
+          "mean": 0.06000000014901161,
+          "p50": 0.09999999403953552,
+          "p95": 0.10000000894069672,
+          "p99": 0.19999998807907104,
+          "max": 0.19999998807907104
+        },
+        "animation_frame_gap_ms": {
+          "count": 2719,
+          "mean": 2.8720117690327327,
+          "p50": 2.7999999999956344,
+          "p95": 2.900000000001455,
+          "p99": 5.599999999998545,
+          "max": 5.600000000005821
+        },
+        "animation_gaps_over_25ms": 0,
+        "long_tasks_available": true,
+        "long_task_ms": null,
+        "native_completed_frames": 0
+      },
+      {
+        "playing": true,
+        "elapsed_seconds": 7.805728499999997,
+        "keyboard_round_trip_ms": {
+          "count": 40,
+          "mean": 1.3522699999999532,
+          "p50": 1.2865999999994528,
+          "p95": 1.837100000004284,
+          "p99": 1.914199999999255,
+          "max": 1.914199999999255
+        },
+        "event_to_handler_ms": {
+          "count": 40,
+          "mean": 0.07250000089406967,
+          "p50": 0.09999999403953552,
+          "p95": 0.10000000894069672,
+          "p99": 0.20000000298023224,
+          "max": 0.20000000298023224
+        },
+        "animation_frame_gap_ms": {
+          "count": 2772,
+          "mean": 2.8150793650793657,
+          "p50": 2.7999999999956344,
+          "p95": 2.900000000001455,
+          "p99": 5.400000000001455,
+          "max": 5.600000000005821
+        },
+        "animation_gaps_over_25ms": 0,
+        "long_tasks_available": true,
+        "long_task_ms": null,
+        "native_completed_frames": 3
+      }
+    ],
+    "limits": [
+      "Headless Chrome debug consumer with PNG transport, not T3 or native monitor presentation.",
+      "Paused versus playing retains the same loaded renderer. Browser keyboard round trips include Playwright/CDP overhead.",
+      "Event-to-handler delay and animation-frame gaps describe this page, not end-to-end device input latency."
+    ],
+    "cleanup": {
+      "code": 0,
+      "signal": null
+    }
+  },
+  "limits": [
+    "Collection correctness retains existing omissions; it does not prove complete Wallpaper Engine fidelity.",
+    "Native windows, actual OS focus delivery and production adapter latency were not verified."
+  ]
+}

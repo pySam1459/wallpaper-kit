@@ -218,6 +218,7 @@ struct State {
     stopped: bool,
     released_epoch: u64,
     output_stats: OutputStats,
+    trim_requested: bool,
 }
 
 struct Shared {
@@ -279,6 +280,7 @@ impl Renderer {
                 stopped: false,
                 released_epoch: 0,
                 output_stats: OutputStats::default(),
+                trim_requested: false,
             }),
             changed: Condvar::new(),
         });
@@ -368,6 +370,7 @@ impl Renderer {
         let previous_content =
             content.map(|content| std::mem::replace(&mut state.content, content));
         state.next_id += 1;
+        state.trim_requested = false;
         let id = state.next_id;
         state.requested = Some(Request {
             id,
@@ -403,6 +406,27 @@ impl Renderer {
             Err(TryLockError::WouldBlock) => Ok(None),
             Err(TryLockError::Poisoned(error)) => Err(Error::Worker(error.to_string())),
         }
+    }
+
+    /// Asynchronously releases GPU source/effect caches and unleased spare
+    /// outputs after pending GPU work completes. Keeps the latest frame, all
+    /// consumer-held frames and content needed for a still resize. Stop scheduling
+    /// renders first. A new render request supersedes a pending trim; later
+    /// rendering recreates resources on the worker without reducing quality.
+    /// Inspect [`Self::try_output_stats`] for completion. Device errors arrive
+    /// through [`Self::try_frame`]. No render or GPU wait occurs on the caller.
+    pub fn trim_memory(&self) -> Result<(), Error> {
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|e| Error::Worker(e.to_string()))?;
+        if state.stopped {
+            return Err(Error::Worker("worker has stopped".into()));
+        }
+        state.trim_requested = true;
+        self.shared.changed.notify_one();
+        Ok(())
     }
 
     /// Stops and joins the worker. Call outside a latency-critical UI operation.
@@ -462,7 +486,7 @@ fn worker_loop(
     gpu: &mut gpu::Gpu,
 ) -> Result<(), Error> {
     loop {
-        let (request, desired, sequence, released) = {
+        let (request, desired, sequence, released, trim_requested) = {
             let state = shared
                 .state
                 .lock()
@@ -475,6 +499,7 @@ fn worker_loop(
                 state.next_id,
                 state.output_stats.published_frames + 1,
                 state.released_epoch,
+                state.trim_requested,
             )
         };
         if let Some(frame) = gpu.poll(desired, sequence, Arc::downgrade(shared))? {
@@ -493,6 +518,22 @@ fn worker_loop(
             drop(state);
             drop(previous);
             let _ = notify.try_send(()); // Notification is a capacity-one hint.
+        }
+        if trim_requested && !gpu.has_pending() {
+            let trim = {
+                let mut state = shared
+                    .state
+                    .lock()
+                    .map_err(|e| Error::Worker(e.to_string()))?;
+                if state.requested.is_none() {
+                    std::mem::take(&mut state.trim_requested)
+                } else {
+                    false
+                }
+            };
+            if trim {
+                gpu.trim_memory()?;
+            }
         }
         let mut waiting_for_release = false;
         let mut submitted_now = false;
@@ -529,7 +570,11 @@ fn worker_loop(
         if state.stopped {
             return Ok(());
         }
-        if submitted_now || state.next_id != desired || state.released_epoch != released {
+        if submitted_now
+            || (state.trim_requested && state.requested.is_none() && !poll_again)
+            || state.next_id != desired
+            || state.released_epoch != released
+        {
             continue;
         }
         // Only submitted queries or consumer GPU access need periodic polling.

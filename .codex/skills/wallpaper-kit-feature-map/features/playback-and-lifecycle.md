@@ -2,6 +2,20 @@
 
 ## Status
 
+Verified 26 October: `ImagePlayback::freeze` retains the exact displayed
+sample while source workers release extra sprite windows/atlases and close
+idle decoders. `Renderer::trim_memory` asynchronously drops GPU caches and
+unleased spare outputs after pending work, retaining latest/consumer-held
+frames and still-resize content. Later draws rebuild resources; resumed sources
+may temporarily return no sample. Public sprite/video/GPU contracts and the
+[software gate](../../../../artifacts/20261026-000945-f4bc23d0/manifest.json)
+pass. The browser example uses blur/visibility callbacks and explicit
+`setActive` for host policy, resumes only requested playback, and preserves
+manual pause. Hardware sprite/video callback tests and still resize pass;
+actual desktop focus delivery and production adapters are unverified. Read the
+[idle procedure](../../../../docs/idle-performance-2026-10-25.md) for costs and
+reproduction. Warm `pause` remains available for short interruptions.
+
 The 12 October cadence update preserves source-rate video decoding and paces the
 native viewer against the initial monitor refresh rate. Generated 60 fps live
 video and existing 30 fps seek/loop/embedded contracts passed. Panda and Tram

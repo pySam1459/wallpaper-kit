@@ -3,6 +3,8 @@ const context = canvas.getContext('2d', { willReadFrequently: true });
 const token = location.hash.slice(1);
 let state;
 let playing = false;
+let wantsPlay = false;
+let hostActive = true;
 let pipeline = Promise.resolve();
 let lastPoll = 0;
 let framePending = false;
@@ -59,15 +61,25 @@ function tick(now) {
   }
   animationFrame = requestAnimationFrame(tick);
 }
+function updateActivity() {
+  stopPolling();
+  return serial(async () => {
+    const run = wantsPlay && hostActive;
+    const next = await command(run ? 'play' : 'pause');
+    if (run && wantsPlay && hostActive && !playing) { playing = true; animationFrame = requestAnimationFrame(tick); }
+    return next;
+  });
+}
 const api = {
   inspect: () => serial(async () => { await command('inspect'); return structuredClone(state); }),
   capture: () => serial(draw),
-  seek: time => { stopPolling(); return serial(async () => { await command('seek', { time_ms: time }); return draw(); }); },
+  seek: time => { wantsPlay = false; stopPolling(); return serial(async () => { await command('seek', { time_ms: time }); return draw(); }); },
   resize: (width, height) => serial(async () => { await command('resize', { width, height }); return draw(); }),
   setProperties: properties => serial(async () => { await command('set_properties', { properties }); return draw(); }),
-  setCalendarTime: unixMs => { stopPolling(); return serial(async () => { await command('set_calendar_time', { unix_ms: unixMs }); return draw(); }); },
-  play: () => serial(async () => { const next = await command('play'); if (!playing) { playing = true; animationFrame = requestAnimationFrame(tick); } return next; }),
-  pause: () => { stopPolling(); return serial(() => command('pause')); },
+  setCalendarTime: unixMs => { wantsPlay = false; stopPolling(); return serial(async () => { await command('set_calendar_time', { unix_ms: unixMs }); return draw(); }); },
+  play: () => { wantsPlay = true; return updateActivity(); },
+  pause: () => { wantsPlay = false; return updateActivity(); },
+  setActive: active => { hostActive = Boolean(active); return updateActivity(); },
   pixel: (x, y) => [...context.getImageData(x, y, 1, 1).data],
 };
 window.wallpaperTest = api;
@@ -87,4 +99,7 @@ for (const [button, work] of [
   ['seek', () => api.seek(Number(document.querySelector('#time').value))],
   ['resize', () => api.resize(Number(document.querySelector('#width').value), Number(document.querySelector('#height').value))],
 ]) document.querySelector(`#${button}`).addEventListener('click', () => { work().catch(() => {}); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) api.pause().catch(() => {}); });
+function activityChanged(active) { api.ready.then(() => api.setActive(active)).catch(failure); }
+window.addEventListener('blur', () => activityChanged(false));
+window.addEventListener('focus', () => activityChanged(!document.hidden));
+document.addEventListener('visibilitychange', () => activityChanged(!document.hidden && document.hasFocus()));

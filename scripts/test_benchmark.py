@@ -6,6 +6,24 @@ from benchmark import distribution, summarize_phase
 
 
 class BenchmarkMetrics(unittest.TestCase):
+    def test_comparison_preserves_zero_baselines_ranges_and_policy_changes(self):
+        import copy
+        compare=runpy.run_path(str(Path(__file__).with_name('compare-benchmarks.py')))['compare']
+        before=dict(status='passed',machine={},configuration={},results=[dict(name='fixture',resolution='4x4',
+            source_sha256='same',omission_counts=[0],metrics=dict(paused_cpu_percent=dict(median=0,minimum=0,maximum=0),
+            paused_private_mib=dict(median=100,minimum=90,maximum=110)))])
+        after=copy.deepcopy(before)
+        after['configuration']['trim_paused']=True
+        after['results'][0]['metrics']['paused_private_mib']=dict(median=50,minimum=45,maximum=55)
+        report=compare(before,after,'Release idle resources')
+        self.assertEqual(report['results'][0]['metrics']['paused_private_mib']['percent_change'],-50)
+        self.assertIsNone(report['results'][0]['metrics']['paused_cpu_percent']['percent_change'])
+        self.assertEqual(report['configuration_changes']['trim_paused'],dict(before=False,after=True))
+        after['results'][0]['source_sha256']='different'
+        with self.assertRaises(ValueError):compare(before,after,'changed content')
+        before['status']='failed'
+        with self.assertRaises(ValueError):compare(before,after,'incomplete')
+
     def test_baseline_requires_complete_data_and_retains_repeat_spread(self):
         summary=runpy.run_path(str(Path(__file__).with_name('summarize-benchmark.py')))
         self.assertEqual(summary['spread']([1,3]),dict(median=2,minimum=1,maximum=3))
